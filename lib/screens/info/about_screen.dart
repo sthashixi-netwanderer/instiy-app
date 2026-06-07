@@ -1,0 +1,165 @@
+import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
+import '../../utils/responsive.dart';
+import '../../config/app_theme.dart';
+
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.canvasWhite,
+      appBar: AppTheme.glassAppBar(context: context, 
+        title: const Text('About Instiy'),
+        leading: ShadIconButton.ghost(
+          icon: Icon(LucideIcons.arrowLeft, size: context.ri(24)),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: ListView(
+        padding: context.rAll(20),
+        children: [
+          // App info
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  width: context.rw(80),
+                  height: context.rh(80),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(context.rr(20)),
+                  ),
+                  child: Icon(LucideIcons.store, size: context.ri(40), color: AppTheme.accent),
+                ),
+                SizedBox(height: context.rh(12)),
+                Text(
+                  'Instiy',
+                  style: TextStyle(
+                    fontSize: context.rsp(24),
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.charcoalInk,
+                    fontFamily: 'Space Grotesk',
+                  ),
+                ),
+                SizedBox(height: context.rh(4)),
+                Text(
+                  'Campus Marketplace',
+                  style: TextStyle(fontSize: context.rsp(14), color: AppTheme.mutedSteel),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: context.rh(24)),
+
+          // Mission
+          Container(
+            padding: context.rAll(20),
+            decoration: BoxDecoration(
+              color: AppTheme.pureSurface,
+              borderRadius: BorderRadius.circular(context.rr(16)),
+              border: Border.all(color: AppTheme.whisperBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Our Mission', style: TextStyle(fontSize: context.rsp(18), fontWeight: FontWeight.w600, color: AppTheme.charcoalInk)),
+                SizedBox(height: context.rh(8)),
+                Text(
+                  'Instiy connects buyers and sellers across Ghanaian university campuses. Buy and sell textbooks, electronics, furniture, and more within your campus community.',
+                  style: TextStyle(color: AppTheme.mutedSteel, height: 1.5, fontSize: context.rsp(13)),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: context.rh(16)),
+
+          // Legal links
+          _AboutLinkRow(
+            icon: LucideIcons.shield,
+            iconColor: AppTheme.accent,
+            title: 'Privacy Policy',
+            subtitle: 'How we handle your data',
+            onTap: () => Navigator.of(context).pushNamed('/privacy-policy'),
+          ),
+          SizedBox(height: context.rh(8)),
+          _AboutLinkRow(
+            icon: LucideIcons.fileText,
+            iconColor: AppTheme.accent,
+            title: 'Terms & Conditions',
+            subtitle: 'Rules for using Instiy',
+            onTap: () => Navigator.of(context).pushNamed('/terms-conditions'),
+          ),
+          SizedBox(height: context.rh(8)),
+          _AboutLinkRow(
+            icon: LucideIcons.helpCircle,
+            iconColor: AppTheme.mutedSteel,
+            title: 'FAQ',
+            subtitle: 'Frequently asked questions',
+            onTap: () => Navigator.of(context).pushNamed('/faq'),
+          ),
+          SizedBox(height: context.rh(24)),
+
+          Center(
+            child: Text('Version 1.0.0', style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutLinkRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _AboutLinkRow({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: context.rAll(14),
+        decoration: BoxDecoration(
+          color: AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rr(14)),
+          border: Border.all(color: AppTheme.whisperBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: context.rAll(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(context.rr(8)),
+              ),
+              child: Icon(icon, color: iconColor, size: context.ri(18)),
+            ),
+            SizedBox(width: context.rw(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontSize: context.rsp(14), fontWeight: FontWeight.w600, color: AppTheme.charcoalInk)),
+                  Text(subtitle, style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
+                ],
+              ),
+            ),
+            Icon(LucideIcons.chevronRight, size: context.ri(18), color: AppTheme.mutedSteel),
+          ],
+        ),
+      ),
+    );
+  }
+}

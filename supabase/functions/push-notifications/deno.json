@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "google-auth-library": "https://esm.sh/google-auth-library@9.11.0"
+  }
+}

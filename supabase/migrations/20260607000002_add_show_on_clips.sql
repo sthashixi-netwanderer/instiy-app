@@ -1,0 +1,2 @@
+ALTER TABLE products
+ADD COLUMN show_on_clips BOOLEAN NOT NULL DEFAULT false;

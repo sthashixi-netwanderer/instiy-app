@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "658847293429",
+    "project_id": "instiy-f0295",
+    "storage_bucket": "instiy-f0295.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:658847293429:android:fae62c130aff8ff278cabc",
+        "android_client_info": {
+          "package_name": "com.instiy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "658847293429-cb5mrrgpomhak1154rdjbb1h4vf61p9h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.instiy",
+            "certificate_hash": "a6b575335c341ff97cc95a25a7b90e5a2bfa1ea9"
+          }
+        },
+        {
+          "client_id": "658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDrqqHMm-JD-WfsmdDJq2izeOEjBUO-Ps"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
