@@ -83,27 +83,30 @@ export const Policies: React.FC = () => {
     }
   };
 
+  const escapeHtml = (text: string): string =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const sanitizeHtml = (html: string): string =>
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/javascript\s*:/gi, '');
+
   const renderMarkdown = (md: string) => {
-    // Simple markdown-to-HTML renderer
-    let html = md
-      // Headings
+    const escaped = escapeHtml(md);
+    let html = escaped
       .replace(/^### (.+)$/gm, '<h3>$1</h3>')
       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
       .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      // Bold and italic
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      // Unordered lists
       .replace(/^- (.+)$/gm, '<li>$1</li>')
-      // Paragraphs
       .replace(/\n\n/g, '</p><p>')
-      // Line breaks
       .replace(/\n/g, '<br/>');
 
-    // Wrap consecutive <li> items in <ul>
     html = html.replace(/(<li>.*?<\/li>)+/gs, (match) => `<ul>${match}</ul>`);
 
-    return `<p>${html}</p>`;
+    return sanitizeHtml(`<p>${html}</p>`);
   };
 
   const tabs = [
