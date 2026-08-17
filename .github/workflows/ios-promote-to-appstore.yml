@@ -1,0 +1,48 @@
+name: iOS - Promote TestFlight Build to App Store Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: 'Marketing version already uploaded to TestFlight (e.g. 1.0.0)'
+        required: true
+        type: string
+      build_number:
+        description: 'Build number to submit (the GitHub Actions run number used for the TestFlight upload)'
+        required: true
+        type: string
+      automatic_release:
+        description: 'Automatically release to the App Store as soon as Apple approves it'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  promote:
+    name: Submit build for App Store review
+    runs-on: macos-latest
+    environment: app-store-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install Fastlane
+        working-directory: ios
+        run: bundle install
+
+      - name: Submit for App Store review
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_VERSION: ${{ inputs.app_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          AUTOMATIC_RELEASE: ${{ inputs.automatic_release }}
+        working-directory: ios
+        run: bundle exec fastlane release
