@@ -5,6 +5,9 @@ class BusinessProfile {
   final String? businessName;
   final String? description;
   final String? locationUrl;
+  final String? digitalAddress;
+  final bool qrCodePublic;
+  final String? university;
   final List<StorePhoneNumber> phoneNumbers;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -16,6 +19,9 @@ class BusinessProfile {
     this.businessName,
     this.description,
     this.locationUrl,
+    this.digitalAddress,
+    this.qrCodePublic = false,
+    this.university,
     this.phoneNumbers = const [],
     required this.createdAt,
     required this.updatedAt,
@@ -35,6 +41,10 @@ class BusinessProfile {
       businessName: json['business_name'] as String?,
       description: json['description'] as String?,
       locationUrl: json['location_url'] as String?,
+      digitalAddress: json['digital_address'] as String?,
+      qrCodePublic: json['qr_code_public'] as bool? ?? false,
+      university: json['university'] as String? ??
+          (json['users'] as Map<String, dynamic>?)?['university'] as String?,
       phoneNumbers: phones,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -48,6 +58,7 @@ class BusinessProfile {
       'business_name': businessName,
       'description': description,
       'location_url': locationUrl,
+      'digital_address': digitalAddress,
       'phone_numbers': phoneNumbers.map((p) => p.toJson()).toList(),
     };
   }
@@ -57,6 +68,8 @@ class BusinessProfile {
     String? businessName,
     String? description,
     String? locationUrl,
+    String? digitalAddress,
+    bool? qrCodePublic,
     List<StorePhoneNumber>? phoneNumbers,
   }) {
     return BusinessProfile(
@@ -66,6 +79,8 @@ class BusinessProfile {
       businessName: businessName ?? this.businessName,
       description: description ?? this.description,
       locationUrl: locationUrl ?? this.locationUrl,
+      digitalAddress: digitalAddress ?? this.digitalAddress,
+      qrCodePublic: qrCodePublic ?? this.qrCodePublic,
       phoneNumbers: phoneNumbers ?? this.phoneNumbers,
       createdAt: createdAt,
       updatedAt: DateTime.now(),

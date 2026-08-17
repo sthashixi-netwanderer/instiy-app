@@ -65,7 +65,7 @@ class CuratedCollection {
         if (json['item_product_id'] != null) {
           product = Product(
             id: json['item_product_id'] as String,
-            sellerId: '',
+            sellerId: json['product_seller_id'] as String? ?? '',
             title: json['product_title'] as String? ?? '',
             description: '',
             price: (json['product_price'] as num?)?.toDouble() ?? 0,
@@ -105,8 +105,6 @@ class CuratedCollection {
 
         if (json['item_category_id'] != null) {
           final catImageUrl = json['category_image_url'] as String?;
-          // ignore: avoid_print
-          print('[CuratedCollection] Category: ${json['category_name']}, image_url: $catImageUrl');
           category = Category(
             id: json['item_category_id'] as String,
             name: json['category_name'] as String? ?? '',

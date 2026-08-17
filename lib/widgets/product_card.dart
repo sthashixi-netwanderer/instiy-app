@@ -9,6 +9,7 @@ import '../utils/responsive.dart';
 import 'animated_press.dart';
 import 'discount_countdown.dart';
 import 'verification_badge.dart';
+import 'package:instiy/utils/formatters.dart';
 
 class ProductCard extends ConsumerStatefulWidget {
   final Product product;
@@ -34,23 +35,50 @@ class _ProductCardState extends ConsumerState<ProductCard> {
     final product = widget.product;
     final hasDiscount = product.isDiscountActive;
 
+    final authState = ref.watch(authProvider);
+    final isOwner = authState.user?.id == product.sellerId;
+    bool needsPermission = false;
+    if (authState.isAuthenticated) {
+      final userUni = authState.user?.university;
+      if (userUni != null && userUni.trim().isNotEmpty && product.campuses.isNotEmpty) {
+        final matches = product.campuses.any((c) =>
+            c.toLowerCase().trim() == userUni.toLowerCase().trim());
+        needsPermission = !matches;
+      }
+    }
+
     return AnimatedPress(
       onTap: widget.onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.glassSurfaceLight,
-          borderRadius: BorderRadius.circular(context.rr(16)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.55),
+              AppTheme.glassSurfaceLight,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(context.rr(20)),
           border: Border.all(
             color: inCart ? AppTheme.accent : AppTheme.glassBorder,
+            width: inCart ? 1.5 : 1.0,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: inCart
+                  ? AppTheme.accent.withValues(alpha: 0.25)
+                  : const Color(0x1F4C1D95),
+              blurRadius: inCart ? 20 : 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              height: context.rh(140),
+            Expanded(
               child: Stack(
                 children: [
                   if (product.effectiveThumbnail != null)
@@ -144,14 +172,25 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       child: Container(
                         padding: EdgeInsets.symmetric(horizontal: context.rw(8), vertical: context.rh(4)),
                         decoration: BoxDecoration(
-                          color: AppTheme.destructive,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFF43F5E), AppTheme.destructive],
+                          ),
                           borderRadius: BorderRadius.circular(context.rr(12)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.destructive.withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              '-${product.discountPercent.toStringAsFixed(0)}%',
+                              '-${formatCurrency(product.discountPercent)}%',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: context.rsp(10),
@@ -198,7 +237,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       ),
                     ),
                   // Add to cart button
-                  if (!inCart && product.status == ProductStatus.available)
+                  if (!inCart && product.status == ProductStatus.available && !needsPermission && !isOwner)
                     Positioned(
                       bottom: context.rh(8),
                       right: context.rw(8),
@@ -214,10 +253,21 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                           );
                         },
                         child: Container(
-                          padding: EdgeInsets.all(context.rw(8)),
+                          padding: EdgeInsets.all(context.rw(9)),
                           decoration: BoxDecoration(
-                            color: AppTheme.accent,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [AppTheme.accentBright, AppTheme.accent],
+                            ),
                             shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accent.withValues(alpha: 0.5),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: Icon(
                             LucideIcons.plus,
@@ -254,7 +304,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'GH\u00a2 ${product.effectivePrice.toStringAsFixed(2)}',
+                            '${formatGhs(product.effectivePrice)}',
                             style: TextStyle(
                               fontSize: context.rsp(16),
                               fontWeight: FontWeight.bold,
@@ -262,7 +312,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                             ),
                           ),
                           Text(
-                            'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                            '${formatGhs(product.effectivePrice)}',
                             style: TextStyle(
                               fontSize: context.rsp(12),
                               color: AppTheme.mutedSteel,
@@ -273,7 +323,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       )
                     else
                       Text(
-                        'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                        '${formatGhs(product.effectivePrice)}',
                         style: TextStyle(
                           fontSize: context.rsp(16),
                           fontWeight: FontWeight.bold,
@@ -282,7 +332,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       ),
                     SizedBox(height: context.rh(2)),
                     // Seller info
-                    if (product.sellerName != null)
+                    if (widget.showSeller && product.sellerName != null)
                       Row(
                         children: [
                           ShadAvatar(

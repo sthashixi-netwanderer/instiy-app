@@ -15,6 +15,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/verification_badge.dart';
 import 'seller_orders_screen.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/app_button.dart';
 
 class SellerDashboardScreen extends ConsumerStatefulWidget {
   const SellerDashboardScreen({super.key});
@@ -38,8 +39,8 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
   void _loadData() {
     final user = ref.read(authProvider).user;
     if (user != null) {
-      ref.read(sellerProvider).loadDashboardStats(user.id);
-      ref.read(productProvider).loadUserListings(user.id);
+      ref.read(sellerProvider).ensureInitialized(user.id);
+      ref.read(productProvider).loadUserListings(user.id, silent: ref.read(productProvider).userListings.isNotEmpty);
     }
     ref.read(productProvider).loadPublishingDraft();
   }
@@ -77,6 +78,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
       '/create-listing',
       arguments: {'source': 'dashboard'},
     );
+    // ignore: unawaited_futures
     ref.read(productProvider).loadPublishingDraft(); // Reload draft when returning
   }
 
@@ -139,19 +141,34 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     final stats = sellerP.dashboardStats;
 
     final userListings = prodP.userListings;
-    final activeCount = userListings.where((p) => p.status == ProductStatus.available).length;
-    final soldCount = userListings.where((p) => p.status == ProductStatus.sold).length;
+    final activeCount = stats != null ? stats.activeListings : userListings.where((p) => p.status == ProductStatus.available).length;
+    final soldCount = stats != null ? stats.totalSold : userListings.where((p) => p.status == ProductStatus.sold).length;
+    final totalStock = userListings.fold<int>(0, (sum, p) => sum + p.stockQuantity);
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
       body: sellerP.isLoading && stats == null
-          ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                16,
+                16,
+              ),
+              child: const ListSkeleton(count: 6),
+            )
           : RefreshIndicator(
               onRefresh: () async => _loadData(),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                  16,
+                  16,
+                ),
                 children: [
                   // Seller profile card
                   _buildProfileCard(user),
@@ -159,11 +176,11 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                   // Stats row
                   Row(
                     children: [
-                      _StatCard(label: 'Listings', value: '${userListings.length}'),
+                      _StatCard(label: 'Total Stocks', value: '$totalStock'),
                       const SizedBox(width: 12),
-                      _StatCard(label: 'Active', value: '$activeCount'),
+                      _StatCard(label: 'Active', value: '$activeCount', compact: true),
                       const SizedBox(width: 12),
-                      _StatCard(label: 'Sold', value: '$soldCount'),
+                      _StatCard(label: 'Sold', value: '$soldCount', compact: true),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -189,16 +206,13 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                   ),
                   const SizedBox(height: 12),
                   // Build / Edit Business Profile
-                  SizedBox(
-                    width: double.infinity,
-                    child: ShadButton.outline(
-                      onPressed: () async {
-                        final result = await Navigator.of(context).pushNamed('/edit-business-profile');
-                        if (result == true) _loadData();
-                      },
-                      leading: const Icon(LucideIcons.store, size: 18),
-                      child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Build Business Profile')),
-                    ),
+                  AppButton.outline(
+                    onPressed: () async {
+                      final result = await Navigator.of(context).pushNamed('/edit-business-profile');
+                      if (result == true) _loadData();
+                    },
+                    leading: const Icon(LucideIcons.store, size: 18),
+                    child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Build Business Profile')),
                   ),
                   const SizedBox(height: 4),
                   // View Store link
@@ -455,7 +469,13 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(child: SizedBox.shrink()),
+              Expanded(
+                child: _ActionButton(
+                  icon: LucideIcons.key,
+                  label: 'Permissions',
+                  onTap: () => Navigator.of(context).pushNamed('/seller-permissions'),
+                ),
+              ),
             ],
           ),
         ),
@@ -469,17 +489,18 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
 class _StatCard extends StatelessWidget {
   final String label;
   final String value;
+  final bool compact;
 
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({required this.label, required this.value, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: EdgeInsets.symmetric(vertical: context.rh(16)),
+        padding: EdgeInsets.symmetric(vertical: context.rh(compact ? 10 : 16)),
         decoration: BoxDecoration(
           color: AppTheme.pureSurface,
-          borderRadius: BorderRadius.circular(context.rr(14)),
+          borderRadius: BorderRadius.circular(context.rr(compact ? 10 : 14)),
           border: Border.all(color: AppTheme.whisperBorder),
         ),
         child: Column(
@@ -487,16 +508,20 @@ class _StatCard extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                fontSize: context.rsp(24),
+                fontSize: context.rsp(
+                  compact
+                      ? (value.length <= 2 ? 16 : value.length <= 4 ? 13 : 11)
+                      : (value.length <= 3 ? 24 : value.length <= 5 ? 18 : value.length <= 7 ? 14 : 12),
+                ),
                 fontWeight: FontWeight.bold,
                 color: AppTheme.charcoalInk,
               ),
             ),
-            SizedBox(height: context.rh(4)),
+            SizedBox(height: context.rh(compact ? 2 : 4)),
             Text(
               label,
               style: TextStyle(
-                fontSize: context.rsp(12),
+                fontSize: context.rsp(compact ? 10 : 12),
                 color: AppTheme.mutedSteel,
               ),
             ),

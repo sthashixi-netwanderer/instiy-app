@@ -7,6 +7,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
 import '../models/seller_review_model.dart';
 import '../providers/providers.dart';
+import '../providers/block_provider.dart';
 import '../services/review_service.dart';
 import '../utils/responsive.dart';
 
@@ -33,9 +34,10 @@ class _ReviewSectionState extends ConsumerState<ReviewSection> {
   Future<void> _loadReviews() async {
     final userId = ref.read(authProvider).user?.id;
     final reviews = await ReviewService.getProductReviews(widget.productId);
+    final filtered = BlockProvider.instance.filterReviews(reviews);
     if (!mounted) return;
     setState(() {
-      _reviews = reviews;
+      _reviews = filtered;
       _myReview = userId != null
           ? reviews.where((r) => r.reviewerId == userId).firstOrNull
           : null;
@@ -487,7 +489,7 @@ class _ReviewCardState extends ConsumerState<_ReviewCard> {
     try {
       final user = ref.read(authProvider).user;
       if (user == null) {
-        Navigator.of(context).pushNamed('/login');
+        Navigator.of(context).pushNamed('/login'); // ignore: unawaited_futures
         return;
       }
 

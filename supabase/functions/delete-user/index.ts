@@ -4,7 +4,13 @@ import { createClient } from "jsr:@supabase/supabase-js";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+function sanitizeError(error: unknown): string {
+  console.error("Delete user error:", error);
+  return "Failed to delete user";
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,7 +21,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    // Get the caller's JWT — Supabase edge runtime already validates it
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -24,7 +29,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Extract user ID from the JWT payload (already verified by Supabase runtime)
     const jwt = authHeader.replace("Bearer ", "");
     const payload = JSON.parse(atob(jwt.split(".")[1]));
     const callerId = payload.sub;
@@ -36,10 +40,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use service role client for DB operations (bypasses RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify the caller is an admin
     const { data: callerProfile, error: profileError } = await supabase
       .from("users")
       .select("is_admin")
@@ -53,7 +55,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse request body
     const { user_id } = await req.json();
     if (!user_id) {
       return new Response(
@@ -62,7 +63,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Prevent admin from deleting themselves
     if (user_id === callerId) {
       return new Response(
         JSON.stringify({ error: "Cannot delete your own account" }),
@@ -70,12 +70,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Delete the user from auth — this cascades to public.users and all child tables
     const { error: deleteError } = await supabase.auth.admin.deleteUser(user_id);
 
     if (deleteError) {
       return new Response(
-        JSON.stringify({ error: deleteError.message }),
+        JSON.stringify({ error: "Failed to delete user" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -86,7 +85,7 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: sanitizeError(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -15,6 +15,8 @@ class SoundService {
     'telegram_notification': 'assets/sounds/telegram_notification.mp3',
     'discord_notification': 'assets/sounds/discord_notification.mp3',
     'pixel_notification': 'assets/sounds/pixel_notification.mp3',
+    'send_message': 'assets/sounds/soundreality-pop-sound-423716.mp3',
+    'product_listed': 'assets/sounds/arnav_geddada-ui-sound-374228.mp3',
   };
 
   static Future<bool> _isSoundEnabled() async {
@@ -60,6 +62,30 @@ class SoundService {
     try {
       final path = availableSounds[soundId] ?? availableSounds.values.first;
       final assetSource = AssetSource(path.replaceFirst('assets/', ''));
+      await _player.stop();
+      await _player.play(assetSource);
+    } catch (_) {}
+  }
+
+  static Future<void> playSendSound() async {
+    final enabled = await _isSoundEnabled();
+    if (!enabled) return;
+
+    try {
+      const path = 'sounds/soundreality-pop-sound-423716.mp3';
+      final assetSource = AssetSource(path);
+      await _player.stop();
+      await _player.play(assetSource);
+    } catch (_) {}
+  }
+
+  static Future<void> playProductListedSound() async {
+    final enabled = await _isSoundEnabled();
+    if (!enabled) return;
+
+    try {
+      const path = 'sounds/arnav_geddada-ui-sound-374228.mp3';
+      final assetSource = AssetSource(path);
       await _player.stop();
       await _player.play(assetSource);
     } catch (_) {}

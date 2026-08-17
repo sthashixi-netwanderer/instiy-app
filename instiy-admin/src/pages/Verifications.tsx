@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import {
-  Shield, X, Eye, Loader, CheckCircle, XCircle, Ban,
+  Shield, Eye, Loader, CheckCircle, XCircle, Ban,
   Clock, AlertTriangle
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/dialog';
+import { useAlert } from '../components/use-alert';
 
 type VerificationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'revoked' | '';
 
@@ -16,6 +18,7 @@ const STATUS_TABS: { label: string; value: VerificationStatus }[] = [
 ];
 
 export const Verifications: React.FC = () => {
+  const { alert, AlertComponent } = useAlert();
   const [verifications, setVerifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -64,15 +67,24 @@ export const Verifications: React.FC = () => {
       });
       if (error) throw error;
       if (data?.success === false) {
-        alert(data.error);
+        alert(data.error, { variant: 'danger' });
         return;
       }
+      // Optimistic update: instantly reflect the new status in the list
+      setVerifications((prev) =>
+        prev.map((v) =>
+          v.id === id ? { ...v, status: 'approved', admin_notes: adminNotes || v.admin_notes } : v
+        )
+      );
+      setSelectedVerification((prev) =>
+        prev?.id === id ? { ...prev, status: 'approved', admin_notes: adminNotes || prev.admin_notes } : null
+      );
       setShowNotesModal(null);
       setAdminNotes('');
-      setSelectedVerification(null);
-      await fetchVerifications();
+      // Refetch in background for consistency
+      fetchVerifications();
     } catch (error) {
-      alert('Error: ' + (error as any).message);
+      alert('Error: ' + (error as any).message, { variant: 'danger' });
     } finally {
       setActionLoading(false);
     }
@@ -88,15 +100,24 @@ export const Verifications: React.FC = () => {
       });
       if (error) throw error;
       if (data?.success === false) {
-        alert(data.error);
+        alert(data.error, { variant: 'danger' });
         return;
       }
+      // Optimistic update: instantly reflect the new status in the list
+      setVerifications((prev) =>
+        prev.map((v) =>
+          v.id === id ? { ...v, status: 'rejected', admin_notes: adminNotes || v.admin_notes } : v
+        )
+      );
+      setSelectedVerification((prev) =>
+        prev?.id === id ? { ...prev, status: 'rejected', admin_notes: adminNotes || prev.admin_notes } : null
+      );
       setShowNotesModal(null);
       setAdminNotes('');
-      setSelectedVerification(null);
-      await fetchVerifications();
+      // Refetch in background for consistency
+      fetchVerifications();
     } catch (error) {
-      alert('Error: ' + (error as any).message);
+      alert('Error: ' + (error as any).message, { variant: 'danger' });
     } finally {
       setActionLoading(false);
     }
@@ -112,15 +133,24 @@ export const Verifications: React.FC = () => {
       });
       if (error) throw error;
       if (data?.success === false) {
-        alert(data.error);
+        alert(data.error, { variant: 'danger' });
         return;
       }
+      // Optimistic update: instantly reflect the new status in the list
+      setVerifications((prev) =>
+        prev.map((v) =>
+          v.id === id ? { ...v, status: 'revoked', admin_notes: adminNotes || v.admin_notes } : v
+        )
+      );
+      setSelectedVerification((prev) =>
+        prev?.id === id ? { ...prev, status: 'revoked', admin_notes: adminNotes || prev.admin_notes } : null
+      );
       setShowNotesModal(null);
       setAdminNotes('');
-      setSelectedVerification(null);
-      await fetchVerifications();
+      // Refetch in background for consistency
+      fetchVerifications();
     } catch (error) {
-      alert('Error: ' + (error as any).message);
+      alert('Error: ' + (error as any).message, { variant: 'danger' });
     } finally {
       setActionLoading(false);
     }
@@ -262,201 +292,203 @@ export const Verifications: React.FC = () => {
         </div>
       )}
 
-      {/* Detail Drawer */}
-      {selectedVerification && (
-        <div className="drawer-backdrop" onClick={() => setSelectedVerification(null)}>
-          <div className="drawer" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.875rem' }}>
-              <h2 style={{ fontSize: '1.2rem', fontFamily: 'var(--font-title)' }}>Verification Details</h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-secondary))', padding: '4px' }} onClick={() => setSelectedVerification(null)}>
-                <X size={20} />
-              </button>
-            </div>
+      {/* Detail Modal */}
+      <Dialog open={!!selectedVerification} onOpenChange={(open) => !open && setSelectedVerification(null)}>
+        <DialogContent style={{ maxWidth: '600px' }}>
+          <DialogHeader>
+            <DialogTitle>Verification Details</DialogTitle>
+            <DialogDescription>Review the seller's verification submission.</DialogDescription>
+          </DialogHeader>
 
-            {/* Seller Info */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 0' }}>
-              <img
-                src={selectedVerification.users?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + selectedVerification.users?.email}
-                alt=""
-                style={{ width: '56px', height: '56px', borderRadius: '50%', border: '2px solid hsl(var(--accent))', objectFit: 'cover' }}
-              />
-              <div>
-                <h3 style={{ fontSize: '1rem' }}>{selectedVerification.users?.full_name}</h3>
-                <p style={{ color: 'hsl(var(--text-tertiary))', fontSize: '0.8rem' }}>{selectedVerification.users?.email}</p>
-                <div style={{ marginTop: '0.25rem' }}>{getStatusBadge(selectedVerification.status)}</div>
-              </div>
-            </div>
-
-            {/* Student Info */}
-            <div className="card" style={{ background: 'hsl(var(--bg-surface))' }}>
-              <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.75rem' }}>
-                Student Information
-              </h4>
-              {[
-                ['Date of Birth', new Date(selectedVerification.date_of_birth).toLocaleDateString()],
-                ['Year of Entrance', selectedVerification.year_of_entrance],
-                ['Graduation Year', selectedVerification.graduation_year],
-                ['Residential Address', selectedVerification.residential_address],
-                ['Digital Address', selectedVerification.digital_address || 'N/A'],
-                ['Submitted', new Date(selectedVerification.created_at).toLocaleString()],
-              ].map(([label, value]) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.25rem 0' }}>
-                  <span style={{ color: 'hsl(var(--text-tertiary))' }}>{label}:</span>
-                  <span style={{ fontWeight: 500 }}>{String(value)}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Documents */}
-            <div className="card">
-              <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.75rem' }}>
-                Documents
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {/* Student ID Front */}
+          {selectedVerification && (
+            <>
+              {/* Seller Info */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 0' }}>
+                <img
+                  src={selectedVerification.users?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + selectedVerification.users?.email}
+                  alt=""
+                  style={{ width: '56px', height: '56px', borderRadius: '50%', border: '2px solid hsl(var(--accent))', objectFit: 'cover' }}
+                />
                 <div>
-                  <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', marginBottom: '0.375rem' }}>Student ID (Front)</p>
-                  <a href={selectedVerification.student_id_front_url} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={selectedVerification.student_id_front_url}
-                      alt="Student ID Front"
-                      style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--bg-surface))' }}
-                    />
-                  </a>
-                </div>
-                {/* Student ID Back */}
-                <div>
-                  <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', marginBottom: '0.375rem' }}>Student ID (Back)</p>
-                  <a href={selectedVerification.student_id_back_url} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={selectedVerification.student_id_back_url}
-                      alt="Student ID Back"
-                      style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--bg-surface))' }}
-                    />
-                  </a>
-                </div>
-                {/* Live Video */}
-                <div>
-                  <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', marginBottom: '0.375rem' }}>Live Verification Video</p>
-                  <video
-                    src={selectedVerification.live_video_url}
-                    controls
-                    style={{ width: '100%', maxHeight: '300px', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'black' }}
-                  />
+                  <h3 style={{ fontSize: '1rem' }}>{selectedVerification.users?.full_name}</h3>
+                  <p style={{ color: 'hsl(var(--text-tertiary))', fontSize: '0.8rem' }}>{selectedVerification.users?.email}</p>
+                  <div style={{ marginTop: '0.25rem' }}>{getStatusBadge(selectedVerification.status)}</div>
                 </div>
               </div>
-            </div>
 
-            {/* Admin Notes */}
-            {selectedVerification.admin_notes && (
-              <div className="card" style={{ background: 'hsl(var(--warning-dim))' }}>
-                <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.375rem' }}>
-                  Admin Notes
+              {/* Student Info */}
+              <div className="card" style={{ background: 'hsl(var(--bg-surface))' }}>
+                <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.75rem' }}>
+                  Student Information
                 </h4>
-                <p style={{ fontSize: '0.85rem' }}>{selectedVerification.admin_notes}</p>
+                {[
+                  ['Date of Birth', new Date(selectedVerification.date_of_birth).toLocaleDateString()],
+                  ['Year of Entrance', selectedVerification.year_of_entrance],
+                  ['Graduation Year', selectedVerification.graduation_year],
+                  ['Residential Address', selectedVerification.residential_address],
+                  ['Digital Address', selectedVerification.digital_address || 'N/A'],
+                  ['Submitted', new Date(selectedVerification.created_at).toLocaleString()],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.25rem 0' }}>
+                    <span style={{ color: 'hsl(var(--text-tertiary))' }}>{label}:</span>
+                    <span style={{ fontWeight: 500 }}>{String(value)}</span>
+                  </div>
+                ))}
               </div>
-            )}
 
-            {/* Actions */}
-            {selectedVerification.status === 'pending' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginTop: 'auto' }}>
-                <div className="form-group">
-                  <label className="form-label">Admin Notes (optional)</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    placeholder="Add notes about this verification..."
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                  />
+              {/* Documents */}
+              <div className="card">
+                <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.75rem' }}>
+                  Documents
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {/* Student ID Front */}
+                  <div>
+                    <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', marginBottom: '0.375rem' }}>Student ID (Front)</p>
+                    <a href={selectedVerification.student_id_front_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={selectedVerification.student_id_front_url}
+                        alt="Student ID Front"
+                        style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--bg-surface))' }}
+                      />
+                    </a>
+                  </div>
+                  {/* Student ID Back */}
+                  <div>
+                    <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', marginBottom: '0.375rem' }}>Student ID (Back)</p>
+                    <a href={selectedVerification.student_id_back_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={selectedVerification.student_id_back_url}
+                        alt="Student ID Back"
+                        style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--bg-surface))' }}
+                      />
+                    </a>
+                  </div>
+                  {/* Live Video */}
+                  <div>
+                    <p style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', marginBottom: '0.375rem' }}>Live Verification Video</p>
+                    <video
+                      src={selectedVerification.live_video_url}
+                      controls
+                      style={{ width: '100%', maxHeight: '300px', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'black' }}
+                    />
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
-                  <button
-                    className="btn btn-success"
-                    onClick={() => handleApprove(selectedVerification.id)}
-                    disabled={actionLoading}
-                  >
-                    {actionLoading ? <Loader className="spin" size={14} /> : <CheckCircle size={14} />}
-                    Approve
-                  </button>
+              </div>
+
+              {/* Admin Notes */}
+              {selectedVerification.admin_notes && (
+                <div className="card" style={{ background: 'hsl(var(--warning-dim))' }}>
+                  <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.375rem' }}>
+                    Admin Notes
+                  </h4>
+                  <p style={{ fontSize: '0.85rem' }}>{selectedVerification.admin_notes}</p>
+                </div>
+              )}
+
+              {/* Actions */}
+              {selectedVerification.status === 'pending' && (
+                <DialogFooter style={{ flexDirection: 'column', gap: '0.625rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Admin Notes (optional)</label>
+                    <textarea
+                      className="form-control"
+                      rows={2}
+                      placeholder="Add notes about this verification..."
+                      value={adminNotes}
+                      onChange={(e) => setAdminNotes(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+                    <button
+                      className="btn btn-success"
+                      onClick={() => handleApprove(selectedVerification.id)}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? <Loader className="spin" size={14} /> : <CheckCircle size={14} />}
+                      Approve
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => handleReject(selectedVerification.id)}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? <Loader className="spin" size={14} /> : <XCircle size={14} />}
+                      Reject
+                    </button>
+                  </div>
+                </DialogFooter>
+              )}
+
+              {selectedVerification.status === 'approved' && (
+                <DialogFooter style={{ flexDirection: 'column', gap: '0.625rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Revoke Notes (optional)</label>
+                    <textarea
+                      className="form-control"
+                      rows={2}
+                      placeholder="Reason for revoking verification..."
+                      value={adminNotes}
+                      onChange={(e) => setAdminNotes(e.target.value)}
+                    />
+                  </div>
                   <button
                     className="btn btn-danger"
-                    onClick={() => handleReject(selectedVerification.id)}
+                    style={{ width: '100%' }}
+                    onClick={() => handleRevoke(selectedVerification.id)}
                     disabled={actionLoading}
                   >
-                    {actionLoading ? <Loader className="spin" size={14} /> : <XCircle size={14} />}
-                    Reject
+                    {actionLoading ? <Loader className="spin" size={14} /> : <Ban size={14} />}
+                    Revoke Verification
                   </button>
-                </div>
-              </div>
-            )}
-
-            {selectedVerification.status === 'approved' && (
-              <div style={{ marginTop: 'auto' }}>
-                <div className="form-group">
-                  <label className="form-label">Revoke Notes (optional)</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    placeholder="Reason for revoking verification..."
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="btn btn-danger"
-                  style={{ width: '100%' }}
-                  onClick={() => handleRevoke(selectedVerification.id)}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? <Loader className="spin" size={14} /> : <Ban size={14} />}
-                  Revoke Verification
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+                </DialogFooter>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Notes Modal for quick approve/reject from table */}
-      {showNotesModal && (
-        <div className="modal-backdrop" onClick={() => { setShowNotesModal(null); setAdminNotes(''); }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontSize: '1.1rem', fontFamily: 'var(--font-title)', marginBottom: '1rem' }}>
-              {showNotesModal.type === 'approve' ? 'Approve Verification' :
-               showNotesModal.type === 'reject' ? 'Reject Verification' : 'Revoke Verification'}
-            </h3>
-            <div className="form-group">
-              <label className="form-label">Notes (optional)</label>
-              <textarea
-                className="form-control"
-                rows={3}
-                placeholder="Add any notes..."
-                value={adminNotes}
-                onChange={(e) => setAdminNotes(e.target.value)}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button className="btn btn-secondary" onClick={() => { setShowNotesModal(null); setAdminNotes(''); }}>
-                Cancel
-              </button>
-              <button
-                className={`btn ${showNotesModal.type === 'approve' ? 'btn-success' : 'btn-danger'}`}
-                onClick={() => {
-                  if (showNotesModal.type === 'approve') handleApprove(showNotesModal.id);
-                  else if (showNotesModal.type === 'reject') handleReject(showNotesModal.id);
-                  else handleRevoke(showNotesModal.id);
-                }}
-                disabled={actionLoading}
-              >
-                {actionLoading ? <Loader className="spin" size={14} /> : null}
-                {showNotesModal.type === 'approve' ? 'Approve' :
-                 showNotesModal.type === 'reject' ? 'Reject' : 'Revoke'}
-              </button>
-            </div>
+      <Dialog open={!!showNotesModal} onOpenChange={(open) => { if (!open) { setShowNotesModal(null); setAdminNotes(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {showNotesModal?.type === 'approve' ? 'Approve Verification' :
+               showNotesModal?.type === 'reject' ? 'Reject Verification' : 'Revoke Verification'}
+            </DialogTitle>
+            <DialogDescription>Add optional notes for this action.</DialogDescription>
+          </DialogHeader>
+          <div className="form-group">
+            <label className="form-label">Notes (optional)</label>
+            <textarea
+              className="form-control"
+              rows={3}
+              placeholder="Add any notes..."
+              value={adminNotes}
+              onChange={(e) => setAdminNotes(e.target.value)}
+            />
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <button className="btn btn-secondary" onClick={() => { setShowNotesModal(null); setAdminNotes(''); }}>
+              Cancel
+            </button>
+            <button
+              className={`btn ${showNotesModal?.type === 'approve' ? 'btn-success' : 'btn-danger'}`}
+              onClick={() => {
+                if (showNotesModal?.type === 'approve') handleApprove(showNotesModal.id);
+                else if (showNotesModal?.type === 'reject') handleReject(showNotesModal.id);
+                else if (showNotesModal?.type === 'revoke') handleRevoke(showNotesModal.id);
+              }}
+              disabled={actionLoading}
+            >
+              {actionLoading ? <Loader className="spin" size={14} /> : null}
+              {showNotesModal?.type === 'approve' ? 'Approve' :
+               showNotesModal?.type === 'reject' ? 'Reject' : 'Revoke'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {AlertComponent}
     </div>
   );
 };

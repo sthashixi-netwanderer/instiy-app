@@ -1,59 +1,63 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../config/app_theme.dart';
 import '../../services/supabase_service.dart';
 import '../../services/wallet_service.dart';
-import '../../services/auth_service.dart';
 import '../../services/business_profile_service.dart';
-import '../../widgets/scanner_overlay.dart';
+import '../../providers/providers.dart';
+import '../../widgets/universal_scanner.dart';
 import '../../utils/responsive.dart';
 
-class WalletTagScreen extends StatefulWidget {
+class WalletTagScreen extends ConsumerStatefulWidget {
   const WalletTagScreen({super.key});
 
   @override
-  State<WalletTagScreen> createState() => _WalletTagScreenState();
+  ConsumerState<WalletTagScreen> createState() => _WalletTagScreenState();
 }
 
-class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProviderStateMixin {
+class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final MobileScannerController _scannerController = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-  );
-  
+
   bool _isProcessing = false;
   String? _displayName;
   String? _avatarUrl;
   bool _isLoadingName = true;
 
-  Rect? _detectedRect;
-  Timer? _clearDetectedRectTimer;
-  Size? _lastPreviewSize;
-  Size? _lastWidgetSize;
-
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadDisplayName();
+    // Rebuild on tab change so the scanner is only mounted (and the camera only
+    // running) while the "Send" tab is actually visible. This frees the camera
+    // when the user is on "Receive" and avoids the camera silently running in
+    // the background of an off-screen tab.
+    _tabController.addListener(_onTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDisplayName();
+    });
+  }
+
+  void _onTabChanged() {
+    // Only react when the index actually settles, not mid-swipe.
+    if (!_tabController.indexIsChanging) {
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _loadDisplayName() async {
     try {
-      final userId = SupabaseService.auth.currentUser?.id;
+      final user = ref.read(authProvider).user;
+      final userId = user?.id;
       if (userId == null) {
         setState(() {
           _isLoadingName = false;
         });
         return;
       }
-
-      // Get user's profile to have avatarUrl and fullName
-      final user = await AuthService.getCurrentUserProfile();
 
       // Check if seller and has business name
       final profile = await BusinessProfileService.getProfile(userId);
@@ -87,161 +91,9 @@ class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProv
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
-    _scannerController.dispose();
-    _clearDetectedRectTimer?.cancel();
     super.dispose();
-  }
-
-  Rect _mapRectToScreen(Rect rect, Size previewSize, Size widgetSize) {
-    final scaleX = widgetSize.width / previewSize.width;
-    final scaleY = widgetSize.height / previewSize.height;
-    final scale = scaleX > scaleY ? scaleX : scaleY;
-
-    final offsetX = (widgetSize.width - previewSize.width * scale) / 2;
-    final offsetY = (widgetSize.height - previewSize.height * scale) / 2;
-
-    final mappedRect = Rect.fromLTRB(
-      rect.left * scale + offsetX,
-      rect.top * scale + offsetY,
-      rect.right * scale + offsetX,
-      rect.bottom * scale + offsetY,
-    );
-
-    return mappedRect.inflate(16);
-  }
-
-  Rect? _getBoundingBox(List<Offset>? points) {
-    if (points == null || points.isEmpty) return null;
-    double left = points[0].dx;
-    double top = points[0].dy;
-    double right = points[0].dx;
-    double bottom = points[0].dy;
-
-    for (final point in points) {
-      if (point.dx < left) left = point.dx;
-      if (point.dx > right) right = point.dx;
-      if (point.dy < top) top = point.dy;
-      if (point.dy > bottom) bottom = point.dy;
-    }
-
-    return Rect.fromLTRB(left, top, right, bottom);
-  }
-
-  void _onDetect(BarcodeCapture capture) async {
-    if (_isProcessing) return;
-    
-    final barcodes = capture.barcodes;
-    if (barcodes.isEmpty) return;
-
-    final barcode = barcodes.first;
-    final boundingBox = _getBoundingBox(barcode.corners);
-    final String code = barcode.rawValue ?? '';
-    
-    _lastPreviewSize = capture.size;
-
-    if (boundingBox != null && _lastPreviewSize != null && _lastWidgetSize != null) {
-      final screenRect = _mapRectToScreen(boundingBox, _lastPreviewSize!, _lastWidgetSize!);
-      setState(() {
-        _detectedRect = screenRect;
-      });
-
-      _clearDetectedRectTimer?.cancel();
-      _clearDetectedRectTimer = Timer(const Duration(milliseconds: 600), () {
-        if (mounted) {
-          setState(() {
-            _detectedRect = null;
-          });
-        }
-      });
-    }
-
-    // We expect the QR code to be in format: "instiy:pay:<user_id>"
-    if (code.startsWith('instiy:pay:')) {
-      setState(() {
-        _isProcessing = true;
-      });
-
-      // Brief delay to show target frame snapping
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (!mounted) return;
-      _scannerController.stop();
-
-      final recipientId = code.replaceFirst('instiy:pay:', '');
-      
-      if (!mounted) return;
-
-      // Look up recipient info
-      String recipientName = 'User';
-      try {
-        final recipientUser = await SupabaseService.client
-            .from('users')
-            .select('full_name')
-            .eq('id', recipientId)
-            .maybeSingle();
-
-        final recipientBiz = await SupabaseService.client
-            .from('business_profiles')
-            .select('business_name')
-            .eq('seller_id', recipientId)
-            .maybeSingle();
-
-        recipientName = recipientBiz?['business_name'] as String? ?? 
-                        recipientUser?['full_name'] as String? ?? 
-                        'User';
-      } catch (_) {
-        // Fall back to generic 'User'
-      }
-
-      if (!mounted) return;
-      
-      // Stop scanner temporarily to show amount dialog
-      final success = await _showSendMoneyDialog(recipientId, recipientName);
-      
-      if (mounted) {
-        if (success == true) {
-          Navigator.of(context).pop(); // Close scanner
-          ShadToaster.of(context).show(
-            const ShadToast(
-              title: Text('Transfer Successful'),
-              description: Text('Funds have been sent to the user.'),
-            ),
-          );
-        } else {
-          setState(() {
-            _isProcessing = false;
-            _detectedRect = null;
-          });
-          _scannerController.start();
-        }
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isProcessing = true;
-        });
-
-        // Brief delay to show target frame snapping
-        await Future.delayed(const Duration(milliseconds: 400));
-        if (!mounted) return;
-        
-        ShadToaster.of(context).show(
-          const ShadToast.destructive(
-            title: Text('Invalid QR Code'),
-            description: Text('This QR code does not belong to an Instiy user.'),
-          ),
-        );
-        
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) {
-            setState(() {
-              _isProcessing = false;
-              _detectedRect = null;
-            });
-          }
-        });
-      }
-    }
   }
 
   Future<bool?> _showSendMoneyDialog(String recipientId, String recipientName) {
@@ -267,6 +119,7 @@ class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProv
                   padding: EdgeInsets.all(12),
                   child: Text('GH₵', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
+                onChanged: (_) => setStateDialog(() {}),
               ),
               SizedBox(height: context.rh(24)),
               Row(
@@ -278,7 +131,7 @@ class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProv
                   ),
                   SizedBox(width: context.rw(8)),
                   ShadButton(
-                    onPressed: isSubmitting
+                    onPressed: (isSubmitting || (double.tryParse(amountCtrl.text.trim()) ?? 0) <= 0)
                         ? null
                         : () async {
                             final amount = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
@@ -370,9 +223,17 @@ class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProv
       ),
       body: TabBarView(
         controller: _tabController,
+        // Disable swipe so the camera isn't half-initialised during a drag;
+        // tab taps still work and give a clean mount/unmount of the scanner.
+        physics: const NeverScrollableScrollPhysics(),
         children: [
           _buildReceiveTab(),
-          _buildSendTab(),
+          // Only mount the live scanner when the Send tab is selected. When the
+          // user is on Receive, this returns a lightweight placeholder so the
+          // camera is fully released instead of running off-screen.
+          _tabController.index == 1
+              ? _buildSendTab()
+              : const _ScannerPlaceholder(),
         ],
       ),
     );
@@ -381,7 +242,8 @@ class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProv
   Widget _buildReceiveTab() {
     final userId = SupabaseService.auth.currentUser?.id ?? '';
     final qrData = 'instiy:pay:$userId';
-    final cleanedTag = _displayName != null ? _displayName!.replaceAll(RegExp(r'\s+'), '') : '';
+    final user = ref.read(authProvider).user;
+    final cleanedTag = user?.walletTag ?? '';
 
     return Container(
       color: AppTheme.canvasWhite,
@@ -506,47 +368,112 @@ class _WalletTagScreenState extends State<WalletTagScreen> with SingleTickerProv
   }
 
   Widget _buildSendTab() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        _lastWidgetSize = Size(constraints.maxWidth, constraints.maxHeight);
-        return Stack(
-          children: [
-            MobileScanner(
-              controller: _scannerController,
-              onDetect: _onDetect,
-            ),
-            // Overlay for scanner
-            AnimatedScannerOverlay(
-              cutOutSize: context.rw(250),
-              borderRadius: 12,
-              borderWidth: 4,
-              detectedRect: _detectedRect,
-            ),
-            Positioned(
-              top: context.rh(60),
-              left: 0,
-              right: 0,
-              child: Column(
-                children: [
-                  Text(
-                    'Scan to Send',
-                    style: TextStyle(
-                      fontSize: context.rsp(20),
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  SizedBox(height: context.rh(8)),
-                  Text(
-                    'Align the QR code within the frame',
-                    style: TextStyle(color: Colors.white70, fontSize: context.rsp(14)),
-                  ),
-                ],
+    return UniversalScanner(
+      title: 'Scan to Send',
+      subtitle: 'Align the QR code within the frame',
+      cutOutSize: context.rw(250),
+      onDetect: (code) async {
+        if (_isProcessing) return;
+
+        // We expect the QR code to be in format: "instiy:pay:<user_id>"
+        if (code.startsWith('instiy:pay:')) {
+          setState(() {
+            _isProcessing = true;
+          });
+
+          final recipientId = code.replaceFirst('instiy:pay:', '');
+          if (!mounted) return;
+
+          // Look up recipient info
+          String recipientName = 'User';
+          try {
+            final recipientUser = await SupabaseService.client
+                .from('users')
+                .select('full_name')
+                .eq('id', recipientId)
+                .maybeSingle();
+
+            final recipientBiz = await SupabaseService.client
+                .from('business_profiles')
+                .select('business_name')
+                .eq('seller_id', recipientId)
+                .maybeSingle();
+
+            recipientName = recipientBiz?['business_name'] as String? ?? 
+                            recipientUser?['full_name'] as String? ?? 
+                            'User';
+          } catch (_) {}
+
+          if (!mounted) return;
+
+          // Show amount dialog
+          final success = await _showSendMoneyDialog(recipientId, recipientName);
+
+          if (mounted) {
+            if (success == true) {
+              Navigator.of(context).pop(); // Close scanner
+              ShadToaster.of(context).show(
+                const ShadToast(
+                  title: Text('Transfer Successful'),
+                  description: Text('Funds have been sent to the user.'),
+                ),
+              );
+            } else {
+              setState(() {
+                _isProcessing = false;
+              });
+            }
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _isProcessing = true;
+            });
+
+            ShadToaster.of(context).show(
+              const ShadToast.destructive(
+                title: Text('Invalid QR Code'),
+                description: Text('This QR code does not belong to an Instiy user.'),
               ),
+            );
+
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) {
+                setState(() {
+                  _isProcessing = false;
+                });
+              }
+            });
+          }
+        }
+      },
+    );
+  }
+}
+
+/// Lightweight stand-in shown on the Send tab while it is NOT selected, so the
+/// camera is never initialised behind the scenes. Tapping prompts the user to
+/// switch to the Send tab (which then mounts the real scanner).
+class _ScannerPlaceholder extends StatelessWidget {
+  const _ScannerPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.scanLine, color: Colors.white38, size: 48),
+            SizedBox(height: 12),
+            Text(
+              'Tap the Send tab to scan',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }

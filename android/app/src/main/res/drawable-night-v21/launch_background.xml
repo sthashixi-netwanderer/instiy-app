@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Launch screen for API 21-30 (Android 5-11), dark mode.
+     Uses a layer-list: solid background color + centered logo bitmap. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
     <item>
-        <bitmap android:gravity="fill" android:src="@drawable/background"/>
+        <bitmap
+            android:gravity="center"
+            android:src="@mipmap/ic_launcher" />
     </item>
 </layer-list>

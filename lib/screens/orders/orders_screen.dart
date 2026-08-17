@@ -13,6 +13,7 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/empty_state.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_button.dart';
 
 class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key});
@@ -33,6 +34,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   Future<void> _checkLock() async {
     final shouldAuth = await WalletLockService.unlockIfNeeded(
+      screenKey: 'orders',
       reason: 'Authenticate to view your orders',
     );
     if (!mounted) return;
@@ -41,7 +43,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         _isLocked = false;
         _checkingLock = false;
       });
-      ref.read(orderProvider.notifier).loadOrders();
+      ref.read(orderProvider.notifier).loadOrders(); // ignore: unawaited_futures
     } else {
       setState(() {
         _isLocked = true;
@@ -58,6 +60,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: const Center(child: Text('Sign in to view your orders')),
       );
@@ -66,6 +69,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (_checkingLock) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: const Padding(
           padding: EdgeInsets.all(16),
@@ -77,6 +81,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (_isLocked) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: Center(
           child: Column(
@@ -115,7 +120,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                   );
                   if (authed && mounted) {
                     setState(() => _isLocked = false);
-                    provider.loadOrders();
+                    provider.loadOrders(); // ignore: unawaited_futures
                   }
                 },
                 leading: Icon(LucideIcons.fingerprint, size: context.ri(20)),
@@ -135,6 +140,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (orderProv.error != null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: Center(
           child: Padding(
@@ -151,15 +157,30 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
       body: orderProv.isLoading
-          ? Padding(padding: context.rAll(16), child: const ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.rw(16),
+                MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(16),
+                context.rw(16),
+                context.rh(16),
+              ),
+              child: const ListSkeleton(count: 6),
+            )
           : orderProv.orders.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
+                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight,
                   onRefresh: () => ref.read(orderProvider.notifier).loadOrders(),
                   child: ListView.separated(
-                    padding: context.rAll(16),
+                    padding: EdgeInsets.fromLTRB(
+                      context.rw(16),
+                      MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(16),
+                      context.rw(16),
+                      context.rh(16),
+                    ),
                     itemCount: orderProv.orders.length,
                     separatorBuilder: (_, _) => SizedBox(height: context.rh(12)),
                     itemBuilder: (context, index) {
@@ -348,7 +369,7 @@ class _OrderCardState extends State<_OrderCard> {
                                   color: AppTheme.mutedSteel,
                                   fontSize: context.rsp(13))),
                           Text(
-                            'GH\u00a2 ${formatCurrency(widget.order.totalAmount)}',
+                            '${formatGhs(widget.order.totalAmount)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: AppTheme.charcoalInk,
@@ -359,7 +380,7 @@ class _OrderCardState extends State<_OrderCard> {
                       if (widget.order.deliveryFee > 0) ...[
                         const SizedBox(height: 2),
                         Text(
-                          '(incl. GH\u00a2${formatCurrency(widget.order.deliveryFee)} delivery)',
+                          '(incl. ${formatGhs(widget.order.deliveryFee)} delivery)',
                           style: TextStyle(
                             fontSize: context.rsp(11),
                             color: AppTheme.accent,
@@ -440,24 +461,21 @@ class _OrderCardState extends State<_OrderCard> {
             // View QR button
             if (_itemsWithQr.isNotEmpty) ...[
               SizedBox(height: context.rh(12)),
-              SizedBox(
-                width: double.infinity,
-                child: ShadButton.outline(
-                  onPressed: () {
-                    if (_itemsWithQr.length == 1) {
-                      _showQrModal(_itemsWithQr.first);
-                    } else {
-                      _showItemPicker(_itemsWithQr);
-                    }
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(LucideIcons.qrCode, size: context.ri(18)),
-                      SizedBox(width: context.rw(8)),
-                      const Text('View QR Code'),
-                    ],
-                  ),
+              AppButton.outline(
+                onPressed: () {
+                  if (_itemsWithQr.length == 1) {
+                    _showQrModal(_itemsWithQr.first);
+                  } else {
+                    _showItemPicker(_itemsWithQr);
+                  }
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.qrCode, size: context.ri(18)),
+                    SizedBox(width: context.rw(8)),
+                    const Text('View QR Code'),
+                  ],
                 ),
               ),
             ],
@@ -505,16 +523,76 @@ class _QrCodeSheet extends StatelessWidget {
 
         // QR Code
         Container(
-          padding: context.rAll(16),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppTheme.warmMist,
-            borderRadius: BorderRadius.circular(context.rr(16)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.grey.withValues(alpha: 0.1),
+              width: 1.5,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x06000000),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
           ),
-          child: QrImageView(
-            data: item.deliveryCode!,
-            version: QrVersions.auto,
-            size: context.rw(200),
-            backgroundColor: Colors.white,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              QrImageView(
+                data: item.deliveryCode!,
+                version: QrVersions.auto,
+                size: context.rw(200),
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(
+                  eyeShape: QrEyeShape.circle,
+                  color: Colors.black,
+                ),
+                dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.circle,
+                  color: Colors.black,
+                ),
+                embeddedImage: item.productThumbnail != null && item.productThumbnail!.isNotEmpty
+                    ? CachedNetworkImageProvider(item.productThumbnail!)
+                    : const AssetImage('assets/logo_highres.png') as ImageProvider,
+                embeddedImageStyle: const QrEmbeddedImageStyle(
+                  size: Size(40, 40),
+                ),
+              ),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: item.productThumbnail != null && item.productThumbnail!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: item.productThumbnail!,
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) => Image.asset('assets/logo_highres.png'),
+                          errorWidget: (_, _, _) => Image.asset('assets/logo_highres.png'),
+                        )
+                      : Image.asset(
+                          'assets/logo_highres.png',
+                          fit: BoxFit.contain,
+                        ),
+                ),
+              ),
+            ],
           ),
         ),
         SizedBox(height: context.rh(20)),

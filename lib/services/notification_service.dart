@@ -8,15 +8,32 @@ class NotificationService {
   static Future<List<AppNotification>> getNotifications({
     int offset = 0,
     int limit = _pageSize,
+    String? type,
+    bool? isRead,
+    String? searchQuery,
   }) async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser?.id;
     if (uid == null) return [];
 
-    final response = await supabase
+    var query = supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', uid)
+        .eq('user_id', uid);
+
+    if (type != null && type.isNotEmpty) {
+      query = query.eq('type', type);
+    }
+
+    if (isRead != null) {
+      query = query.eq('is_read', isRead);
+    }
+
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      query = query.or('title.ilike.%$searchQuery%,body.ilike.%$searchQuery%');
+    }
+
+    final response = await query
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
 

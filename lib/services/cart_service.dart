@@ -42,19 +42,23 @@ class CartService {
     String? sellerName,
     int quantity = 1,
     double deliveryFee = 0.0,
+    int? stock,
   }) async {
     final items = await _loadItems();
     final idx = items.indexWhere((i) => i.productId == productId);
 
     if (idx >= 0) {
       final existing = items[idx];
+      final newQty = existing.quantity + quantity;
+      final cappedQty = stock != null ? newQty.clamp(1, stock) : newQty;
       items[idx] = CartItem(
         id: existing.id,
         productId: existing.productId,
         title: existing.title,
         thumbnail: existing.thumbnail,
         price: existing.price,
-        quantity: existing.quantity + quantity,
+        quantity: cappedQty,
+        stock: stock ?? existing.stock,
         sellerId: existing.sellerId,
         sellerName: existing.sellerName,
         deliveryFee: deliveryFee,
@@ -67,6 +71,7 @@ class CartService {
         thumbnail: thumbnail,
         price: price,
         quantity: quantity,
+        stock: stock,
         sellerId: sellerId,
         sellerName: sellerName,
         deliveryFee: deliveryFee,
@@ -76,7 +81,7 @@ class CartService {
     await _saveItems(items);
   }
 
-  static Future<void> updateCartItemQuantity(String productId, int quantity) async {
+  static Future<void> updateCartItemQuantity(String productId, int quantity, {int? stock}) async {
     final items = await _loadItems();
     final idx = items.indexWhere((i) => i.productId == productId);
     if (idx < 0) return;
@@ -84,15 +89,20 @@ class CartService {
     if (quantity <= 0) {
       items.removeAt(idx);
     } else {
+      final currentStock = stock ?? items[idx].stock;
+      final capped = currentStock != null ? quantity.clamp(1, currentStock) : quantity;
       items[idx] = CartItem(
         id: items[idx].id,
         productId: items[idx].productId,
         title: items[idx].title,
         thumbnail: items[idx].thumbnail,
         price: items[idx].price,
-        quantity: quantity,
+        quantity: capped,
+        stock: currentStock,
         sellerId: items[idx].sellerId,
         sellerName: items[idx].sellerName,
+        isAvailable: items[idx].isAvailable,
+        deliveryFee: items[idx].deliveryFee,
       );
     }
 

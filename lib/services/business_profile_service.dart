@@ -6,7 +6,7 @@ import '../models/product_model.dart';
 class BusinessProfileService {
   static Future<BusinessProfile?> getProfile(String sellerId) async {
     final response = await SupabaseService.table('business_profiles')
-        .select()
+        .select('*, users!seller_id(university)')
         .eq('seller_id', sellerId)
         .maybeSingle();
 
@@ -20,6 +20,8 @@ class BusinessProfileService {
     String? businessName,
     String? description,
     String? locationUrl,
+    String? digitalAddress,
+    bool? qrCodePublic,
     List<StorePhoneNumber>? phoneNumbers,
   }) async {
     final data = <String, dynamic>{
@@ -30,6 +32,8 @@ class BusinessProfileService {
     if (businessName != null) data['business_name'] = businessName;
     if (description != null) data['description'] = description;
     if (locationUrl != null) data['location_url'] = locationUrl;
+    if (digitalAddress != null) data['digital_address'] = digitalAddress;
+    if (qrCodePublic != null) data['qr_code_public'] = qrCodePublic;
     if (phoneNumbers != null) {
       data['phone_numbers'] = phoneNumbers.map((p) => p.toJson()).toList();
     }

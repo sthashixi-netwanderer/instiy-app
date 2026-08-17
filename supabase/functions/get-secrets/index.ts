@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 serve(async (req) => {
@@ -40,7 +41,6 @@ serve(async (req) => {
   const secrets = {
     r2_endpoint: Deno.env.get("R2_ENDPOINT"),
     r2_access_key_id: Deno.env.get("R2_ACCESS_KEY_ID"),
-    r2_secret_access_key: Deno.env.get("R2_SECRET_ACCESS_KEY"),
     r2_bucket_name: Deno.env.get("R2_BUCKET_NAME"),
     r2_public_url: Deno.env.get("R2_PUBLIC_URL"),
     hubtel_client_id: Deno.env.get("HUBTEL_CLIENT_ID"),

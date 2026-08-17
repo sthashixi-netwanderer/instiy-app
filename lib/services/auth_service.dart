@@ -1,4 +1,6 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import 'supabase_service.dart';
@@ -11,12 +13,25 @@ class AuthService {
   
   static Stream<AuthState> get authStateChanges => 
       SupabaseService.auth.onAuthStateChange;
+
+  static final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+
+  /// Initialize Google Sign-In. Call once at app startup.
+  static Future<void> initializeGoogleSignIn() async {
+    await _googleSignIn.initialize(
+      // On Android, the web client ID is read from google-services.json.
+      // On iOS, the client ID is read from Info.plist (GIDClientID).
+      // We pass serverClientId as fallback for Android.
+      serverClientId: kIsWeb ? null : '658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com',
+    );
+  }
   
   // Sign up with email and password
   static Future<AppUser> signUp({
     required String email,
     required String password,
     required String fullName,
+    required String walletTag,
     String? university,
     String? phoneNumber,
   }) async {
@@ -25,6 +40,7 @@ class AuthService {
       password: password,
       data: {
         'full_name': fullName,
+        'wallet_tag': walletTag,
         'university': university,
         'phone_number': phoneNumber,
       },
@@ -67,17 +83,38 @@ class AuthService {
     return AppUser.fromJson(userProfile);
   }
   
-  // Sign in with Google
+  // Sign in with Google (native SDK on Android/iOS, OAuth redirect on web)
   static Future<bool> signInWithGoogle() async {
-    return await SupabaseService.auth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: kIsWeb ? SecretsService.instance.supabaseRedirectUrl : 'io.supabase.instiy://login-callback',
-      authScreenLaunchMode: LaunchMode.inAppWebView,
+    if (kIsWeb) {
+      // Web: use Supabase OAuth redirect flow (unchanged)
+      return await SupabaseService.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: SecretsService.instance.supabaseRedirectUrl,
+        authScreenLaunchMode: LaunchMode.inAppWebView,
+      );
+    }
+
+    // Android & iOS: use native Google Sign-In SDK
+    final account = await _googleSignIn.authenticate();
+
+    final GoogleSignInAuthentication auth = account.authentication;
+    final idToken = auth.idToken;
+    if (idToken == null) return false;
+
+    // Exchange Google ID token with Supabase
+    final response = await SupabaseService.auth.signInWithIdToken(
+      provider: OAuthProvider.google,
+      idToken: idToken,
     );
+
+    return response.session != null;
   }
   
   // Sign out
   static Future<void> signOut() async {
+    if (!kIsWeb) {
+      await _googleSignIn.signOut();
+    }
     await SupabaseService.auth.signOut();
   }
   
@@ -278,6 +315,99 @@ class AuthService {
       return AppUser.fromJson(userProfile);
     } catch (_) {
       return null;
+    }
+  }
+
+  // Get user profile by ID
+  static Future<AppUser?> getUserProfileById(String id) async {
+    try {
+      final userProfile = await SupabaseService.table('users')
+          .select()
+          .eq('id', id)
+          .maybeSingle();
+      if (userProfile == null) return null;
+      return AppUser.fromJson(userProfile);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Check if a wallet tag already exists in the users table
+  static Future<bool> checkWalletTagExists(String tag) async {
+    try {
+      final response = await SupabaseService.table('users')
+          .select('id')
+          .eq('wallet_tag', tag.toLowerCase().trim())
+          .maybeSingle();
+      return response != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Generate 5 recommended tags based on first and last name plus random digits
+  static Future<List<String>> generateRecommendedTags(String fullName) async {
+    final parts = fullName.split(RegExp(r'\s+'));
+    final firstName = parts.isNotEmpty ? parts.first.toLowerCase() : '';
+    final lastName = parts.length > 1 ? parts.last.toLowerCase() : '';
+
+    final cleanFirst = firstName.replaceAll(RegExp(r'[^a-zA-Z]'), '');
+    final cleanLast = lastName.replaceAll(RegExp(r'[^a-zA-Z]'), '');
+
+    String padName(String name) {
+      if (name.length >= 5) return name;
+      return name.padRight(5, 'x');
+    }
+
+    final baseFirst = padName(cleanFirst.isNotEmpty ? cleanFirst : 'user');
+    final baseLast = padName(cleanLast.isNotEmpty ? cleanLast : 'tag');
+
+    final rand = Random();
+    final List<String> candidates = [];
+
+    // Pattern 1: {cleanFirst}{digits}
+    // Pattern 2: {cleanLast}{digits}
+    // Pattern 3: {digit}{cleanFirst}{digits}
+    // Pattern 4: {digit}{cleanLast}{digits}
+    // Pattern 5: {cleanFirst}{cleanLast}{digits}
+    for (int i = 0; i < 4; i++) {
+      candidates.add('$baseFirst${rand.nextInt(90) + 10}');
+      candidates.add('$baseLast${rand.nextInt(900) + 100}');
+      candidates.add('${rand.nextInt(9) + 1}$baseFirst${rand.nextInt(90) + 10}');
+      candidates.add('${rand.nextInt(9) + 1}$baseLast${rand.nextInt(90) + 10}');
+      candidates.add('$baseFirst$baseLast${rand.nextInt(9) + 1}');
+    }
+
+    final uniqueCandidates = candidates.toSet().toList();
+
+    try {
+      final response = await SupabaseService.client
+          .from('users')
+          .select('wallet_tag')
+          .inFilter('wallet_tag', uniqueCandidates);
+
+      final takenTags = (response as List)
+          .map((row) => (row['wallet_tag'] as String).toLowerCase())
+          .toSet();
+
+      final List<String> available = [];
+      for (final cand in uniqueCandidates) {
+        if (!takenTags.contains(cand.toLowerCase())) {
+          available.add(cand);
+          if (available.length >= 5) break;
+        }
+      }
+
+      while (available.length < 5) {
+        final fallback = '$baseFirst${rand.nextInt(9000) + 1000}';
+        if (!available.contains(fallback)) {
+          available.add(fallback);
+        }
+      }
+
+      return available;
+    } catch (_) {
+      return uniqueCandidates.take(5).toList();
     }
   }
 }

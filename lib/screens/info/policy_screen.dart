@@ -46,10 +46,11 @@ class _PolicyScreenState extends State<PolicyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: Text(widget.title)),
       body: _isLoading
           ? Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -68,7 +69,7 @@ class _PolicyScreenState extends State<PolicyScreen> {
                 )
               : Markdown(
                   data: _content,
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
                   styleSheet: MarkdownStyleSheet(
                     p: const TextStyle(
                       fontSize: 14,

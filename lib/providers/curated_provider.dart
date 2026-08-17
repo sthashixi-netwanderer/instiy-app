@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/curated_collection_model.dart';
 import '../services/curated_collection_service.dart';
 import '../services/supabase_service.dart';
+import '../providers/block_provider.dart';
 
 class CuratedProvider extends ChangeNotifier {
   List<CuratedCollection> _sections = [];
@@ -23,6 +24,12 @@ class CuratedProvider extends ChangeNotifier {
     Future.microtask(() {
       _init();
     });
+    BlockProvider.instance.addListener(_onBlocksChanged);
+  }
+
+  void _onBlocksChanged() {
+    // Re-fetch and re-filter when block list changes
+    _silentReload();
   }
 
   void _init() {
@@ -83,8 +90,24 @@ class CuratedProvider extends ChangeNotifier {
   Future<void> _silentReload() async {
     try {
       final newSections = await CuratedCollectionService.getHomeSections();
-      if (!_sectionsEqual(_sections, newSections)) {
-        _sections = newSections;
+      final blockProv = BlockProvider.instance;
+      final filtered = newSections.map((s) {
+        final filteredItems = s.items.where((item) {
+          if (item.product != null) {
+            return !blockProv.isUserBlocked(item.product!.sellerId);
+          }
+          return true;
+        }).toList();
+        return CuratedCollection(
+          id: s.id, title: s.title,
+          subtitle: s.subtitle, icon: s.icon, imageUrl: s.imageUrl,
+          displayMode: s.displayMode, contentType: s.contentType,
+          maxItems: s.maxItems, sortOrder: s.sortOrder,
+          isVisible: s.isVisible, items: filteredItems,
+        );
+      }).where((s) => s.items.isNotEmpty).toList();
+      if (!_sectionsEqual(_sections, filtered)) {
+        _sections = filtered;
         notifyListeners();
       }
     } catch (_) {}
@@ -110,7 +133,23 @@ class CuratedProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _sections = await CuratedCollectionService.getHomeSections();
+      final raw = await CuratedCollectionService.getHomeSections();
+      final blockProv = BlockProvider.instance;
+      _sections = raw.map((s) {
+        final filteredItems = s.items.where((item) {
+          if (item.product != null) {
+            return !blockProv.isUserBlocked(item.product!.sellerId);
+          }
+          return true;
+        }).toList();
+        return CuratedCollection(
+          id: s.id, title: s.title,
+          subtitle: s.subtitle, icon: s.icon, imageUrl: s.imageUrl,
+          displayMode: s.displayMode, contentType: s.contentType,
+          maxItems: s.maxItems, sortOrder: s.sortOrder,
+          isVisible: s.isVisible, items: filteredItems,
+        );
+      }).where((s) => s.items.isNotEmpty).toList();
     } catch (e) {
       // Clean up common Supabase error messages
       var msg = e.toString();
@@ -139,6 +178,7 @@ class CuratedProvider extends ChangeNotifier {
   void dispose() {
     _pollTimer?.cancel();
     _unsubscribeFromRealtime();
+    BlockProvider.instance.removeListener(_onBlocksChanged);
     super.dispose();
   }
 }

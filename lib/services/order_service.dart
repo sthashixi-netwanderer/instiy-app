@@ -56,13 +56,26 @@ class OrderService {
     final uid = supabase.currentUser?.id;
     if (uid == null) return null;
 
+    // Ensure all items have a valid seller_id (old cart data may lack it)
+    final missingIds = cartItems.where((i) => (i.sellerId ?? '').isEmpty).map((i) => i.productId).toList();
+    Map<String, String> sellerLookup = {};
+    if (missingIds.isNotEmpty) {
+      final rows = await SupabaseService.client
+          .from('products')
+          .select('id, seller_id')
+          .inFilter('id', missingIds);
+      for (final row in rows) {
+        sellerLookup[row['id'] as String] = row['seller_id'] as String;
+      }
+    }
+
     final itemsJson = cartItems.map((item) => {
       'product_id': item.productId,
       'product_title': item.title,
       'product_thumbnail': item.thumbnail,
       'quantity': item.quantity,
       'price': item.price,
-      'seller_id': item.sellerId,
+      'seller_id': sellerLookup[item.productId] ?? item.sellerId,
     }).toList();
 
     final response = await SupabaseService.client.rpc(
@@ -81,7 +94,8 @@ class OrderService {
     return _asMap(response);
   }
 
-  static Future<void> cancelOrder(String orderId) async {
-    await SupabaseService.client.rpc('cancel_order', params: {'order_id': orderId});
+  static Future<bool> cancelOrder(String orderId) async {
+    final result = await SupabaseService.client.rpc('cancel_order', params: {'order_id': orderId});
+    return result == true;
   }
 }

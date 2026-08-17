@@ -331,6 +331,29 @@ button, input, select, textarea {
   box-shadow: 0 0 0 2px hsl(var(--accent-dim));
 }
 
+.input-with-suffix {
+  display: flex;
+  align-items: center;
+  max-width: 200px;
+}
+
+.input-with-suffix .form-control {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.input-suffix {
+  padding: 0.6rem 0.75rem;
+  background-color: hsl(var(--bg-card-hover));
+  border: 1px solid hsl(var(--border));
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: hsl(var(--text-tertiary));
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .form-control::placeholder {
   color: hsl(var(--text-tertiary));
 }

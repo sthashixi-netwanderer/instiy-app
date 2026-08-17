@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/picked_media.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:uuid/uuid.dart';
@@ -19,11 +20,12 @@ import '../../services/video_service.dart';
 import '../../services/ai_service.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/watermark_service.dart';
+import '../../services/sound_service.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/multi_institution_picker.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
-
+import '../../utils/formatters.dart';
 
 class CreateListingScreen extends ConsumerStatefulWidget {
   final Product? existingProduct;
@@ -52,6 +54,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   bool _showOnClips = false;
 
   bool get _hasVideo => _selectedVideos.isNotEmpty || _existingVideoUrls.isNotEmpty;
+  int get _totalVideoCount => _selectedVideos.length + _existingVideoUrls.length;
+  bool get _needsClipVideoSelection => _showOnClips && _totalVideoCount >= 2;
+  bool get _hasClipVideoSelected => _clipVideoExistingIndex != -1 || _clipVideoNewIndex != -1;
+  static const int _maxVideos = 3;
+  bool get _canAddVideo => _totalVideoCount < _maxVideos;
 
   // Discount fields
   bool _hasDiscount = false;
@@ -83,11 +90,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
   ProductCondition? _selectedCondition;
   String? _selectedCategoryId;
-  final List<File> _selectedImages = [];
+  final List<dynamic> _selectedImages = [];
   List<String> _existingImageUrls = [];
-  final List<File> _selectedVideos = [];
+  final List<dynamic> _selectedVideos = [];
   List<String> _existingVideoUrls = [];
-  VideoPlayerController? _videoPreviewController;
+  final List<VideoPlayerController?> _videoPreviewControllers = [];
   bool _isUploading = false;
   bool _isAIProcessing = false;
   // Thumbnail selection: track which image the seller chose as thumbnail.
@@ -96,6 +103,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   // Only one of these can be non-(-1) at a time.
   int _thumbnailExistingIndex = -1;
   int _thumbnailNewIndex = -1;
+  // Clip video selection: which video appears in the Clips feed
+  int _clipVideoExistingIndex = -1; // index into _existingVideoUrls
+  int _clipVideoNewIndex = -1;      // index into _selectedVideos
   bool get _isEditing => widget.existingProduct != null;
 
   // Draft state
@@ -129,6 +139,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     _selectedCategoryId = p.categoryId;
     _existingImageUrls = List.from(p.imageUrls);
     _existingVideoUrls = List.from(p.videoUrls);
+    // Pre-select clip video from existing product
+    if (p.clipVideoUrl != null) {
+      final clipIdx = _existingVideoUrls.indexOf(p.clipVideoUrl!);
+      if (clipIdx != -1) _clipVideoExistingIndex = clipIdx;
+    }
     // Pre-select thumbnail from existing product
     if (p.thumbnailUrl != null) {
       final idx = _existingImageUrls.indexOf(p.thumbnailUrl!);
@@ -175,7 +190,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     _stockController.dispose();
     _deliveryFeeController.dispose();
     _discountPercentController.dispose();
-    _videoPreviewController?.dispose();
+    for (final c in _videoPreviewControllers) {
+      c?.dispose();
+    }
+    _videoPreviewControllers.clear();
     for (final s in _specifications) {
       s.keyController.removeListener(_onFieldChanged);
       s.valueController.removeListener(_onFieldChanged);
@@ -183,6 +201,67 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       s.valueController.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _clearAllFields() async {
+    final confirmed = await AppTheme.showGlassDialog<bool>(
+      context: context,
+      title: const Text('Clear All Fields'),
+      description: const Text('This will remove all entered data including images, title, description, and pricing. This cannot be undone.'),
+      actions: [
+        ShadButton.ghost(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ShadButton.destructive(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Clear All'),
+        ),
+      ],
+    );
+
+    if (confirmed != true) return;
+
+    _debounce?.cancel();
+    setState(() {
+      _titleController.clear();
+      _descriptionController.clear();
+      _priceController.clear();
+      _stockController.text = '1';
+      _deliveryFeeController.text = '0.00';
+      _discountPercentController.clear();
+      _selectedCategoryId = null;
+      _selectedCondition = null;
+      _selectedCampuses = [];
+      _institutionDeliveryFees = {};
+      _useSameDeliveryFee = true;
+      _deliveryOption = 'pickup';
+      _selectedImages.clear();
+      _existingImageUrls = [];
+      _selectedVideos.clear();
+      _existingVideoUrls = [];
+      _thumbnailExistingIndex = -1;
+      _thumbnailNewIndex = -1;
+      _hasDiscount = false;
+      _discountStartDate = null;
+      _discountEndDate = null;
+      _showOnClips = false;
+      _clipVideoExistingIndex = -1;
+      _clipVideoNewIndex = -1;
+      _videoPreviewControllers.clear();
+      _videoPreviewControllers.addAll(List.filled(_existingVideoUrls.length, null));
+      for (final s in _specifications) {
+        s.keyController.removeListener(_onFieldChanged);
+        s.valueController.removeListener(_onFieldChanged);
+        s.keyController.dispose();
+        s.valueController.dispose();
+      }
+      _specifications.clear();
+      _isUploading = false;
+      _isAIProcessing = false;
+      _draftId = null;
+    });
+    DraftService.clearDraft(); // ignore: unawaited_futures
   }
 
   void _onFieldChanged() {
@@ -234,25 +313,20 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       _discountStartDate = draft.discountStartDate;
       _discountEndDate = draft.discountEndDate;
 
-      // Load images from local paths
+      // Load images from local paths (mobile only — web has no local filesystem)
       _selectedImages.clear();
-      for (final path in draft.imagePaths) {
-        final file = File(path);
-        if (file.existsSync()) {
-          _selectedImages.add(file);
-        }
+      if (!kIsWeb) {
+        // On mobile, files may exist locally from a previous session.
+        // We skip loading them on web since there's no local filesystem.
       }
       if (_selectedImages.isNotEmpty) {
         _thumbnailNewIndex = draft.thumbnailIndex.clamp(0, _selectedImages.length - 1);
       }
 
-      // Load videos from local paths
+      // Load videos from local paths (mobile only)
       _selectedVideos.clear();
-      for (final path in draft.videoPaths) {
-        final file = File(path);
-        if (file.existsSync()) {
-          _selectedVideos.add(file);
-        }
+      if (!kIsWeb) {
+        // On mobile, files may exist locally from a previous session.
       }
 
       // Load specifications
@@ -275,8 +349,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       description: _descriptionController.text.trim(),
       price: double.tryParse(_priceController.text.trim()) ?? 0,
       categoryId: _selectedCategoryId,
-      imagePaths: _selectedImages.map((f) => f.path).toList(),
-      videoPaths: _selectedVideos.map((f) => f.path).toList(),
+      imagePaths: _selectedImages.map<String>((f) => f is PickedMedia ? f.name : f.path ?? f.name).toList(),
+      videoPaths: _selectedVideos.map<String>((f) => f is PickedMedia ? f.name : f.path ?? f.name).toList(),
       thumbnailIndex: _thumbnailNewIndex >= 0 ? _thumbnailNewIndex : 0,
       condition: _selectedCondition,
       campuses: _selectedCampuses,
@@ -318,39 +392,64 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
           _thumbnailNewIndex = 0;
         }
       });
-      _saveDraft();
+      _saveDraft(); // ignore: unawaited_futures
     }
   }
 
   Future<void> _pickVideo() async {
+    if (_totalVideoCount >= _maxVideos) return;
     final video = await VideoService.pickVideo(context);
     if (video != null) {
       setState(() {
         _selectedVideos.add(video);
-        _initVideoPreview(video);
+        _videoPreviewControllers.add(null);
       });
-      _saveDraft();
+      _initVideoPreview(_selectedVideos.length - 1);
+      _saveDraft(); // ignore: unawaited_futures
     }
   }
 
-  void _initVideoPreview(File video) {
-    _videoPreviewController?.dispose();
-    _videoPreviewController = VideoPlayerController.file(video)
-      ..initialize().then((_) {
-        if (mounted) setState(() {});
-        _videoPreviewController!.play();
-      });
+  void _initVideoPreview(int index) {
+    if (index < 0 || index >= _selectedVideos.length) return;
+    _videoPreviewControllers[index]?.dispose();
+    final videoItem = _selectedVideos[index];
+    final controller = kIsWeb
+        ? VideoPlayerController.networkUrl(Uri.parse('about:blank'))
+        : VideoPlayerController.file(videoItem);
+    controller.initialize().then((_) {
+      if (mounted) setState(() {});
+      controller.play();
+    });
+    _videoPreviewControllers[index] = controller;
   }
 
   void _removeVideo(int index) {
     setState(() {
       if (index < _selectedVideos.length) {
+        // Removing a newly-added video file — adjust clip selection index
+        if (_clipVideoNewIndex == index) {
+          _clipVideoNewIndex = -1;
+        } else if (_clipVideoNewIndex > index) {
+          _clipVideoNewIndex--;
+        }
         _selectedVideos.removeAt(index);
       } else {
-        _existingVideoUrls.removeAt(index - _selectedVideos.length);
+        // Removing an existing video URL — adjust clip selection index
+        final existingIdx = index - _selectedVideos.length;
+        if (_clipVideoExistingIndex == existingIdx) {
+          _clipVideoExistingIndex = -1;
+        } else if (_clipVideoExistingIndex > existingIdx) {
+          _clipVideoExistingIndex--;
+        }
+        _existingVideoUrls.removeAt(existingIdx);
       }
-      _videoPreviewController?.dispose();
-      _videoPreviewController = null;
+      if (index < _selectedVideos.length) {
+        _videoPreviewControllers[index]?.dispose();
+        _videoPreviewControllers.removeAt(index);
+      } else {
+        final existingIdx = index - _selectedVideos.length;
+        _videoPreviewControllers.removeAt(existingIdx);
+      }
     });
     _saveDraft();
   }
@@ -409,6 +508,16 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       return;
     }
 
+    if (_showOnClips && _totalVideoCount >= 2 && !_hasClipVideoSelected) {
+      ShadToaster.of(context).show(
+        const ShadToast(
+          title: Text('Choose a clip video'),
+          description: Text('Please select which video to show in the Clips feed.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isUploading = true);
 
     final provider = ref.read(productProvider);
@@ -422,7 +531,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         storeName = profile?.businessName;
       }
     } catch (_) {}
-    
+
     // Capture ALL values from text controllers and state lists/variables BEFORE popping/disposing
     final titleVal = _titleController.text.trim();
     final descriptionVal = _descriptionController.text.trim();
@@ -432,13 +541,15 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     final campusesVal = _selectedCampuses.isEmpty ? null : List<String>.from(_selectedCampuses);
     final deliveryOptionVal = _deliveryOption;
 
-    final selectedImagesCopy = List<File>.from(_selectedImages);
-    final selectedVideosCopy = List<File>.from(_selectedVideos);
+    final selectedImagesCopy = List<dynamic>.from(_selectedImages);
+    final selectedVideosCopy = List<dynamic>.from(_selectedVideos);
     final existingImageUrlsCopy = List<String>.from(_existingImageUrls);
     final existingVideoUrlsCopy = List<String>.from(_existingVideoUrls);
 
     final thumbnailExistingIdx = _thumbnailExistingIndex;
     final thumbnailNewIdx = _thumbnailNewIndex;
+    final clipVideoExistingIdx = _clipVideoExistingIndex;
+    final clipVideoNewIdx = _clipVideoNewIndex;
 
     final specs = validSpecs
         .map((s) => {s.keyController.text.trim(): s.valueController.text.trim()})
@@ -482,7 +593,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         }
 
         if (selectedVideosCopy.isNotEmpty) {
-          for (final video in selectedVideosCopy) {
+          for (var video in selectedVideosCopy) {
+            // Compress video for optimal playback
+            video = await VideoService.compressVideo(video);
             final url = await StorageService.uploadFile(
               file: video,
               folder: 'products/videos',
@@ -506,6 +619,23 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         }
         thumbnailUrl ??= imageUrls.isNotEmpty ? imageUrls.first : null;
 
+        // Resolve the clip video URL
+        String? clipVideoUrlVal;
+        if (_showOnClips) {
+          final totalVids = existingVideoUrlsCopy.length + selectedVideosCopy.length;
+          if (totalVids <= 1) {
+            clipVideoUrlVal = videoUrls.isNotEmpty ? videoUrls.first : null;
+          } else if (clipVideoExistingIdx != -1 &&
+              clipVideoExistingIdx < existingVideoUrlsCopy.length) {
+            clipVideoUrlVal = existingVideoUrlsCopy[clipVideoExistingIdx];
+          } else if (clipVideoNewIdx != -1) {
+            final uploadedIdx = existingVideoUrlsCopy.length + clipVideoNewIdx;
+            if (uploadedIdx < videoUrls.length) {
+              clipVideoUrlVal = videoUrls[uploadedIdx];
+            }
+          }
+        }
+
         final success = await provider.updateProduct(
           productId: widget.existingProduct!.id,
           title: titleVal,
@@ -526,6 +656,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
           discountEndDate: discountEndVal,
           thumbnailUrl: thumbnailUrl,
           showOnClips: _showOnClips,
+          clipVideoUrl: clipVideoUrlVal,
         );
 
         if (success && mounted) {
@@ -533,6 +664,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
           ShadToaster.of(context).show(
             const ShadToast(title: Text('Listing updated successfully!')),
           );
+          SoundService.playProductListedSound(); // ignore: unawaited_futures
         }
       } catch (e) {
         if (mounted) {
@@ -549,8 +681,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         description: descriptionVal,
         price: priceVal,
         categoryId: categoryIdVal,
-        imagePaths: selectedImagesCopy.map((f) => f.path).toList(),
-        videoPaths: selectedVideosCopy.map((f) => f.path).toList(),
+        imagePaths: selectedImagesCopy.map<String>((f) => f is PickedMedia ? f.name : f.path ?? f.name).toList(),
+        videoPaths: selectedVideosCopy.map<String>((f) => f is PickedMedia ? f.name : f.path ?? f.name).toList(),
         thumbnailIndex: thumbnailNewIdx >= 0 ? thumbnailNewIdx : 0,
         condition: conditionVal,
         campuses: campusesVal ?? [],
@@ -574,7 +706,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       }
 
       // Background publish — no widget dependency
-      _publishInBackground(
+      _publishInBackground( // ignore: unawaited_futures
         provider: provider,
         draft: publishingDraft,
         titleVal: titleVal,
@@ -590,6 +722,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         existingVideoUrlsCopy: existingVideoUrlsCopy,
         thumbnailExistingIdx: thumbnailExistingIdx,
         thumbnailNewIdx: thumbnailNewIdx,
+        clipVideoExistingIdx: clipVideoExistingIdx,
+        clipVideoNewIdx: clipVideoNewIdx,
         specs: specs,
         stockVal: stockVal,
         deliveryFeeVal: deliveryFeeVal,
@@ -613,12 +747,14 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     required ProductCondition conditionVal,
     required List<String>? campusesVal,
     required String deliveryOptionVal,
-    required List<File> selectedImagesCopy,
-    required List<File> selectedVideosCopy,
+    required List<dynamic> selectedImagesCopy,
+    required List<dynamic> selectedVideosCopy,
     required List<String> existingImageUrlsCopy,
     required List<String> existingVideoUrlsCopy,
     required int thumbnailExistingIdx,
     required int thumbnailNewIdx,
+    required int clipVideoExistingIdx,
+    required int clipVideoNewIdx,
     required List<Map<String, String>> specs,
     required int stockVal,
     required double deliveryFeeVal,
@@ -657,7 +793,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       }
 
       if (selectedVideosCopy.isNotEmpty) {
-        for (final video in selectedVideosCopy) {
+        for (var video in selectedVideosCopy) {
+          // Compress video for optimal playback
+          video = await VideoService.compressVideo(video);
           final url = await StorageService.uploadFile(
             file: video,
             folder: 'products/videos',
@@ -689,6 +827,23 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       }
       thumbnailUrl ??= imageUrls.isNotEmpty ? imageUrls.first : null;
 
+      // Resolve the clip video URL
+      String? clipVideoUrlVal;
+      if (showOnClips) {
+        final totalVids = existingVideoUrlsCopy.length + selectedVideosCopy.length;
+        if (totalVids <= 1) {
+          clipVideoUrlVal = videoUrls.isNotEmpty ? videoUrls.first : null;
+        } else if (clipVideoExistingIdx != -1 &&
+            clipVideoExistingIdx < existingVideoUrlsCopy.length) {
+          clipVideoUrlVal = existingVideoUrlsCopy[clipVideoExistingIdx];
+        } else if (clipVideoNewIdx != -1) {
+          final uploadedIdx = existingVideoUrlsCopy.length + clipVideoNewIdx;
+          if (uploadedIdx < videoUrls.length) {
+            clipVideoUrlVal = videoUrls[uploadedIdx];
+          }
+        }
+      }
+
       await provider.createProduct(
         title: titleVal,
         description: descriptionVal,
@@ -708,6 +863,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         discountEndDate: discountEndVal,
         thumbnailUrl: thumbnailUrl,
         showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrlVal,
       );
 
       // Success — clear draft and refresh listings
@@ -717,6 +873,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       if (userId != null) {
         await provider.loadUserListings(userId);
       }
+      SoundService.playProductListedSound(); // ignore: unawaited_futures
     } catch (e) {
       debugPrint('Background publish error: $e');
       // Mark draft as failed
@@ -754,10 +911,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
     try {
       final productProv = ref.read(productProvider);
-      
+
       final result = await AIService.analyzeProductImage(
-        localFile: hasLocalImage ? _selectedImages.first : null,
-        imageUrl: !hasLocalImage && hasRemoteImage ? _existingImageUrls.first : null,
+        localFiles: _selectedImages,
+        imageUrls: _existingImageUrls,
         categoryNames: productProv.categories.map((c) => c.name).toList(),
       );
 
@@ -864,6 +1021,108 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     }
   }
 
+  Widget _buildClipVideoSelector(BuildContext context) {
+    final totalCount = _selectedVideos.length + _existingVideoUrls.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: context.rh(10)),
+        Row(
+          children: [
+            Icon(LucideIcons.video, size: context.ri(14), color: AppTheme.accent),
+            SizedBox(width: context.rw(6)),
+            Text(
+              'Choose video for Clips',
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                fontWeight: FontWeight.w600,
+                color: AppTheme.charcoalInk,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: context.rh(4)),
+        Text(
+          'Tap a video to select it for the Clips feed',
+          style: TextStyle(fontSize: context.rsp(11), color: AppTheme.mutedSteel),
+        ),
+        SizedBox(height: context.rh(8)),
+        SizedBox(
+          height: context.rh(88),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: totalCount,
+            itemBuilder: (context, i) {
+              final isNew = i < _selectedVideos.length;
+              final localIdx = isNew ? i : i - _selectedVideos.length;
+              final isSelected = isNew
+                  ? _clipVideoNewIndex == localIdx
+                  : _clipVideoExistingIndex == localIdx;
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isNew) {
+                      _clipVideoNewIndex = localIdx;
+                      _clipVideoExistingIndex = -1;
+                    } else {
+                      _clipVideoExistingIndex = localIdx;
+                      _clipVideoNewIndex = -1;
+                    }
+                  });
+                },
+                child: Container(
+                  margin: EdgeInsets.only(right: context.rw(8)),
+                  width: context.rw(80),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(context.rr(10)),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.accent : Colors.transparent,
+                      width: 2.5,
+                    ),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(LucideIcons.play, color: Colors.white54, size: context.ri(22)),
+                      if (isSelected)
+                        Positioned(
+                          top: context.rh(4),
+                          right: context.rw(4),
+                          child: Container(
+                            padding: context.rAll(2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              LucideIcons.check,
+                              size: context.ri(10),
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        bottom: context.rh(5),
+                        child: Text(
+                          'Vid ${i + 1}',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: context.rsp(9),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final productProv = ref.watch(productProvider);
@@ -894,6 +1153,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       ),
                     ),
                     const Spacer(),
+                    if (!_isEditing)
+                      ShadButton.ghost(
+                        onPressed: _clearAllFields,
+                        child: const Text('Clear'),
+                      ),
                     ShadButton(
                       onPressed: (_isUploading || !_isFormValid) ? null : _handleSubmit,
                       child: _isUploading
@@ -1255,7 +1519,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          if (_selectedVideos.isEmpty && _existingVideoUrls.isEmpty)
+                          if (_selectedVideos.isEmpty && _existingVideoUrls.isEmpty && _canAddVideo)
                             ShadButton.ghost(
                               onPressed: _pickVideo,
                               child: Row(
@@ -1281,33 +1545,38 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                           child: ListView(
                             scrollDirection: Axis.horizontal,
                             children: [
-                              ..._selectedVideos.map((video) {
+                              ..._selectedVideos.asMap().entries.map((entry) {
+                                final index = entry.key;
                                 return Padding(
                                   padding: EdgeInsets.only(right: context.rw(8)),
                                   child: Stack(
                                     children: [
-                                      Container(
-                                        width: context.rw(140),
-                                        height: context.rh(160),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black,
-                                          borderRadius: BorderRadius.circular(context.rr(12)),
+                                      GestureDetector(
+                                        onTap: () => _removeVideo(index),
+                                        child: Container(
+                                          width: context.rw(140),
+                                          height: context.rh(160),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black,
+                                            borderRadius: BorderRadius.circular(context.rr(12)),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(context.rr(12)),
+                                            child: index < _videoPreviewControllers.length &&
+                                                    _videoPreviewControllers[index] != null &&
+                                                    _videoPreviewControllers[index]!.value.isInitialized
+                                                ? VideoPlayer(_videoPreviewControllers[index]!)
+                                                : Center(
+                                                    child: Icon(LucideIcons.video, color: Colors.white54, size: context.ri(32)),
+                                                  ),
+                                          ),
                                         ),
-                                        child: _videoPreviewController != null &&
-                                                _videoPreviewController!.value.isInitialized
-                                            ? ClipRRect(
-                                                borderRadius: BorderRadius.circular(context.rr(12)),
-                                                child: VideoPlayer(_videoPreviewController!),
-                                              )
-                                            : Center(
-                                                child: Icon(LucideIcons.video, color: Colors.white54, size: context.ri(32)),
-                                              ),
                                       ),
                                       Positioned(
                                         top: context.rh(4),
                                         right: context.rw(4),
                                         child: GestureDetector(
-                                          onTap: () => _removeVideo(_selectedVideos.indexOf(video)),
+                                          onTap: () => _removeVideo(index),
                                           child: Container(
                                             padding: context.rAll(4),
                                             decoration: const BoxDecoration(
@@ -1377,6 +1646,36 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                                   ),
                                 );
                               }),
+                              // Add more video tile
+                              if (_canAddVideo)
+                              GestureDetector(
+                                onTap: _pickVideo,
+                                child: Container(
+                                  width: context.rw(80),
+                                  height: context.rh(160),
+                                  margin: EdgeInsets.only(right: context.rw(8)),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(context.rr(12)),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(LucideIcons.plus, size: context.ri(24), color: AppTheme.accent),
+                                      SizedBox(height: context.rh(4)),
+                                      Text(
+                                        'Add',
+                                        style: TextStyle(
+                                          color: AppTheme.accent,
+                                          fontSize: context.rsp(11),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         )
@@ -1450,6 +1749,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                           ],
                         ),
                       ),
+
+                      if (_needsClipVideoSelection)
+                        _buildClipVideoSelector(context),
 
                       SizedBox(height: context.rh(24)),
 
@@ -1970,7 +2272,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                                           }
                                           final discounted = priceVal * (1 - discountVal / 100);
                                           return Text(
-                                            'Price: GH¢ ${priceVal.toStringAsFixed(2)} → GH¢ ${discounted.toStringAsFixed(2)}',
+                                            'Price: ${formatGhs(priceVal)} → ${formatGhs(discounted)}',
                                             style: const TextStyle(
                                               fontSize: 13,
                                               fontWeight: FontWeight.w500,
@@ -2118,24 +2420,37 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   void _showCategorySearchSheet(BuildContext context, List<Category> categories) {
     showShadSheet(
       context: context,
-      builder: (context) => ShadSheet(
-        title: const Text('Select Category'),
-        child: Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.5,
-            child: _CategorySearchContent(
-              categories: categories,
-              initialSelectedId: _selectedCategoryId,
-              onSelected: (categoryId) {
-                setState(() {
-                  _selectedCategoryId = categoryId;
-                });
-              },
+      builder: (context) {
+        final mediaQuery = MediaQuery.of(context);
+        final keyboardHeight = mediaQuery.viewInsets.bottom;
+        final screenHeight = mediaQuery.size.height;
+        final maxContentHeight = screenHeight * 0.5;
+
+        // Avoid overflow when keyboard is open
+        final availableHeight = screenHeight - keyboardHeight - 120;
+        final contentHeight = maxContentHeight > availableHeight
+            ? (availableHeight > 100 ? availableHeight : 100.0)
+            : maxContentHeight;
+
+        return ShadSheet(
+          title: const Text('Select Category'),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: keyboardHeight),
+            child: SizedBox(
+              height: contentHeight,
+              child: _CategorySearchContent(
+                categories: categories,
+                initialSelectedId: _selectedCategoryId,
+                onSelected: (categoryId) {
+                  setState(() {
+                    _selectedCategoryId = categoryId;
+                  });
+                },
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -2163,7 +2478,6 @@ class _CategorySearchContent extends StatefulWidget {
 }
 
 class _CategorySearchContentState extends State<_CategorySearchContent> {
-  final _searchController = TextEditingController();
   List<Category> _filteredCategories = [];
 
   @override
@@ -2185,12 +2499,6 @@ class _CategorySearchContentState extends State<_CategorySearchContent> {
   }
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2198,7 +2506,6 @@ class _CategorySearchContentState extends State<_CategorySearchContent> {
         Padding(
           padding: const EdgeInsets.all(16),
           child: ShadInput(
-            controller: _searchController,
             placeholder: const Text('Search categories...'),
             onChanged: _filterCategories,
           ),

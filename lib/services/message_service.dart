@@ -23,8 +23,9 @@ class MessageService {
           participant2_id,
           last_message,
           last_message_at,
-          user1:users!conversations_participant1_id_fkey(full_name, avatar_url, is_verified),
-          user2:users!conversations_participant2_id_fkey(full_name, avatar_url, is_verified)
+          theme_color,
+          user1:users!conversations_participant1_id_fkey(full_name, avatar_url, is_verified, last_seen),
+          user2:users!conversations_participant2_id_fkey(full_name, avatar_url, is_verified, last_seen)
         ''')
         .or('participant1_id.eq.$uid,participant2_id.eq.$uid')
         .order('last_message_at', ascending: false)
@@ -38,6 +39,24 @@ class MessageService {
     final archivedIds = archivedResponse
         .map((r) => r['conversation_id'] as String)
         .toSet();
+
+    // Fetch hidden conversations with their hidden_at timestamp
+    Map<String, DateTime> hiddenMap = {};
+    try {
+      final hiddenResponse = await supabase
+          .from('conversation_hidden')
+          .select('conversation_id, hidden_at')
+          .eq('user_id', uid);
+      for (final r in hiddenResponse) {
+        final convId = r['conversation_id'] as String?;
+        final hiddenAtRaw = r['hidden_at'] as String?;
+        if (convId != null && hiddenAtRaw != null) {
+          hiddenMap[convId] = DateTime.parse(hiddenAtRaw);
+        }
+      }
+    } catch (_) {
+      // Table may not exist yet — treat as no hidden conversations
+    }
 
     // Fetch unread message counts for the current user across conversations
     final unreadResponse = await supabase
@@ -79,7 +98,20 @@ class MessageService {
       } catch (_) {}
     }
 
-    return response.map((json) {
+    final List<Conversation> result = [];
+    for (final json in response) {
+      final convId = json['id'] as String;
+      final hiddenAt = hiddenMap[convId];
+      final lastMessageAt = json['last_message_at'] != null
+          ? DateTime.parse(json['last_message_at'] as String)
+          : null;
+
+      // If hidden and no new messages have arrived since deletion, skip it.
+      if (hiddenAt != null &&
+          (lastMessageAt == null || !lastMessageAt.isAfter(hiddenAt))) {
+        continue;
+      }
+
       final isFirst = json['participant1_id'] == uid;
       final otherProfile = isFirst
           ? json['user2'] as Map<String, dynamic>?
@@ -87,10 +119,9 @@ class MessageService {
       final otherUserId = isFirst
           ? json['participant2_id'] as String
           : json['participant1_id'] as String;
-      final convId = json['id'] as String;
       final unreadCount = unreadCounts[convId] ?? 0;
 
-      return Conversation(
+      result.add(Conversation(
         id: convId,
         otherUserId: otherUserId,
         otherUserName: otherProfile?['full_name'] as String?,
@@ -98,13 +129,119 @@ class MessageService {
         otherUserVerified: otherProfile?['is_verified'] as bool? ?? false,
         otherBusinessName: businessNames[otherUserId],
         lastMessage: json['last_message'] as String?,
-        lastMessageAt: json['last_message_at'] != null
-            ? DateTime.parse(json['last_message_at'] as String)
-            : null,
+        lastMessageAt: lastMessageAt,
         unreadCount: unreadCount,
         isArchived: archivedIds.contains(convId),
+        hiddenAt: hiddenAt,
+        otherUserLastSeen: otherProfile?['last_seen'] != null
+            ? DateTime.parse(otherProfile!['last_seen'] as String)
+            : null,
+        themeColor: json['theme_color'] as String?,
+      ));
+    }
+    return result;
+  }
+
+  static Future<Conversation?> getConversationById(String conversationId) async {
+    final supabase = SupabaseService.instance;
+    final uid = supabase.currentUser?.id;
+    if (uid == null) return null;
+
+    try {
+      final response = await supabase
+          .from('conversations')
+          .select('''
+            id,
+            participant1_id,
+            participant2_id,
+            last_message,
+            last_message_at,
+            theme_color,
+            user1:users!conversations_participant1_id_fkey(full_name, avatar_url, is_verified, last_seen),
+            user2:users!conversations_participant2_id_fkey(full_name, avatar_url, is_verified, last_seen)
+          ''')
+          .eq('id', conversationId)
+          .maybeSingle();
+
+      if (response == null) return null;
+
+      // Fetch archived status
+      final archivedResponse = await supabase
+          .from('conversation_archives')
+          .select('conversation_id')
+          .eq('user_id', uid)
+          .eq('conversation_id', conversationId)
+          .maybeSingle();
+      final isArchived = archivedResponse != null;
+
+      // Fetch hidden status
+      DateTime? hiddenAt;
+      try {
+        final hiddenResponse = await supabase
+            .from('conversation_hidden')
+            .select('hidden_at')
+            .eq('user_id', uid)
+            .eq('conversation_id', conversationId)
+            .maybeSingle();
+        if (hiddenResponse != null && hiddenResponse['hidden_at'] != null) {
+          hiddenAt = DateTime.parse(hiddenResponse['hidden_at'] as String);
+        }
+      } catch (_) {}
+
+      // Fetch unread count
+      final unreadResponse = await supabase
+          .from('messages')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('receiver_id', uid)
+          .eq('is_read', false);
+      final unreadCount = unreadResponse.length;
+
+      final isFirst = response['participant1_id'] == uid;
+      final otherProfile = isFirst
+          ? response['user2'] as Map<String, dynamic>?
+          : response['user1'] as Map<String, dynamic>?;
+      final otherUserId = isFirst
+          ? response['participant2_id'] as String
+          : response['participant1_id'] as String;
+
+      // Fetch business profile
+      String? businessName;
+      try {
+        final bizResponse = await supabase
+            .from('business_profiles')
+            .select('business_name')
+            .eq('seller_id', otherUserId)
+            .maybeSingle();
+        if (bizResponse != null) {
+          businessName = bizResponse['business_name'] as String?;
+        }
+      } catch (_) {}
+
+      final lastMessageAt = response['last_message_at'] != null
+          ? DateTime.parse(response['last_message_at'] as String)
+          : null;
+
+      return Conversation(
+        id: conversationId,
+        otherUserId: otherUserId,
+        otherUserName: otherProfile?['full_name'] as String?,
+        otherUserAvatar: otherProfile?['avatar_url'] as String?,
+        otherUserVerified: otherProfile?['is_verified'] as bool? ?? false,
+        otherBusinessName: businessName,
+        lastMessage: response['last_message'] as String?,
+        lastMessageAt: lastMessageAt,
+        unreadCount: unreadCount,
+        isArchived: isArchived,
+        hiddenAt: hiddenAt,
+        otherUserLastSeen: otherProfile?['last_seen'] != null
+            ? DateTime.parse(otherProfile!['last_seen'] as String)
+            : null,
+        themeColor: response['theme_color'] as String?,
       );
-    }).toList();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Get archived conversations for the current user
@@ -139,8 +276,9 @@ class MessageService {
           participant2_id,
           last_message,
           last_message_at,
-          user1:users!conversations_participant1_id_fkey(full_name, avatar_url, is_verified),
-          user2:users!conversations_participant2_id_fkey(full_name, avatar_url, is_verified)
+          theme_color,
+          user1:users!conversations_participant1_id_fkey(full_name, avatar_url, is_verified, last_seen),
+          user2:users!conversations_participant2_id_fkey(full_name, avatar_url, is_verified, last_seen)
         ''')
         .inFilter('id', archivedConvIds)
         .order('last_message_at', ascending: false);
@@ -207,8 +345,26 @@ class MessageService {
             : null,
         unreadCount: unreadCounts[convId] ?? 0,
         isArchived: true,
+        themeColor: json['theme_color'] as String?,
       );
     }).toList();
+  }
+
+  /// Hide (soft-delete) a conversation for the current user only.
+  /// Stores hidden_at so messages before this timestamp stay hidden even
+  /// if the conversation resurfaces when the other user sends a new message.
+  static Future<DateTime> hideConversation(String conversationId) async {
+    final supabase = SupabaseService.instance;
+    final uid = supabase.currentUser?.id;
+    if (uid == null) return DateTime.now();
+
+    final hiddenAt = DateTime.now().toUtc();
+    await supabase.from('conversation_hidden').upsert({
+      'user_id': uid,
+      'conversation_id': conversationId,
+      'hidden_at': hiddenAt.toIso8601String(),
+    });
+    return hiddenAt;
   }
 
   /// Archive a conversation for the current user
@@ -237,18 +393,28 @@ class MessageService {
   }
 
   /// Get messages for a conversation, newest first (for reverse pagination).
+  /// [hiddenAt] — if set, only messages created after this timestamp are returned,
+  /// implementing WhatsApp-style "delete chat" where old history stays hidden.
   static Future<List<Message>> getMessages(
     String conversationId, {
     int offset = 0,
     int limit = _pageSize,
+    DateTime? hiddenAt,
   }) async {
     final supabase = SupabaseService.instance;
 
     try {
-      final response = await supabase
+      var query = supabase
           .from('messages')
           .select('*')
-          .eq('conversation_id', conversationId)
+          .eq('conversation_id', conversationId);
+
+      // Only show messages sent after the user deleted the chat
+      if (hiddenAt != null) {
+        query = query.gt('created_at', hiddenAt.toIso8601String());
+      }
+
+      final response = await query
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1)
           .timeout(const Duration(seconds: 5));
@@ -264,7 +430,11 @@ class MessageService {
         limit: limit,
         offset: offset,
       );
-      return cached.reversed.toList();
+      // Apply hiddenAt filter to cached results too
+      final filtered = hiddenAt != null
+          ? cached.where((m) => m.createdAt.isAfter(hiddenAt)).toList()
+          : cached;
+      return filtered.reversed.toList();
     }
   }
 
@@ -521,5 +691,38 @@ class MessageService {
   /// Delete media file from R2 storage
   static Future<void> deleteMediaFromStorage(String mediaUrl) async {
     await StorageService.deleteImage(mediaUrl);
+  }
+
+  static Future<void> updateConversationThemeColor(String conversationId, String? colorHex) async {
+    final supabase = SupabaseService.instance;
+    await supabase.from('conversations').update({
+      'theme_color': colorHex,
+    }).eq('id', conversationId);
+  }
+
+  static Future<Message> sendThemeChangeNotice({
+    required String conversationId,
+    required String themeName,
+  }) async {
+    final supabase = SupabaseService.instance;
+    final uid = supabase.currentUser!.id;
+
+    final payload = <String, dynamic>{
+      'conversation_id': conversationId,
+      'sender_id': uid,
+      'content': themeName,
+      'media_type': 'theme_change',
+    };
+
+    final row = await supabase.from('messages').insert(payload).select().single();
+    final message = Message.fromJson(row);
+
+    // Update last message snippet on the conversation
+    await supabase.from('conversations').update({
+      'last_message': 'Changed the chat theme to $themeName',
+      'last_message_at': DateTime.now().toIso8601String(),
+    }).eq('id', conversationId);
+
+    return message;
   }
 }

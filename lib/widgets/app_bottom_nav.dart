@@ -14,10 +14,14 @@ class AppBottomNav extends ConsumerWidget {
 
   Widget _buildActiveIcon(IconData icon) {
     return Container(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(7),
       decoration: BoxDecoration(
-        color: AppTheme.accent,
-        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.accentBright, AppTheme.accent],
+        ),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(icon, color: Colors.white, size: 20),
     );
@@ -78,24 +82,32 @@ class AppBottomNav extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
+          filter: ImageFilter.compose(
+            outer: ImageFilter.blur(
+                sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+            inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
+          ),
           child: Container(
             decoration: BoxDecoration(
-              color: AppTheme.glassSurfaceHeavy,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppTheme.glassBorder, width: 0.5),
-              boxShadow: const [
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppTheme.glassHighlight, AppTheme.glassSurfaceHeavy],
+              ),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: AppTheme.glassBorder, width: 1.0),
+              boxShadow: [
                 BoxShadow(
-                  color: Color(0x1A000000),
-                  blurRadius: 20,
-                  offset: Offset(0, -4),
+                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, -2),
                 ),
-                BoxShadow(
-                  color: Color(0x0D000000),
-                  blurRadius: 6,
-                  offset: Offset(0, -1),
+                const BoxShadow(
+                  color: Color(0x1F4C1D95),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
                 ),
               ],
             ),

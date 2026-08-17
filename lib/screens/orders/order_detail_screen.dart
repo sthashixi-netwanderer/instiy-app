@@ -92,19 +92,35 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     }
   }
 
+  bool get _canCancel {
+    if (_order == null) return false;
+    if (_order!.status != 'pending') return false;
+    // Cannot cancel if any item is processing or delivered
+    return !_order!.items.any((item) => item.status == 'processing' || item.status == 'delivered');
+  }
+
+  bool get _hasProcessingItems {
+    if (_order == null) return false;
+    return _order!.items.any((item) => item.status == 'processing');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight;
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Order Details')),
       body: _isLoading
-          ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.only(top: topPad + 16, left: 16, right: 16, bottom: 16),
+              child: const ListSkeleton(count: 6))
           : _order == null
               ? const Center(child: Text('Order not found'))
               : RefreshIndicator(
                   onRefresh: _loadOrder,
                   child: ListView(
-                    padding: context.rAll(16),
+                    padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
                     children: [
                       _buildOrderHeader(),
                       SizedBox(height: context.rh(20)),
@@ -116,7 +132,34 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                           child: _buildItemCard(item),
                         );
                       }),
-                      if (_order!.status == 'pending') ...[
+                      if (_hasProcessingItems) ...[
+                        SizedBox(height: context.rh(24)),
+                        Container(
+                          padding: context.rAll(16),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(context.rr(12)),
+                            border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.truck, color: Colors.blue, size: context.ri(20)),
+                              SizedBox(width: context.rw(12)),
+                              Expanded(
+                                child: Text(
+                                  'Your order is being prepared for delivery and can no longer be cancelled.',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade800,
+                                    fontSize: context.rsp(13),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (_canCancel) ...[
                         SizedBox(height: context.rh(24)),
                         ShadButton.destructive(
                           onPressed: _confirmCancelOrder,
@@ -136,7 +179,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final confirmed = await AppTheme.showGlassDialog<bool>(
       context: context,
       title: const Text('Cancel Order'),
-      description: const Text('Are you sure you want to cancel this order? This will refund the total amount to your wallet.'),
+      description: const Text('Are you sure you want to cancel this order? The total amount will be refunded to your wallet.'),
       actions: [
         ShadButton.ghost(
           onPressed: () => Navigator.of(context).pop(false),
@@ -153,12 +196,18 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
       if (!mounted) return;
       setState(() => _isLoading = true);
       try {
-        await ref.read(orderProvider.notifier).cancelOrder(widget.orderId);
+        final success = await ref.read(orderProvider.notifier).cancelOrder(widget.orderId);
         await _loadOrder();
         if (!mounted) return;
-        ShadToaster.of(context).show(
-          const ShadToast(title: Text('Order cancelled successfully')),
-        );
+        if (success) {
+          ShadToaster.of(context).show(
+            const ShadToast(title: Text('Order cancelled successfully')),
+          );
+        } else {
+          ShadToaster.of(context).show(
+            const ShadToast(backgroundColor: AppTheme.destructive, title: Text('Cannot cancel — some items are already being processed')),
+          );
+        }
       } catch (e) {
         if (!mounted) return;
         setState(() => _isLoading = false);
@@ -214,7 +263,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               children: [
                 const Text('Subtotal: ', style: TextStyle(color: AppTheme.mutedSteel)),
                 Text(
-                  'GH\u00a2 ${formatCurrency(_order!.totalAmount - _order!.deliveryFee)}',
+                  '${formatGhs(_order!.totalAmount - _order!.deliveryFee)}',
                   style: const TextStyle(color: AppTheme.charcoalInk),
                 ),
               ],
@@ -223,7 +272,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               children: [
                 const Text('Delivery Fee: ', style: TextStyle(color: AppTheme.mutedSteel)),
                 Text(
-                  'GH\u00a2 ${formatCurrency(_order!.deliveryFee)}',
+                  '${formatGhs(_order!.deliveryFee)}',
                   style: const TextStyle(color: AppTheme.charcoalInk),
                 ),
               ],
@@ -233,7 +282,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             children: [
               const Text('Total: ', style: TextStyle(color: AppTheme.mutedSteel)),
               Text(
-                'GH\u00a2 ${formatCurrency(_order!.totalAmount)}',
+                '${formatGhs(_order!.totalAmount)}',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: context.rsp(16)),
               ),
             ],
@@ -314,7 +363,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                     ),
                     SizedBox(height: context.rh(4)),
                     Text(
-                      'GH\u00a2 ${item.price.toStringAsFixed(2)} x${item.quantity}',
+                      '${formatGhs(item.price)} x${item.quantity}',
                       style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13)),
                     ),
                   ],
@@ -353,14 +402,81 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Center(
-                          child: QrImageView(
-                            data: item.deliveryCode!,
-                            version: QrVersions.auto,
-                            size: context.rw(160),
-                            backgroundColor: Colors.white,
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.grey.withValues(alpha: 0.1),
+                                width: 1.5,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x06000000),
+                                  blurRadius: 16,
+                                  offset: Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                QrImageView(
+                                  data: item.deliveryCode!,
+                                  version: QrVersions.auto,
+                                  size: context.rw(180),
+                                  backgroundColor: Colors.white,
+                                  eyeStyle: const QrEyeStyle(
+                                    eyeShape: QrEyeShape.circle,
+                                    color: Colors.black,
+                                  ),
+                                  dataModuleStyle: const QrDataModuleStyle(
+                                    dataModuleShape: QrDataModuleShape.circle,
+                                    color: Colors.black,
+                                  ),
+                                  embeddedImage: item.productThumbnail != null && item.productThumbnail!.isNotEmpty
+                                      ? CachedNetworkImageProvider(item.productThumbnail!)
+                                      : const AssetImage('assets/logo_highres.png') as ImageProvider,
+                                  embeddedImageStyle: const QrEmbeddedImageStyle(
+                                    size: Size(36, 36),
+                                  ),
+                                ),
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.08),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: item.productThumbnail != null && item.productThumbnail!.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: item.productThumbnail!,
+                                            fit: BoxFit.cover,
+                                            placeholder: (_, _) => Image.asset('assets/logo_highres.png'),
+                                            errorWidget: (_, _, _) => Image.asset('assets/logo_highres.png'),
+                                          )
+                                        : Image.asset(
+                                            'assets/logo_highres.png',
+                                            fit: BoxFit.contain,
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        SizedBox(height: context.rh(12)),
+                        SizedBox(height: context.rh(16)),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.min,

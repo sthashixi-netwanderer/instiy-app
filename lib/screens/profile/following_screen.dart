@@ -169,6 +169,7 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: const Text('Following'),
@@ -187,7 +188,12 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
         children: [
           // Search bar
           Padding(
-            padding: EdgeInsets.fromLTRB(context.rw(16), context.rh(12), context.rw(16), context.rh(8)),
+            padding: EdgeInsets.fromLTRB(
+              context.rw(16),
+              MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight + context.rh(12),
+              context.rw(16),
+              context.rh(8),
+            ),
             child: ShadInput(
               controller: _searchController,
               placeholder: const Text('Search...'),

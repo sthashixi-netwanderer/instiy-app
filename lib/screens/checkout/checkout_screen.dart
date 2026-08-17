@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
@@ -14,6 +15,7 @@ import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_button.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   final Product? buyNowProduct;
@@ -111,6 +113,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Checkout')),
         body: const Center(child: Text('Please sign in to checkout')),
       );
@@ -183,6 +186,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Checkout')),
       bottomNavigationBar: Container(
         padding: context.rAll(20),
@@ -191,32 +195,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           border: Border(top: BorderSide(color: AppTheme.whisperBorder)),
         ),
         child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: context.rh(52),
-            child: ShadButton(
-              onPressed: (_isProcessing ||
-                      _deliveryMode == null ||
-                      (_deliveryMode == 'delivery' && _selectedDeliveryInstitution == null))
-                  ? null
-                  : _placeOrder,
-              child: _isProcessing
-                  ? SizedBox(
-                      width: context.rw(24),
-                      height: context.rh(24),
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text('Place Order',
-                      style: TextStyle(fontSize: context.rsp(16), fontWeight: FontWeight.w600)),
-            ),
+          child: AppButton(
+            onPressed: (_isProcessing ||
+                    _deliveryMode == null ||
+                    (_deliveryMode == 'delivery' && _selectedDeliveryInstitution == null))
+                ? null
+                : _placeOrder,
+            loading: _isProcessing,
+            child: Text('Place Order',
+                style: TextStyle(fontSize: context.rsp(16), fontWeight: FontWeight.w600)),
           ),
         ),
       ),
       child: ListView(
-        padding: context.rAll(16),
+        padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
         children: [
           Container(
             padding: context.rAll(16),
@@ -260,7 +252,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'GH\u00a2 ${lineTotal.toStringAsFixed(2)}',
+                                  '${formatGhs(lineTotal)}',
                                   style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
                               ],
@@ -359,7 +351,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                       ),
                                     ),
                                     Text(
-                                      'GH\u00a2 ${itemDeliveryFee.toStringAsFixed(2)}',
+                                      '${formatGhs(itemDeliveryFee)}',
                                       style: TextStyle(
                                         fontSize: context.rsp(12),
                                         color: AppTheme.mutedSteel,
@@ -396,7 +388,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 ),
                               ),
                               Text(
-                                'GH\u00a2 ${item.totalPrice.toStringAsFixed(2)}',
+                                '${formatGhs(item.totalPrice)}',
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -588,7 +580,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     Text('Wallet Balance',
                         style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13))),
                     Text(
-                      'GH\u00a2 ${formatCurrency(walletBalance)}',
+                      '${formatGhs(walletBalance)}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: hasWalletBalance ? AppTheme.successMoss : AppTheme.destructive,
@@ -602,7 +594,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     onPressed: () async {
                       await Navigator.of(context).pushNamed('/wallet');
                       if (context.mounted) {
-                        ref.read(walletProvider).loadWallet();
+                        unawaited(ref.read(walletProvider).loadWallet());
                       }
                     },
                     child: const Text('Fund Wallet'),
@@ -636,7 +628,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 _PaymentOption(
                   title: 'Wallet Balance',
                   subtitle: hasWalletBalance
-                      ? 'GH\u00a2 ${formatCurrency(walletBalance)} available'
+                      ? '${formatGhs(walletBalance)} available'
                       : 'Insufficient balance',
                   icon: LucideIcons.wallet,
                   isSelected: _paymentMethod == 'wallet',
@@ -773,6 +765,28 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final cartProv = ref.read(cartProvider);
     final authProv = ref.read(authProvider);
 
+    // Block sellers from buying their own products
+    final userId = authProv.user?.id;
+    if (userId != null) {
+      if (_isBuyNowMode && widget.buyNowProduct!.sellerId == userId) {
+        if (mounted) {
+          ShadToaster.of(context).show(
+            const ShadToast(title: Text('You cannot purchase your own product.')),
+          );
+        }
+        return;
+      }
+      final ownItems = cartProv.cart.items.where((i) => i.sellerId == userId).toList();
+      if (ownItems.isNotEmpty) {
+        if (mounted) {
+          ShadToaster.of(context).show(
+            const ShadToast(title: Text('Remove your own products from the cart before checkout.')),
+          );
+        }
+        return;
+      }
+    }
+
     // Require wallet lock authentication when paying with wallet
     if (_paymentMethod == 'wallet') {
       final authed = await WalletLockService.unlockIfNeeded(
@@ -866,10 +880,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // Send SMS with delivery codes
         if (authProv.user?.phoneNumber != null && items.isNotEmpty) {
           final codes = items.map((i) => i['delivery_code'] as String).join(', ');
-          SmsService.sendSms(
+          unawaited(SmsService.sendSms(
             to: authProv.user!.phoneNumber!,
             content: 'Your Instiy order #${orderId.substring(0, 8).toUpperCase()} has been placed! Delivery codes: $codes. Share with seller upon delivery.',
-          );
+          ));
         }
 
         if (mounted) {
@@ -879,7 +893,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           );
           // Pop back to explore root, then push orders screen on top
           Navigator.of(context).popUntil((route) => route.settings.name == '/explore' || route.isFirst);
-          Navigator.of(context).pushNamed('/orders');
+          unawaited(Navigator.of(context).pushNamed('/orders'));
         }
       } else {
         // Initialize Paystack SDK
@@ -954,10 +968,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // Send SMS with delivery codes
         if (authProv.user?.phoneNumber != null && items.isNotEmpty) {
           final codes = items.map((i) => i['delivery_code'] as String).join(', ');
-          SmsService.sendSms(
+          unawaited(SmsService.sendSms(
             to: authProv.user!.phoneNumber!,
             content: 'Your Instiy order #${orderId.substring(0, 8).toUpperCase()} has been placed! Delivery codes: $codes. Share with seller upon delivery.',
-          );
+          ));
         }
 
         if (mounted) {
@@ -967,7 +981,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           );
           // Pop back to explore root, then push orders screen on top
           Navigator.of(context).popUntil((route) => route.settings.name == '/explore' || route.isFirst);
-          Navigator.of(context).pushNamed('/orders');
+          unawaited(Navigator.of(context).pushNamed('/orders'));
         }
       }
     } catch (e) {

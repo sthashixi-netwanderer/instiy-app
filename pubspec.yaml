@@ -9,15 +9,23 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
 
   cupertino_icons: ^1.0.8
 
   # UI Components
   shadcn_ui: ^0.54.0
   google_fonts: ^8.1.0
+  # Animation effects (re-exported by shadcn_ui; declared directly so the
+  # `Effect` type can be imported for shared dropdown/popover animations).
+  flutter_animate: ^4.5.2
 
   # Supabase
   supabase_flutter: ^2.8.0
+
+  # Google Sign-In (native)
+  google_sign_in: ^7.2.0
 
   # Image handling
   image_picker: ^1.1.2
@@ -31,6 +39,9 @@ dependencies:
 
   # Video playback
   video_player: ^2.9.1
+
+  # Video compression
+  video_compress: 3.1.4
 
   # HTTP client for R2 uploads
   http: ^1.2.2
@@ -47,13 +58,13 @@ dependencies:
 
   # Intl for date formatting
   intl: ^0.20.2
-  paystack_flutter_sdk: ^0.0.1-alpha.2
+  paystack_flutter_sdk: 0.0.1-alpha.2
 
   # QR code generation
   qr_flutter: ^4.1.0
 
   # QR code / barcode scanning
-  mobile_scanner: ^7.2.0
+  mobile_scanner: 7.2.0
   app_links: ^7.1.1
 
   # Markdown rendering
@@ -62,6 +73,8 @@ dependencies:
   # SVG rendering
   flutter_svg: ^2.0.16
 
+  # Lottie animations
+
   # Biometric / screen lock authentication
   local_auth: ^3.0.1
 
@@ -69,7 +82,7 @@ dependencies:
   flutter_local_notifications: ^21.0.0
 
   # Audio playback for in-app notification sounds
-  audioplayers: ^6.1.0
+  audioplayers: ^6.7.1
 
   # Video trimming
   # URL launching (phone, WhatsApp, etc.)
@@ -85,12 +98,18 @@ dependencies:
   firebase_messaging: ^16.2.2
   sqflite: ^2.4.3
   path: ^1.9.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  riverpod_annotation: ^4.0.2
 
+  provider: any
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_native_splash: ^2.4.7
+  build_runner: ^2.15.0
+  riverpod_generator: ^4.0.3
 
 dependency_overrides:
   dbus: 0.7.13
@@ -107,6 +126,8 @@ flutter:
     - assets/logo.png
     - assets/logo.svg
     - assets/logo_highres.png
+    - assets/splash_logo.png
+    - assets/splash_logo_android12.png
     - assets/badge-check-svgrepo-com.svg
     - assets/whatsapp-svgrepo-com.svg
     - assets/facebook-svgrepo-com.svg
@@ -114,3 +135,5 @@ flutter:
     - assets/x.png
     - assets/notification_icons/
     - assets/sounds/
+    - assets/bank_logos/
+    - assets/mobile-network/

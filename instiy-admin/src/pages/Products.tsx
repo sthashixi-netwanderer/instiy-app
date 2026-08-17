@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Search, Filter, Eye, Trash2, Loader, Tag, User, MapPin, Package, X } from 'lucide-react';
+import { useAlert, useConfirm } from '../components/use-alert';
+import { formatGhs } from "../utils/format";
 
 export const Products: React.FC = () => {
   const [products, setProducts] = useState<any[]>([]);
@@ -15,6 +17,8 @@ export const Products: React.FC = () => {
   const [editStock, setEditStock] = useState('');
   const [editStatus, setEditStatus] = useState('');
   const [updating, setUpdating] = useState(false);
+  const { alert, AlertComponent } = useAlert();
+  const { confirm, ConfirmComponent } = useConfirm();
 
   const fetchCategories = async () => {
     try {
@@ -74,20 +78,21 @@ export const Products: React.FC = () => {
       setProducts(products.map(p => p.id === selectedProduct.id ? { ...p, price: parseFloat(editPrice), stock_quantity: stock, status } : p));
       setSelectedProduct(null);
     } catch (error) {
-      alert('Error updating product: ' + (error as any).message);
+      alert('Error', { description: 'Error updating product: ' + (error as any).message, variant: 'danger' });
     } finally { setUpdating(false); }
   };
 
-  const handleDeleteProduct = async (id: string, title: string) => {
-    if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
-    try {
-      const { error } = await supabase.from('products').delete().eq('id', id);
-      if (error) throw error;
-      setProducts(products.filter(p => p.id !== id));
-      if (selectedProduct?.id === id) setSelectedProduct(null);
-    } catch (error) {
-      alert('Error deleting product: ' + (error as any).message);
-    }
+  const handleDeleteProduct = (id: string, title: string) => {
+    confirm(`Delete "${title}"? This cannot be undone.`, async () => {
+      try {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+        setProducts(products.filter(p => p.id !== id));
+        if (selectedProduct?.id === id) setSelectedProduct(null);
+      } catch (error) {
+        alert('Error', { description: 'Error deleting product: ' + (error as any).message, variant: 'danger' });
+      }
+    }, { confirmLabel: 'Delete', variant: 'danger' });
   };
 
   return (
@@ -171,7 +176,7 @@ export const Products: React.FC = () => {
                       <div style={{ fontWeight: 500, fontSize: '0.82rem' }}>{p.users?.full_name || 'Unknown'}</div>
                       <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-tertiary))' }}>{p.users?.email}</div>
                     </td>
-                    <td style={{ fontWeight: 700, fontSize: '0.85rem' }}>GH&#8373;{Number(p.price).toFixed(2)}</td>
+                    <td style={{ fontWeight: 700, fontSize: '0.85rem' }}>{formatGhs(p.price)}</td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem' }}>
                         <Package size={13} style={{ color: 'hsl(var(--text-tertiary))' }} /> {p.stock_quantity}
@@ -239,7 +244,7 @@ export const Products: React.FC = () => {
               {[
                 [<><User size={13} /> Seller</>, `${selectedProduct.users?.full_name} (${selectedProduct.users?.email})`],
                 [<><MapPin size={13} /> Campus</>, selectedProduct.campus || 'N/A'],
-                ['Delivery', `GH&#8373;${Number(selectedProduct.delivery_fee).toFixed(2)} (${selectedProduct.delivery_option})`],
+                ['Delivery', `{formatGhs(selectedProduct.delivery_fee)} (${selectedProduct.delivery_option})`],
                 ['Listed', new Date(selectedProduct.created_at).toLocaleString()],
               ].map(([label, value], i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
@@ -254,7 +259,7 @@ export const Products: React.FC = () => {
               <h4 style={{ fontSize: '0.78rem', color: 'hsl(var(--text-tertiary))', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Modify Listing</h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Price (GH&#8373;)</label>
+                  <label className="form-label">Price (GH₵)</label>
                   <input type="number" step="0.01" className="form-control" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} required />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -283,6 +288,8 @@ export const Products: React.FC = () => {
           </div>
         </div>
       )}
+      {AlertComponent}
+      {ConfirmComponent}
     </div>
   );
 };

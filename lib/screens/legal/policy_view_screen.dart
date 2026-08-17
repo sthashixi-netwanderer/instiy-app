@@ -43,6 +43,7 @@ class _PolicyViewScreenState extends State<PolicyViewScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, 
         title: Text(widget.title),
         leading: ShadIconButton.ghost(
@@ -51,7 +52,9 @@ class _PolicyViewScreenState extends State<PolicyViewScreen> {
         ),
       ),
       body: _isLoading
-          ? Padding(padding: context.rAll(16), child: const ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
+              child: const ListSkeleton(count: 6))
           : _content.isEmpty
               ? const Center(
                   child: Text(
@@ -61,7 +64,7 @@ class _PolicyViewScreenState extends State<PolicyViewScreen> {
                 )
               : Markdown(
                   data: _content,
-                  padding: context.rAll(16),
+                  padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
                   styleSheet: MarkdownStyleSheet(
                     p: TextStyle(fontSize: context.rsp(14), color: AppTheme.charcoalInk, height: 1.6),
                     h1: TextStyle(fontSize: context.rsp(22), fontWeight: FontWeight.bold, color: AppTheme.charcoalInk),

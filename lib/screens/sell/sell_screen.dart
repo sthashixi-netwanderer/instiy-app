@@ -29,13 +29,13 @@ class _SellScreenState extends ConsumerState<SellScreen> {
     final user = authProv.user;
 
     if (user != null) {
-      await productProv.loadUserListings(user.id);
+      await productProv.loadUserListings(user.id, silent: productProv.userListings.isNotEmpty);
       if (mounted && productProv.userListings.isNotEmpty) {
         // User already has listings — check business profile first
         final profile = await BusinessProfileService.getProfile(user.id);
         if (!mounted) return;
         if (profile != null) {
-          Navigator.of(context).pushReplacementNamed('/create-listing');
+          Navigator.of(context).pushReplacementNamed('/create-listing'); // ignore: unawaited_futures
           return;
         }
         // No business profile — show dialog
@@ -60,7 +60,7 @@ class _SellScreenState extends ConsumerState<SellScreen> {
       return;
     }
 
-    Navigator.of(context).pushNamed('/create-listing');
+    Navigator.of(context).pushNamed('/create-listing'); // ignore: unawaited_futures
   }
 
   void _showBusinessProfileRequiredDialog() {
@@ -127,9 +127,10 @@ class _SellScreenState extends ConsumerState<SellScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Start Selling')),
       body: ListView(
-        padding: context.rAll(24),
+        padding: EdgeInsets.fromLTRB(context.rw(24), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(24), context.rw(24), context.rh(24)),
         children: [
           Container(
             padding: context.rAll(24),

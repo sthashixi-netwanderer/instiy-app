@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_button.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
+class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  ConsumerState<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -61,14 +63,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context,
         title: const Text('Reset Password'),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: context.rAll(24),
-          child: _emailSent ? _buildSuccessView() : _buildFormView(),
-        ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(context.rw(24), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(24), context.rw(24), context.rh(24)),
+        child: _emailSent ? _buildSuccessView() : _buildFormView(),
       ),
     );
   }
@@ -129,19 +130,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             },
           ),
           SizedBox(height: context.rh(24)),
-          SizedBox(
-            height: context.rh(50),
-            width: double.infinity,
-            child: ShadButton(
-              onPressed: (_isLoading || !_isFormValid) ? null : _handleSendResetLink,
-              child: _isLoading
-                  ? SizedBox(
-                      height: context.rh(20),
-                      width: context.rw(20),
-                      child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Send Reset Link'),
-            ),
+          AppButton(
+            onPressed: (_isLoading || !_isFormValid) ? null : _handleSendResetLink,
+            loading: _isLoading,
+            child: const Text('Send Reset Link'),
           ),
         ],
       ),
@@ -184,13 +176,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
         SizedBox(height: context.rh(32)),
-        SizedBox(
-          height: context.rh(50),
-          width: double.infinity,
-          child: ShadButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Back to Login'),
-          ),
+        AppButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Back to Login'),
         ),
         SizedBox(height: context.rh(16)),
         ShadButton.link(

@@ -1,19 +1,21 @@
-import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:http/http.dart' as http;
 
 import '../../config/app_theme.dart';
 import '../../models/business_profile_model.dart';
+import '../../models/picked_media.dart';
 import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/sms_service.dart';
-import '../../utils/maps_helper.dart';
+
 import '../../utils/responsive.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/supabase_service.dart';
@@ -33,12 +35,19 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
   final _businessNameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationUrlController = TextEditingController();
-  File? _bannerFile;
+  final _digitalAddressController = TextEditingController();
+  dynamic _bannerFile;
   String? _existingBannerUrl;
   List<StorePhoneNumber> _phoneNumbers = [];
+  bool _qrCodePublic = false;
   bool _isPreview = false;
   bool _isSaving = false;
   bool _isLoading = true;
+
+  bool _isLookingUpAddress = false;
+  String? _resolvedDetails;
+  String? _gpsApiUrl;
+  String? _gpsApiToken;
 
   @override
   void initState() {
@@ -46,7 +55,9 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
     _businessNameController.addListener(_onTextChanged);
     _descriptionController.addListener(_onTextChanged);
     _locationUrlController.addListener(_onTextChanged);
+    _digitalAddressController.addListener(_onTextChanged);
     _loadProfile();
+    _loadGPSConfig();
   }
 
   void _onTextChanged() {
@@ -54,6 +65,135 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
   }
 
   bool get _isFormValid => _businessNameController.text.trim().isNotEmpty;
+
+  Future<void> _loadGPSConfig() async {
+    try {
+      final res = await SupabaseService.table('ghanapost_config').select();
+      for (final item in res) {
+        if (item['key'] == 'api_url') {
+          _gpsApiUrl = item['value'] as String;
+        } else if (item['key'] == 'api_token') {
+          _gpsApiToken = item['value'] as String;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading GPS config: $e');
+    }
+  }
+
+  Future<void> _lookupAddress() async {
+    final address = _digitalAddressController.text.trim().toUpperCase();
+    if (address.isEmpty) {
+      ShadToaster.of(context).show(
+        const ShadToast(
+          backgroundColor: Colors.red,
+          title: Text('Please enter a digital address first.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLookingUpAddress = true;
+      _resolvedDetails = null;
+    });
+
+    try {
+      if (_gpsApiUrl == null) {
+        await _loadGPSConfig();
+      }
+
+      // Validate the API URL to prevent URL injection from a compromised DB record.
+      // Only allow https:// URLs; fall back to the known-good default if invalid.
+      const fallbackGpsUrl = 'https://mijoride.ghanapostgps.com/user/get_address';
+      final rawUrl = _gpsApiUrl ?? fallbackGpsUrl;
+      final validatedUri = Uri.tryParse(rawUrl);
+      final url = (validatedUri != null && validatedUri.scheme == 'https')
+          ? rawUrl
+          : fallbackGpsUrl;
+      // No hardcoded fallback token — if not loaded, the request will fail
+      // gracefully with a 401 rather than using a leaked credential.
+      final token = _gpsApiToken ?? '';
+
+      // Use Uri.replace to safely encode the address parameter (prevents query-string injection).
+      final uri = Uri.parse(url).replace(
+        queryParameters: {'address': address},
+      );
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data != null) {
+          final result = (data['Result'] is Map)
+              ? data['Result'] as Map<String, dynamic>
+              : (data['result'] is Map)
+                  ? data['result'] as Map<String, dynamic>
+                  : data as Map<String, dynamic>;
+
+          if (result['GPSName'] != null || result['CenterLatitude'] != null) {
+            final double? lat = result['CenterLatitude'] != null ? double.tryParse(result['CenterLatitude'].toString()) : null;
+            final double? lng = result['CenterLongitude'] != null ? double.tryParse(result['CenterLongitude'].toString()) : null;
+
+            if (lat != null && lng != null) {
+              final street = result['Street'] ?? '';
+              final region = result['Region'] ?? '';
+              final district = result['District'] ?? '';
+              final community = result['Community'] ?? '';
+
+              final breakdown = [
+                if (street.toString().isNotEmpty) 'Street: $street',
+                if (community.toString().isNotEmpty) 'Community: $community',
+                if (district.toString().isNotEmpty) 'District: $district',
+                if (region.toString().isNotEmpty) 'Region: $region',
+              ].join(', ');
+
+              setState(() {
+                _locationUrlController.text = 'https://maps.google.com/maps?q=$lat,$lng&t=&z=15&ie=UTF8&iwloc=&output=embed';
+                _resolvedDetails = breakdown.isNotEmpty ? breakdown : 'Coordinates resolved: ($lat, $lng)';
+              });
+
+              if (!mounted) return;
+              ShadToaster.of(context).show(
+                const ShadToast(title: Text('Digital address resolved successfully!')),
+              );
+            } else {
+              throw Exception('CenterLatitude or CenterLongitude missing from response.');
+            }
+          } else {
+            throw Exception(data['Message'] ?? data['message'] ?? 'Could not resolve digital address.');
+          }
+        } else {
+          throw Exception('Empty response body.');
+        }
+      } else {
+        throw Exception('API responded with status code ${response.statusCode}');
+      }
+    } catch (e) {
+      // Log the full error internally; show a generic message to the user to
+      // avoid leaking internal API error details or stack traces.
+      debugPrint('Error looking up address: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(
+            backgroundColor: AppTheme.destructive,
+            title: Text('Could not resolve the digital address. Please check it and try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLookingUpAddress = false;
+        });
+      }
+    }
+  }
 
   Future<void> _loadProfile() async {
     final user = ref.read(authProvider).user;
@@ -68,8 +208,10 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
       _businessNameController.text = profile.businessName ?? user.fullName;
       _descriptionController.text = profile.description ?? '';
       _locationUrlController.text = profile.locationUrl ?? '';
+      _digitalAddressController.text = profile.digitalAddress ?? '';
       _existingBannerUrl = profile.bannerUrl;
       _phoneNumbers = List.from(profile.phoneNumbers);
+      _qrCodePublic = profile.qrCodePublic;
     } else {
       _businessNameController.text = user.fullName;
       // Add registration phone if available
@@ -90,6 +232,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
     _businessNameController.dispose();
     _descriptionController.dispose();
     _locationUrlController.dispose();
+    _digitalAddressController.dispose();
     super.dispose();
   }
 
@@ -450,6 +593,10 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
         locationUrl: _locationUrlController.text.trim().isEmpty
             ? null
             : _locationUrlController.text.trim(),
+        digitalAddress: _digitalAddressController.text.trim().isEmpty
+            ? null
+            : _digitalAddressController.text.trim(),
+        qrCodePublic: _qrCodePublic,
         phoneNumbers: _phoneNumbers,
       );
 
@@ -476,19 +623,22 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
+      final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight;
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Business Profile')),
-        body: const Padding(
-          padding: EdgeInsets.all(16),
-          child: ListSkeleton(count: 6),
+        body: Padding(
+          padding: EdgeInsets.only(top: topPad + 16, left: 16, right: 16, bottom: 16),
+          child: const ListSkeleton(count: 6),
         ),
       );
     }
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, 
         title: const Text('Business Profile'),
         actions: [
@@ -509,7 +659,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
         ],
       ),
       body: ListView(
-        padding: context.rAll(16),
+        padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
         children: [
           // Banner picker
           _buildBannerSection(),
@@ -541,6 +691,10 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
 
           // Location
           _buildLocationSection(),
+          SizedBox(height: context.rh(24)),
+
+          // QR Code Visibility
+          _buildQrCodeSection(),
           SizedBox(height: context.rh(80)),
         ],
       ),
@@ -563,7 +717,9 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
             ? Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.file(_bannerFile!, fit: BoxFit.cover),
+                  _bannerFile is PickedMedia
+                      ? Image.memory((_bannerFile as PickedMedia).bytes, fit: BoxFit.cover)
+                      : const SizedBox.shrink(),
                   _buildBannerOverlay(),
                 ],
               )
@@ -907,7 +1063,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
             Icon(LucideIcons.mapPin, size: 16, color: AppTheme.accent),
             SizedBox(width: 6),
             Text(
-              'Store Location',
+              'Store Location (Digital Address)',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -918,24 +1074,71 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
         ),
         const SizedBox(height: 8),
         const Text(
-          'Paste a Google Maps link so buyers can find your store',
+          'Enter your Ghana Post GPS Digital Address (e.g., GA-123-4567) to automatically resolve your store coordinates.',
           style: TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
         ),
         const SizedBox(height: 12),
-        ShadInput(
-          controller: _locationUrlController,
-          placeholder: const Text('https://maps.app.goo.gl/...'),
-          leading: const Icon(LucideIcons.link, size: 16),
-          trailing: _locationUrlController.text.isNotEmpty
-              ? GestureDetector(
-                  onTap: () {
-                    setState(() => _locationUrlController.clear());
-                  },
-                  child: const Icon(LucideIcons.x, size: 16, color: AppTheme.mutedSteel),
-                )
-              : null,
-          onChanged: (_) => setState(() {}),
+        Row(
+          children: [
+            Expanded(
+              child: ShadInput(
+                controller: _digitalAddressController,
+                placeholder: const Text('e.g. GA-123-4567'),
+                leading: const Icon(LucideIcons.map, size: 16),
+                trailing: _digitalAddressController.text.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _digitalAddressController.clear();
+                            _locationUrlController.clear();
+                            _resolvedDetails = null;
+                          });
+                        },
+                        child: const Icon(LucideIcons.x, size: 16, color: AppTheme.mutedSteel),
+                      )
+                    : null,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 40,
+              child: ShadButton(
+                onPressed: _isLookingUpAddress ? null : _lookupAddress,
+                child: _isLookingUpAddress
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Resolve'),
+              ),
+            ),
+          ],
         ),
+        if (_resolvedDetails != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.successMoss.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.successMoss.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.checkCircle2, color: AppTheme.successMoss, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _resolvedDetails!,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.charcoalInk),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         if (_locationUrlController.text.isNotEmpty) ...[
           Row(
@@ -943,18 +1146,17 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
               Expanded(
                 child: ShadButton.outline(
                   onPressed: _previewLocation,
-                  leading: const Icon(LucideIcons.map, size: 16),
-                  child: const Text('Preview on Map'),
+                  leading: const Icon(LucideIcons.eye, size: 16),
+                  child: const Text('Preview Store Map Location'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          if (!MapsHelper.isGoogleMapsUrl(_locationUrlController.text))
-            const Text(
-              'Please enter a valid Google Maps URL',
-              style: TextStyle(fontSize: 12, color: AppTheme.destructive),
-            ),
+          const Text(
+            'Preview the resolved Google Maps location above before saving.',
+            style: TextStyle(fontSize: 11, color: AppTheme.mutedSteel),
+          ),
         ],
       ],
     );
@@ -962,10 +1164,62 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
 
   void _previewLocation() async {
     final url = _locationUrlController.text.trim();
-    if (url.isEmpty || !MapsHelper.isGoogleMapsUrl(url)) return;
+    if (url.isEmpty) return;
+
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await launchUrl(uri, mode: LaunchMode.inAppWebView);
     }
+  }
+
+  // ── QR Code Section ────────────────────────────────────────────────
+
+  Widget _buildQrCodeSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.whisperBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(LucideIcons.qrCode, size: 18, color: AppTheme.accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Public Store QR Code',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Allow visitors to view and download your store QR code',
+                  style: TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _qrCodePublic,
+            onChanged: (value) => setState(() => _qrCodePublic = value),
+            activeThumbColor: AppTheme.accent,
+          ),
+        ],
+      ),
+    );
   }
 }

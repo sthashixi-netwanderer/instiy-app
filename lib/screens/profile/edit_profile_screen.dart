@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -13,6 +13,7 @@ import '../../services/sms_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/image_picker_sheet.dart';
+import '../../models/picked_media.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
 
@@ -35,7 +36,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   String? _verifiedPhoneNumber;
   bool _isPhoneVerified = true;
   bool _isSendingOtp = false;
-  File? _avatarFile;
+  dynamic _avatarFile;
   bool _isSaving = false;
 
   @override
@@ -80,11 +81,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _pickAvatar() async {
-    final file = await ImagePickerSheet.pickSingle(context);
-    if (file == null || !mounted) return;
+    final picked = await ImagePickerSheet.pickSingle(context);
+    if (picked == null || !mounted) return;
 
+    // On web, skip cropping — use the picked image as-is.
+    if (kIsWeb) {
+      setState(() { _avatarFile = picked; });
+      return;
+    }
+
+    // Mobile: crop the image.
+    if (picked.path == null) return;
     final cropped = await ImageCropper().cropImage(
-      sourcePath: file.path,
+      sourcePath: picked.path!,
       aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
       uiSettings: [
         AndroidUiSettings(
@@ -105,8 +114,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
 
     if (cropped != null && mounted) {
+      final bytes = await cropped.readAsBytes();
       setState(() {
-        _avatarFile = File(cropped.path);
+        _avatarFile = bytes;
       });
     }
   }
@@ -453,12 +463,21 @@ AppTheme.showGlassDialog(
                                 ),
                                 clipBehavior: Clip.antiAlias,
                                 child: _avatarFile != null
-                                    ? Image.file(
-                                        _avatarFile!,
-                                        fit: BoxFit.cover,
-                                        width: context.rw(100),
-                                        height: context.rh(100),
-                                      )
+                                    ? (_avatarFile is PickedMedia
+                                        ? Image.memory(
+                                            (_avatarFile as PickedMedia).bytes,
+                                            fit: BoxFit.cover,
+                                            width: context.rw(100),
+                                            height: context.rh(100),
+                                          )
+                                        : _avatarFile is List<int>
+                                            ? Image.memory(
+                                                _avatarFile as dynamic,
+                                                fit: BoxFit.cover,
+                                                width: context.rw(100),
+                                                height: context.rh(100),
+                                              )
+                                            : const SizedBox.shrink())
                                     : (user?.avatarUrl?.isNotEmpty == true
                                         ? CachedNetworkImage(
                                             imageUrl: user!.avatarUrl!,

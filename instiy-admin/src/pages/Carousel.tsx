@@ -2,10 +2,13 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { uploadToR2 } from '../r2Client';
 import {
-  Plus, Edit2, Trash2, Loader, X, Upload,
+  Plus, Edit2, Trash2, Loader, Upload,
   Eye, EyeOff, Search, Check, Image, Film, FileImage,
   Type, Link, ExternalLink, Package, Folder
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle } from '../components/dialog';
+import { useAlert, useConfirm } from '../components/use-alert';
+import { formatGhs } from "../utils/format";
 
 interface CarouselSlide {
   id: string;
@@ -41,6 +44,9 @@ interface Category {
 }
 
 export const Carousel: React.FC = () => {
+  const { showAlert, AlertComponent } = useAlert();
+  const { showConfirm, ConfirmComponent } = useConfirm();
+
   const [slides, setSlides] = useState<CarouselSlide[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -169,7 +175,7 @@ export const Carousel: React.FC = () => {
       if (file.type.startsWith('video/')) setMediaType('video');
       else if (file.type === 'image/gif') setMediaType('gif');
       else setMediaType('image');
-    } catch (err: any) { alert('Error: ' + err.message); }
+    } catch (err: any) { showAlert('Error', err.message, 'error'); }
     finally { setUploadingMedia(false); }
   };
 
@@ -178,7 +184,7 @@ export const Carousel: React.FC = () => {
     if (!file) return;
     setUploadingThumbnail(true);
     try { setThumbnailUrl(await uploadToR2(file, 'carousel/thumbnails')); }
-    catch (err: any) { alert('Error: ' + err.message); }
+    catch (err: any) { showAlert('Error', err.message, 'error'); }
     finally { setUploadingThumbnail(false); }
   };
 
@@ -220,7 +226,7 @@ export const Carousel: React.FC = () => {
     if (multiUploadRef.current) multiUploadRef.current.value = '';
 
     if (errors.length > 0) {
-      alert(`Uploaded ${files.length - errors.length}/${files.length} files.\n\nFailed:\n${errors.join('\n')}`);
+      showAlert('Upload Complete', `Uploaded ${files.length - errors.length}/${files.length} files.\n\nFailed:\n${errors.join('\n')}`, 'error');
     }
     fetchSlides();
   };
@@ -252,17 +258,18 @@ export const Carousel: React.FC = () => {
       setShowModal(false);
       resetForm();
       fetchSlides();
-    } catch (err: any) { alert('Error: ' + err.message); }
+    } catch (err: any) { showAlert('Error', err.message, 'error'); }
     finally { setSubmitting(false); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this carousel slide?')) return;
-    try {
-      const { error } = await supabase.from('carousel_slides').delete().eq('id', id);
-      if (error) throw error;
-      fetchSlides();
-    } catch (err: any) { alert('Error: ' + err.message); }
+    showConfirm('Confirm', 'Delete this carousel slide?', async () => {
+      try {
+        const { error } = await supabase.from('carousel_slides').delete().eq('id', id);
+        if (error) throw error;
+        fetchSlides();
+      } catch (err: any) { showAlert('Error', err.message, 'error'); }
+    }, { confirmLabel: 'Delete', variant: 'danger' });
   };
 
   const toggleVisibility = async (slide: CarouselSlide) => {
@@ -270,7 +277,7 @@ export const Carousel: React.FC = () => {
       const { error } = await supabase.from('carousel_slides').update({ is_visible: !slide.is_visible }).eq('id', slide.id);
       if (error) throw error;
       fetchSlides();
-    } catch (err: any) { alert('Error: ' + err.message); }
+    } catch (err: any) { showAlert('Error', err.message, 'error'); }
   };
 
   const moveSlide = async (index: number, direction: 'up' | 'down') => {
@@ -284,7 +291,7 @@ export const Carousel: React.FC = () => {
       await supabase.from('carousel_slides').update({ sort_order: updated[index].sort_order }).eq('id', updated[index].id);
       await supabase.from('carousel_slides').update({ sort_order: updated[newIndex].sort_order }).eq('id', updated[newIndex].id);
       fetchSlides();
-    } catch (err: any) { alert('Error: ' + err.message); }
+    } catch (err: any) { showAlert('Error', err.message, 'error'); }
   };
 
   const selectProduct = (product: Product) => {
@@ -425,257 +432,251 @@ export const Carousel: React.FC = () => {
       )}
 
       {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '640px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.625rem', flexShrink: 0 }}>
-              <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: 'var(--font-title)' }}>
-                <Image size={18} style={{ color: 'hsl(var(--accent))' }} />
-                {editingSlide ? 'Edit Slide' : 'New Slide'}
-              </h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-tertiary))', padding: '4px' }}
-                onClick={() => { setShowModal(false); resetForm(); }}><X size={18} /></button>
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent style={{ maxWidth: '640px' }}>
+          <DialogHeader>
+            <DialogTitle>
+              <Image size={18} style={{ color: 'hsl(var(--accent))', verticalAlign: 'middle', marginRight: '0.5rem' }} />
+              {editingSlide ? 'Edit Slide' : 'New Slide'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {/* Media upload */}
+            <div className="form-group">
+              <label className="form-label">Media *</label>
+              <input type="file" accept="image/*,video/*,.gif" style={{ display: 'none' }} ref={mediaInputRef} onChange={handleMediaUpload} />
+              {mediaUrl ? (
+                <div style={{ position: 'relative', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid hsl(var(--border))' }}>
+                  {mediaType === 'video' ? (
+                    <video src={mediaUrl} style={{ width: '100%', height: '200px', objectFit: 'cover' }} controls muted />
+                  ) : (
+                    <img src={mediaUrl} alt="Preview" style={{ width: '100%', height: '200px', objectFit: 'cover' }} />
+                  )}
+                  <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '4px' }}>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => mediaInputRef.current?.click()}>Replace</button>
+                    <button type="button" className="btn btn-danger btn-sm" onClick={() => { setMediaUrl(''); setMediaType('image'); }}>Remove</button>
+                  </div>
+                  <div style={{ position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px' }}>
+                    {(['image', 'video', 'gif'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setMediaType(t)}
+                        style={{
+                          padding: '3px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                          fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase',
+                          background: mediaType === t ? 'hsl(var(--accent))' : 'rgba(0,0,0,0.5)',
+                          color: 'white',
+                        }}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '2rem' }}
+                  onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia}>
+                  {uploadingMedia ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Image, Video, or GIF</>}
+                </button>
+              )}
+              <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))', marginTop: '0.375rem' }}>
+                Videos are muted by default. Max video length: 10 seconds.
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              {/* Media upload */}
+            {/* Thumbnail (for videos) */}
+            {mediaType === 'video' && (
               <div className="form-group">
-                <label className="form-label">Media *</label>
-                <input type="file" accept="image/*,video/*,.gif" style={{ display: 'none' }} ref={mediaInputRef} onChange={handleMediaUpload} />
-                {mediaUrl ? (
-                  <div style={{ position: 'relative', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid hsl(var(--border))' }}>
-                    {mediaType === 'video' ? (
-                      <video src={mediaUrl} style={{ width: '100%', height: '200px', objectFit: 'cover' }} controls muted />
-                    ) : (
-                      <img src={mediaUrl} alt="Preview" style={{ width: '100%', height: '200px', objectFit: 'cover' }} />
-                    )}
-                    <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '4px' }}>
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => mediaInputRef.current?.click()}>Replace</button>
-                      <button type="button" className="btn btn-danger btn-sm" onClick={() => { setMediaUrl(''); setMediaType('image'); }}>Remove</button>
-                    </div>
-                    <div style={{ position: 'absolute', bottom: '8px', left: '8px', display: 'flex', gap: '6px' }}>
-                      {(['image', 'video', 'gif'] as const).map(t => (
-                        <button key={t} type="button" onClick={() => setMediaType(t)}
-                          style={{
-                            padding: '3px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                            fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase',
-                            background: mediaType === t ? 'hsl(var(--accent))' : 'rgba(0,0,0,0.5)',
-                            color: 'white',
-                          }}>
-                          {t}
-                        </button>
-                      ))}
-                    </div>
+                <label className="form-label">Video Thumbnail (optional)</label>
+                <input type="file" accept="image/*" style={{ display: 'none' }} ref={thumbnailInputRef} onChange={handleThumbnailUpload} />
+                {thumbnailUrl ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'hsl(var(--bg-surface))', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
+                    <img src={thumbnailUrl} alt="" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
+                    <button type="button" className="btn btn-danger btn-sm" onClick={() => setThumbnailUrl('')}>Remove</button>
                   </div>
                 ) : (
-                  <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '2rem' }}
-                    onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia}>
-                    {uploadingMedia ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Image, Video, or GIF</>}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => thumbnailInputRef.current?.click()} disabled={uploadingThumbnail}>
+                    {uploadingThumbnail ? <><Loader size={12} className="spin" /> Uploading...</> : <><Upload size={12} /> Upload Thumbnail</>}
                   </button>
                 )}
-                <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))', marginTop: '0.375rem' }}>
-                  Videos are muted by default. Max video length: 10 seconds.
+              </div>
+            )}
+
+            {/* Text overlay */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
+              <div className="form-group">
+                <label className="form-label"><Type size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Title Overlay</label>
+                <input type="text" className="form-control" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Summer Sale" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Subtitle Overlay</label>
+                <input type="text" className="form-control" value={subtitle} onChange={e => setSubtitle(e.target.value)} placeholder="e.g., Up to 50% off" />
+              </div>
+            </div>
+
+            {/* Button config */}
+            <div style={{ background: 'hsl(var(--bg-surface))', borderRadius: 'var(--radius-md)', padding: '1rem', border: '1px solid hsl(var(--border))', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.875rem', fontWeight: 600, fontSize: '0.9rem' }}>
+                <Link size={14} style={{ color: 'hsl(var(--accent))' }} />
+                Call-to-Action Button
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Button Text</label>
+                  <input type="text" className="form-control" value={buttonText} onChange={e => setButtonText(e.target.value)} placeholder="e.g., Shop Now" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Link Type</label>
+                  <select className="form-control" value={buttonLinkType} onChange={e => { setButtonLinkType(e.target.value as any); setButtonLinkValue(''); }}>
+                    <option value="">No button</option>
+                    <option value="product">Product</option>
+                    <option value="category">Category</option>
+                    <option value="url">External URL</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Thumbnail (for videos) */}
-              {mediaType === 'video' && (
+              {buttonLinkType === 'url' && (
                 <div className="form-group">
-                  <label className="form-label">Video Thumbnail (optional)</label>
-                  <input type="file" accept="image/*" style={{ display: 'none' }} ref={thumbnailInputRef} onChange={handleThumbnailUpload} />
-                  {thumbnailUrl ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'hsl(var(--bg-surface))', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
-                      <img src={thumbnailUrl} alt="" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
-                      <button type="button" className="btn btn-danger btn-sm" onClick={() => setThumbnailUrl('')}>Remove</button>
+                  <label className="form-label"><ExternalLink size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> URL</label>
+                  <input type="url" className="form-control" value={buttonLinkValue} onChange={e => setButtonLinkValue(e.target.value)} placeholder="https://..." />
+                </div>
+              )}
+
+              {(buttonLinkType === 'product' || buttonLinkType === 'category') && (
+                <div className="form-group">
+                  <label className="form-label">
+                    {buttonLinkType === 'product' ? <Package size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> : <Folder size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
+                    Linked {buttonLinkType === 'product' ? 'Product' : 'Category'}
+                  </label>
+                  {buttonLinkValue ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'hsl(var(--bg-card))', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
+                      <Check size={14} style={{ color: 'hsl(var(--success))' }} />
+                      <span style={{ flex: 1, fontSize: '0.8rem', fontWeight: 500 }}>
+                        {buttonLinkType === 'product'
+                          ? (slides.find(s => s.button_link_value === buttonLinkValue)?.linked_product_title || `ID: ${buttonLinkValue.slice(0, 8)}...`)
+                          : (slides.find(s => s.button_link_value === buttonLinkValue)?.linked_category_name || `ID: ${buttonLinkValue.slice(0, 8)}...`)}
+                      </span>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setButtonLinkValue(''); openPicker(); }}>Change</button>
+                      <button type="button" className="btn btn-danger btn-sm" onClick={() => setButtonLinkValue('')}>Clear</button>
                     </div>
                   ) : (
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => thumbnailInputRef.current?.click()} disabled={uploadingThumbnail}>
-                      {uploadingThumbnail ? <><Loader size={12} className="spin" /> Uploading...</> : <><Upload size={12} /> Upload Thumbnail</>}
+                    <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed' }} onClick={openPicker}>
+                      <Search size={14} /> Select {buttonLinkType === 'product' ? 'Product' : 'Category'}
                     </button>
                   )}
                 </div>
               )}
+            </div>
 
-              {/* Text overlay */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div className="form-group">
-                  <label className="form-label"><Type size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> Title Overlay</label>
-                  <input type="text" className="form-control" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Summer Sale" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Subtitle Overlay</label>
-                  <input type="text" className="form-control" value={subtitle} onChange={e => setSubtitle(e.target.value)} placeholder="e.g., Up to 50% off" />
-                </div>
+            {/* Settings */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
+              <div className="form-group">
+                <label className="form-label">Sort Order</label>
+                <input type="number" className="form-control" min={0} value={sortOrder} onChange={e => setSortOrder(parseInt(e.target.value) || 0)} />
               </div>
-
-              {/* Button config */}
-              <div style={{ background: 'hsl(var(--bg-surface))', borderRadius: 'var(--radius-md)', padding: '1rem', border: '1px solid hsl(var(--border))', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.875rem', fontWeight: 600, fontSize: '0.9rem' }}>
-                  <Link size={14} style={{ color: 'hsl(var(--accent))' }} />
-                  Call-to-Action Button
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                  <div className="form-group">
-                    <label className="form-label">Button Text</label>
-                    <input type="text" className="form-control" value={buttonText} onChange={e => setButtonText(e.target.value)} placeholder="e.g., Shop Now" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Link Type</label>
-                    <select className="form-control" value={buttonLinkType} onChange={e => { setButtonLinkType(e.target.value as any); setButtonLinkValue(''); }}>
-                      <option value="">No button</option>
-                      <option value="product">Product</option>
-                      <option value="category">Category</option>
-                      <option value="url">External URL</option>
-                    </select>
-                  </div>
-                </div>
-
-                {buttonLinkType === 'url' && (
-                  <div className="form-group">
-                    <label className="form-label"><ExternalLink size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> URL</label>
-                    <input type="url" className="form-control" value={buttonLinkValue} onChange={e => setButtonLinkValue(e.target.value)} placeholder="https://..." />
-                  </div>
-                )}
-
-                {(buttonLinkType === 'product' || buttonLinkType === 'category') && (
-                  <div className="form-group">
-                    <label className="form-label">
-                      {buttonLinkType === 'product' ? <Package size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> : <Folder size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
-                      Linked {buttonLinkType === 'product' ? 'Product' : 'Category'}
-                    </label>
-                    {buttonLinkValue ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'hsl(var(--bg-card))', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
-                        <Check size={14} style={{ color: 'hsl(var(--success))' }} />
-                        <span style={{ flex: 1, fontSize: '0.8rem', fontWeight: 500 }}>
-                          {buttonLinkType === 'product'
-                            ? (slides.find(s => s.button_link_value === buttonLinkValue)?.linked_product_title || `ID: ${buttonLinkValue.slice(0, 8)}...`)
-                            : (slides.find(s => s.button_link_value === buttonLinkValue)?.linked_category_name || `ID: ${buttonLinkValue.slice(0, 8)}...`)}
-                        </span>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setButtonLinkValue(''); openPicker(); }}>Change</button>
-                        <button type="button" className="btn btn-danger btn-sm" onClick={() => setButtonLinkValue('')}>Clear</button>
-                      </div>
-                    ) : (
-                      <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed' }} onClick={openPicker}>
-                        <Search size={14} /> Select {buttonLinkType === 'product' ? 'Product' : 'Category'}
-                      </button>
-                    )}
-                  </div>
-                )}
+              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={isVisible} onChange={e => setIsVisible(e.target.checked)} style={{ accentColor: 'hsl(var(--accent))' }} />
+                  Visible on home
+                </label>
               </div>
+            </div>
 
-              {/* Settings */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Sort Order</label>
-                  <input type="number" className="form-control" min={0} value={sortOrder} onChange={e => setSortOrder(parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-                    <input type="checkbox" checked={isVisible} onChange={e => setIsVisible(e.target.checked)} style={{ accentColor: 'hsl(var(--accent))' }} />
-                    Visible on home
-                  </label>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid hsl(var(--border))', flexShrink: 0 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); resetForm(); }} disabled={submitting}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting || !mediaUrl}>{submitting ? 'Saving...' : (editingSlide ? 'Update' : 'Create')}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter>
+              <button type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); resetForm(); }} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={submitting || !mediaUrl}>{submitting ? 'Saving...' : (editingSlide ? 'Update' : 'Create')}</button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Product/Category Picker Modal */}
-      {showPicker && (
-        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column', maxHeight: '80vh', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem 0.75rem', borderBottom: '1px solid hsl(var(--border))', flexShrink: 0 }}>
-              <h2 style={{ fontSize: '1.1rem', fontFamily: 'var(--font-title)' }}>
-                Select {buttonLinkType === 'product' ? 'Product' : 'Category'}
-              </h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-tertiary))', padding: '4px' }}
-                onClick={() => setShowPicker(false)}><X size={18} /></button>
-            </div>
+      <Dialog open={showPicker} onOpenChange={setShowPicker}>
+        <DialogContent style={{ maxWidth: '560px', padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+          <DialogHeader style={{ padding: '1.25rem 1.5rem 0.75rem' }}>
+            <DialogTitle>
+              Select {buttonLinkType === 'product' ? 'Product' : 'Category'}
+            </DialogTitle>
+          </DialogHeader>
 
-            <div style={{ padding: '0.75rem 1.5rem', flexShrink: 0 }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--text-tertiary))' }} />
-                <input type="text" className="form-control" value={pickerSearch}
-                  onChange={e => {
-                    setPickerSearch(e.target.value);
-                    if (buttonLinkType === 'product') fetchProducts(e.target.value);
-                  }}
-                  placeholder={`Search ${buttonLinkType === 'product' ? 'products' : 'categories'}...`} style={{ paddingLeft: '2rem' }} />
+          <div style={{ padding: '0.75rem 1.5rem', flexShrink: 0 }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--text-tertiary))' }} />
+              <input type="text" className="form-control" value={pickerSearch}
+                onChange={e => {
+                  setPickerSearch(e.target.value);
+                  if (buttonLinkType === 'product') fetchProducts(e.target.value);
+                }}
+                placeholder={`Search ${buttonLinkType === 'product' ? 'products' : 'categories'}...`} style={{ paddingLeft: '2rem' }} />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem', minHeight: 0 }}>
+            {loadingPicker ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                <Loader className="spin" size={24} style={{ color: 'hsl(var(--accent))' }} />
               </div>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem', minHeight: 0 }}>
-              {loadingPicker ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-                  <Loader className="spin" size={24} style={{ color: 'hsl(var(--accent))' }} />
-                </div>
-              ) : buttonLinkType === 'product' ? (
-                <div style={{ display: 'grid', gap: '0.375rem' }}>
-                  {products.map(product => {
-                    const thumb = product.thumbnail_url || (product.image_urls?.[0]);
-                    return (
-                      <button key={product.id} type="button" onClick={() => selectProduct(product)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
-                          background: 'hsl(var(--bg-surface))', border: '1.5px solid hsl(var(--border))',
-                          borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
-                        }}>
-                        {thumb ? (
-                          <img src={thumb} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'hsl(var(--bg-card))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <Package size={14} style={{ color: 'hsl(var(--text-tertiary))' }} />
-                          </div>
-                        )}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.title}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>GH&#8373;{product.price.toFixed(2)}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {products.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '2rem', color: 'hsl(var(--text-tertiary))', fontSize: '0.85rem' }}>No products found</div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  {categories.map(category => (
-                    <button key={category.id} type="button" onClick={() => selectCategory(category)}
+            ) : buttonLinkType === 'product' ? (
+              <div style={{ display: 'grid', gap: '0.375rem' }}>
+                {products.map(product => {
+                  const thumb = product.thumbnail_url || (product.image_urls?.[0]);
+                  return (
+                    <button key={product.id} type="button" onClick={() => selectProduct(product)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
                         background: 'hsl(var(--bg-surface))', border: '1.5px solid hsl(var(--border))',
                         borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
                       }}>
-                      {category.image_url ? (
-                        <img src={category.image_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
+                      {thumb ? (
+                        <img src={thumb} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
                       ) : (
-                        <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'hsl(var(--accent-dim))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Folder size={14} style={{ color: 'hsl(var(--accent))' }} />
+                        <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'hsl(var(--bg-card))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Package size={14} style={{ color: 'hsl(var(--text-tertiary))' }} />
                         </div>
                       )}
-                      <div style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category.name}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.title}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>{formatGhs(product.price)}</div>
+                      </div>
                     </button>
-                  ))}
-                  {categories.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '2rem', color: 'hsl(var(--text-tertiary))', fontSize: '0.85rem', gridColumn: '1 / -1' }}>No categories found</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div style={{ padding: '0.75rem 1.5rem 1.25rem', borderTop: '1px solid hsl(var(--border))', flexShrink: 0 }}>
-              <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowPicker(false)}>Cancel</button>
-            </div>
+                  );
+                })}
+                {products.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'hsl(var(--text-tertiary))', fontSize: '0.85rem' }}>No products found</div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                {categories.map(category => (
+                  <button key={category.id} type="button" onClick={() => selectCategory(category)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
+                      background: 'hsl(var(--bg-surface))', border: '1.5px solid hsl(var(--border))',
+                      borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
+                    }}>
+                    {category.image_url ? (
+                      <img src={category.image_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'hsl(var(--accent-dim))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Folder size={14} style={{ color: 'hsl(var(--accent))' }} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category.name}</div>
+                  </button>
+                ))}
+                {categories.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'hsl(var(--text-tertiary))', fontSize: '0.85rem', gridColumn: '1 / -1' }}>No categories found</div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+
+          <DialogFooter style={{ padding: '0.75rem 1.5rem 1.25rem' }}>
+            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowPicker(false)}>Cancel</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {AlertComponent}
+      {ConfirmComponent}
     </div>
   );
 };

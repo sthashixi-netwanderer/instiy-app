@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../widgets/skeleton.dart';
+import 'package:instiy/utils/formatters.dart';
 
 class SellerAnalyticsScreen extends ConsumerStatefulWidget {
   const SellerAnalyticsScreen({super.key});
@@ -33,11 +34,25 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Analytics')),
       body: sellerProv.isLoading && analytics == null
-          ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                16,
+                16,
+              ),
+              child: const ListSkeleton(count: 6),
+            )
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                16,
+                16,
+              ),
               children: [
                 const Text(
                   'Performance Overview',
@@ -112,7 +127,7 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
                   const SizedBox(height: 16),
                   _buildAnalyticsCard(
                     'Average Rating',
-                    stats.averageRating > 0 ? stats.averageRating.toStringAsFixed(1) : 'No ratings',
+                    stats.averageRating > 0 ? formatCurrency(stats.averageRating) : 'No ratings',
                     LucideIcons.star,
                     AppTheme.warningAmber,
                     '${stats.newReviews} new reviews in last 7 days',

@@ -5,9 +5,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../models/product_model.dart';
+import '../../models/draft_listing_model.dart';
+import '../../services/draft_service.dart';
 import '../../services/business_profile_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/app_button.dart';
+import 'package:instiy/utils/formatters.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -17,6 +21,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  String _searchQuery = '';
+  String _filter = 'all';
 
   @override
   void initState() {
@@ -25,7 +31,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final auth = ref.read(authProvider);
       if (auth.user != null) {
         ref.read(productProvider).loadUserListings(auth.user!.id);
+        ref.read(sellerProvider).loadDashboardStats(auth.user!.id);
       }
+      ref.read(productProvider).loadPublishingDraft();
     });
   }
 
@@ -41,7 +49,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    Navigator.of(context).pushNamed('/create-listing');
+    Navigator.of(context).pushNamed('/create-listing'); // ignore: unawaited_futures
   }
 
   void _showBusinessProfileRequiredDialog() {
@@ -83,16 +91,186 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Widget _buildPublishStatusCard(DraftListing draft, double progress) {
+    final isPublishing = draft.status == DraftStatus.publishing;
+    
+    if (isPublishing) {
+      return Container(
+        margin: EdgeInsets.only(bottom: context.rh(16)),
+        padding: context.rAll(16),
+        decoration: BoxDecoration(
+          color: AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rr(16)),
+          border: Border.all(color: AppTheme.whisperBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.charcoalInk),
+                  ),
+                ),
+                SizedBox(width: context.rw(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Publishing "${draft.title}"...',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: AppTheme.charcoalInk,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Please keep the app open - ${(progress * 100).toInt()}% completed',
+                        style: const TextStyle(
+                          color: AppTheme.mutedSteel,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: context.rh(12)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: AppTheme.whisperBorder,
+                valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.charcoalInk),
+                minHeight: 6,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (draft.status == DraftStatus.failed) {
+      return Container(
+        margin: EdgeInsets.only(bottom: context.rh(16)),
+        padding: context.rAll(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF5F5),
+          borderRadius: BorderRadius.circular(context.rr(16)),
+          border: Border.all(color: const Color(0xFFFEB2B2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  LucideIcons.alertTriangle,
+                  color: Color(0xFFC53030),
+                  size: 20,
+                ),
+                SizedBox(width: context.rw(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Failed to publish "${draft.title}"',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Color(0xFF9B2C2C),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        draft.errorMessage ?? 'An unknown error occurred during publication.',
+                        style: const TextStyle(
+                          color: Color(0xFFC53030),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: context.rh(12)),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: context.rw(8),
+              children: [
+                ShadButton.outline(
+                  size: ShadButtonSize.sm,
+                  onPressed: () async {
+                    await DraftService.clearDraft();
+                    ref.read(productProvider).updatePublishingDraft(null);
+                  },
+                  child: const Text('Dismiss'),
+                ),
+                ShadButton(
+                  size: ShadButtonSize.sm,
+                  backgroundColor: const Color(0xFFC53030),
+                  hoverBackgroundColor: const Color(0xFF9B2C2C),
+                  onPressed: () async {
+                    await Navigator.of(context).pushNamed('/create-listing');
+                    ref.read(productProvider).loadPublishingDraft(); // ignore: unawaited_futures
+                  },
+                  child: const Text('Fix & Republish', style: TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return const SizedBox.shrink();
+  }
+
 
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final prod = ref.watch(productProvider);
+    final sellerP = ref.watch(sellerProvider);
+
+    // Filter + search logic
+    var userListings = prod.userListings;
+    if (_filter == 'active') {
+      userListings = userListings.where((p) => p.status == ProductStatus.available && p.stockQuantity > 0).toList();
+    } else if (_filter == 'low_stock') {
+      userListings = userListings.where((p) => p.stockQuantity > 0 && p.stockQuantity < 5).toList();
+    } else if (_filter == 'out_of_stock') {
+      userListings = userListings.where((p) => p.stockQuantity <= 0).toList();
+    } else if (_filter == 'sold') {
+      userListings = userListings.where((p) => p.status == ProductStatus.sold).toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      userListings = userListings.where((p) => p.title.toLowerCase().contains(q)).toList();
+    }
     final user = auth.user;
 
     if (user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Listings')),
         body: Center(
           child: Column(
@@ -112,19 +290,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
 
-    final userListings = prod.userListings;
-    final activeCount = userListings.where((p) => p.status == ProductStatus.available).length;
-    final soldCount = userListings.where((p) => p.status == ProductStatus.sold).length;
+    final stats = sellerP.dashboardStats;
+    final totalCount = stats != null ? stats.totalProducts : prod.userListings.length;
+    final activeCount = stats != null ? stats.activeListings : prod.userListings.where((p) => p.status == ProductStatus.available).length;
+    final soldCount = stats != null ? stats.totalSold : prod.userListings.where((p) => p.status == ProductStatus.sold).length;
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('My Listings')),
       body: ListView(
-        padding: context.rAll(16),
+        padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
         children: [
           Row(
             children: [
-              _StatCard(label: 'Listings', value: '${userListings.length}'),
+              _StatCard(label: 'Listings', value: '$totalCount'),
               SizedBox(width: context.rw(12)),
               _StatCard(label: 'Active', value: '$activeCount'),
               SizedBox(width: context.rw(12)),
@@ -132,15 +312,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ],
           ),
           SizedBox(height: context.rh(16)),
+          AppButton(
+            onPressed: _addProduct,
+            leading: Icon(LucideIcons.plusCircle, size: context.ri(18)),
+            child: const Text('Add New Product'),
+          ),
+          SizedBox(height: context.rh(16)),
+          // Search bar
+          TextField(
+            autofocus: false,
+            style: TextStyle(fontSize: context.rsp(14)),
+            decoration: InputDecoration(
+              hintText: 'Search listings...',
+              hintStyle: TextStyle(fontSize: context.rsp(13), color: AppTheme.mutedSteel),
+              prefixIcon: Icon(LucideIcons.search, size: context.ri(18)),
+              prefixIconConstraints: BoxConstraints(minWidth: context.rw(40), minHeight: context.rh(36)),
+              contentPadding: EdgeInsets.symmetric(horizontal: context.rw(12), vertical: context.rh(8)),
+              filled: true,
+              fillColor: AppTheme.warmMist.withValues(alpha: 0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(context.rr(10)),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(context.rr(10)),
+                borderSide: BorderSide(color: AppTheme.whisperBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(context.rr(10)),
+                borderSide: BorderSide(color: AppTheme.accent.withValues(alpha: 0.3)),
+              ),
+            ),
+            onChanged: (value) => setState(() => _searchQuery = value),
+          ),
+          SizedBox(height: context.rh(8)),
+          // Filter chips
           SizedBox(
-            width: double.infinity,
-            child: ShadButton(
-              onPressed: _addProduct,
-              leading: Icon(LucideIcons.plusCircle, size: context.ri(18)),
-              child: const Text('Add New Product'),
+            height: context.rh(36),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _FilterChip(label: 'All', selected: _filter == 'all', onTap: () => setState(() => _filter = 'all')),
+                SizedBox(width: context.rw(8)),
+                _FilterChip(label: 'Active', selected: _filter == 'active', onTap: () => setState(() => _filter = 'active')),
+                SizedBox(width: context.rw(8)),
+                _FilterChip(label: 'Low Stock', selected: _filter == 'low_stock', onTap: () => setState(() => _filter = 'low_stock')),
+                SizedBox(width: context.rw(8)),
+                _FilterChip(label: 'Out of Stock', selected: _filter == 'out_of_stock', onTap: () => setState(() => _filter = 'out_of_stock')),
+                SizedBox(width: context.rw(8)),
+                _FilterChip(label: 'Sold', selected: _filter == 'sold', onTap: () => setState(() => _filter = 'sold')),
+              ],
             ),
           ),
-          SizedBox(height: context.rh(20)),
+          SizedBox(height: context.rh(12)),
+          if (prod.publishingDraft != null)
+            _buildPublishStatusCard(prod.publishingDraft!, prod.publishProgress),
           if (prod.isLoading)
             const ProductGridSkeleton()
           else if (userListings.isEmpty)
@@ -250,33 +476,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 const Spacer(),
                                 Row(
                                   children: [
-                                    Text(
-                                      'GH\u00a2 ${product.price.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: context.rsp(13),
+                                    Expanded(
+                                      child: Text(
+                                        '${formatGhs(product.effectivePrice)}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: context.rsp(13),
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 4),
                                     if (product.stockQuantity <= 0 || product.status != ProductStatus.available)
-                                      Container(
-                                        padding: EdgeInsets.symmetric(horizontal: context.rw(5), vertical: context.rh(2.5)),
-                                        decoration: BoxDecoration(
-                                          color: (product.stockQuantity <= 0 || product.status == ProductStatus.sold)
-                                              ? AppTheme.destructive.withValues(alpha: 0.1)
-                                              : AppTheme.warningAmber.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(context.rr(4)),
-                                        ),
-                                        child: Text(
-                                          (product.stockQuantity <= 0 || product.status == ProductStatus.sold)
-                                              ? 'Out of Stock'
-                                              : product.status.displayName,
-                                          style: TextStyle(
-                                            fontSize: context.rsp(8),
-                                            fontWeight: FontWeight.w600,
+                                      Flexible(
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(horizontal: context.rw(5), vertical: context.rh(2.5)),
+                                          decoration: BoxDecoration(
                                             color: (product.stockQuantity <= 0 || product.status == ProductStatus.sold)
-                                                ? AppTheme.destructive
-                                                : AppTheme.warningAmber,
+                                                ? AppTheme.destructive.withValues(alpha: 0.1)
+                                                : AppTheme.warningAmber.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(context.rr(4)),
+                                          ),
+                                          child: Text(
+                                            (product.stockQuantity <= 0 || product.status == ProductStatus.sold)
+                                                ? 'Out of Stock'
+                                                : product.status.displayName,
+                                            style: TextStyle(
+                                              fontSize: context.rsp(8),
+                                              fontWeight: FontWeight.w600,
+                                              color: (product.stockQuantity <= 0 || product.status == ProductStatus.sold)
+                                                  ? AppTheme.destructive
+                                                  : AppTheme.warningAmber,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -320,7 +551,7 @@ class _StatCard extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                fontSize: context.rsp(24),
+                fontSize: context.rsp(value.length <= 3 ? 24 : value.length <= 5 ? 18 : value.length <= 7 ? 14 : 12),
                 fontWeight: FontWeight.bold,
                 color: AppTheme.charcoalInk,
               ),
@@ -334,6 +565,43 @@ class _StatCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(8)),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.accent : AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rr(20)),
+          border: Border.all(
+            color: selected ? AppTheme.accent : AppTheme.whisperBorder,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: context.rsp(13),
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppTheme.charcoalInk,
+          ),
         ),
       ),
     );

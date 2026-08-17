@@ -1,4 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../config/app_config.dart';
 
 class SupabaseService {
@@ -27,5 +29,50 @@ class SupabaseService {
         detectSessionInUri: true,
       ),
     );
+  }
+
+  /// Call a Cloudflare Worker function via api.instiy.com
+  static Future<Map<String, dynamic>> callFunction(
+    String functionName, {
+    Map<String, dynamic>? body,
+  }) async {
+    final session = client.auth.currentSession;
+    final token = session?.accessToken ?? AppConfig.supabaseAnonKey;
+
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/functions/v1/$functionName');
+    final response = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+        'apikey': AppConfig.supabaseAnonKey,
+      },
+      body: body != null ? jsonEncode(body) : null,
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode >= 400) {
+      throw Exception('Function call failed: ${response.statusCode} ${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// GET request to a Cloudflare Worker function
+  static Future<Map<String, dynamic>> getFunction(String functionName) async {
+    final session = client.auth.currentSession;
+    final token = session?.accessToken ?? AppConfig.supabaseAnonKey;
+
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/functions/v1/$functionName');
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'apikey': AppConfig.supabaseAnonKey,
+      },
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode >= 400) {
+      throw Exception('Function call failed: ${response.statusCode} ${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }

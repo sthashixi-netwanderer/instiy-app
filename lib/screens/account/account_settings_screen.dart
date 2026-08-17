@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import '../../providers/providers.dart';
 import '../../providers/sound_provider.dart';
 import '../../services/wallet_lock_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_button.dart';
 
 class AccountSettingsScreen extends ConsumerStatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -19,6 +21,15 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   late TabController _tabController;
   bool _walletLockEnabled = false;
   bool _deviceSupported = false;
+  final Map<String, bool> _screenLocks = {};
+
+  static const _screenConfig = [
+    ('wallet', LucideIcons.wallet, 'Wallet', 'Balance, transfers & withdrawals'),
+    ('orders', LucideIcons.shoppingBag, 'Orders', 'Order history & tracking'),
+    ('checkout', LucideIcons.creditCard, 'Checkout', 'Payment confirmation'),
+    ('seller_orders', LucideIcons.store, 'Seller Orders', 'Incoming orders & earnings'),
+    ('messages', LucideIcons.messageSquare, 'Messages', 'Chat conversations'),
+  ];
 
   @override
   void initState() {
@@ -41,26 +52,50 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   Future<void> _loadWalletLockState() async {
     final enabled = await WalletLockService.isLockEnabled();
     final supported = await WalletLockService.isDeviceSupported();
+    final Map<String, bool> locks = {};
+    for (final (key, _, _, _) in _screenConfig) {
+      locks[key] = await WalletLockService.isScreenLockEnabled(key);
+    }
     if (mounted) {
       setState(() {
         _walletLockEnabled = enabled;
         _deviceSupported = supported;
+        _screenLocks.addAll(locks);
       });
     }
   }
 
   Future<void> _toggleWalletLock(bool value) async {
     final reason = value
-        ? 'Authenticate to enable wallet lock'
-        : 'Authenticate to confirm disabling wallet lock';
+        ? 'Authenticate to enable app lock'
+        : 'Authenticate to confirm disabling app lock';
     final authenticated = await WalletLockService.authenticate(reason: reason);
     if (!authenticated) return;
     await WalletLockService.setLockEnabled(value);
     if (mounted) {
-      setState(() => _walletLockEnabled = value);
+      setState(() {
+        _walletLockEnabled = value;
+        for (final key in _screenLocks.keys) {
+          _screenLocks[key] = value;
+        }
+      });
       ShadToaster.of(context).show(
-        ShadToast(title: Text(value ? 'Wallet lock enabled' : 'Wallet lock disabled')),
+        ShadToast(title: Text(value ? 'App lock enabled' : 'App lock disabled')),
       );
+    }
+  }
+
+  Future<void> _toggleScreenLock(String screenKey, bool value) async {
+    if (!value) {
+      // Turning OFF a lock requires biometric verification
+      final authed = await WalletLockService.authenticate(
+        reason: 'Authenticate to disable screen lock',
+      );
+      if (!authed) return;
+    }
+    await WalletLockService.setScreenLock(screenKey, value);
+    if (mounted) {
+      setState(() => _screenLocks[screenKey] = value);
     }
   }
 
@@ -73,19 +108,36 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: const Text('Settings'),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.accent,
-          labelColor: AppTheme.accent,
-          unselectedLabelColor: AppTheme.mutedSteel,
-          tabs: const [
-            Tab(icon: Icon(LucideIcons.user), text: 'Profile'),
-            Tab(icon: Icon(LucideIcons.bell), text: 'Notifications'),
-            Tab(icon: Icon(LucideIcons.settings), text: 'General'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(kTextTabBarHeight),
+          child: ClipRRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.pureSurface.withValues(alpha: 0.7),
+                  border: Border(
+                    bottom: BorderSide(color: AppTheme.whisperBorder, width: 0.5),
+                  ),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorColor: AppTheme.accent,
+                  labelColor: AppTheme.accent,
+                  unselectedLabelColor: AppTheme.mutedSteel,
+                  tabs: const [
+                    Tab(icon: Icon(LucideIcons.user), text: 'Profile'),
+                    Tab(icon: Icon(LucideIcons.bell), text: 'Notifications'),
+                    Tab(icon: Icon(LucideIcons.settings), text: 'General'),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
       body: TabBarView(
@@ -100,8 +152,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   }
 
   Widget _buildProfileTab(ShadThemeData theme, dynamic user) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: context.rAll(16),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
       children: [
         // Profile summary card
         Container(
@@ -156,13 +209,10 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                 ),
               ],
               SizedBox(height: context.rh(16)),
-              SizedBox(
-                width: double.infinity,
-                child: ShadButton(
-                  onPressed: () => Navigator.of(context).pushNamed('/edit-profile'),
-                  leading: const Icon(LucideIcons.pencil, size: 18),
-                  child: const Text('Edit Profile'),
-                ),
+              AppButton(
+                onPressed: () => Navigator.of(context).pushNamed('/edit-profile'),
+                leading: const Icon(LucideIcons.pencil, size: 18),
+                child: const Text('Edit Profile'),
               ),
             ],
           ),
@@ -173,8 +223,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   }
 
   Widget _buildNotificationsTab(ShadThemeData theme, SoundProvider soundProvider) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: context.rAll(16),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
       children: [
         Container(
           padding: context.rAll(16),
@@ -317,30 +368,14 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                   child: Text('Protected screens', style: TextStyle(fontSize: context.rsp(12), fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
                 ),
                 SizedBox(height: context.rh(8)),
-                _LockScreenItem(
-                  icon: LucideIcons.wallet,
-                  label: 'Wallet',
-                  detail: 'Balance, transfers & withdrawals',
-                  enabled: _walletLockEnabled,
-                ),
-                _LockScreenItem(
-                  icon: LucideIcons.shoppingBag,
-                  label: 'Orders',
-                  detail: 'Order history & tracking',
-                  enabled: _walletLockEnabled,
-                ),
-                _LockScreenItem(
-                  icon: LucideIcons.creditCard,
-                  label: 'Checkout',
-                  detail: 'Payment confirmation',
-                  enabled: _walletLockEnabled,
-                ),
-                _LockScreenItem(
-                  icon: LucideIcons.store,
-                  label: 'Seller Orders',
-                  detail: 'Incoming orders & earnings',
-                  enabled: _walletLockEnabled,
-                ),
+                for (final (key, icon, label, detail) in _screenConfig)
+                  _LockScreenItem(
+                    icon: icon,
+                    label: label,
+                    detail: detail,
+                    enabled: _screenLocks[key] ?? false,
+                    onChanged: (val) => _toggleScreenLock(key, val),
+                  ),
               ],
             ],
           ),
@@ -351,8 +386,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   }
 
   Widget _buildGeneralTab(ShadThemeData theme) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: context.rAll(16),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
       children: [
         _GeneralLinkRow(
           icon: LucideIcons.shieldCheck,
@@ -470,12 +506,14 @@ class _LockScreenItem extends StatelessWidget {
   final String label;
   final String detail;
   final bool enabled;
+  final ValueChanged<bool>? onChanged;
 
   const _LockScreenItem({
     required this.icon,
     required this.label,
     required this.detail,
     required this.enabled,
+    this.onChanged,
   });
 
   @override
@@ -512,10 +550,10 @@ class _LockScreenItem extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              enabled ? LucideIcons.shieldCheck : LucideIcons.shieldOff,
-              size: context.ri(16),
-              color: enabled ? AppTheme.accent : AppTheme.mutedSteel.withValues(alpha: 0.5),
+            Switch(
+              value: enabled,
+              onChanged: onChanged,
+              activeThumbColor: AppTheme.accent,
             ),
           ],
         ),

@@ -42,18 +42,16 @@ class _BlockedChatsScreenState extends ConsumerState<BlockedChatsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
-      appBar: AppBar(
-        title: const Text('Blocked'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-      ),
+      extendBodyBehindAppBar: true,
+      appBar: AppTheme.glassAppBar(context: context, title: const Text('Blocked')),
       body: _isLoading
-          ? const ListSkeleton(count: 6)
+          ? Padding(
+              padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
+              child: const ListSkeleton(count: 6))
           : _blockedConversations.isEmpty
               ? _buildEmptyState()
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+                  padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + kToolbarHeight + 8, 8, 100),
                   itemCount: _blockedConversations.length,
                   separatorBuilder: (_, _) => const Divider(indent: 76),
                   itemBuilder: (context, index) {

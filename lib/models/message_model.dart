@@ -8,8 +8,15 @@ class Conversation {
   final String? lastMessage;
   final DateTime? lastMessageAt;
   final int unreadCount;
-  final bool isOnline;
+  final bool _isOnlineField;
   final bool isArchived;
+  /// When the current user deleted this chat. Messages before this timestamp
+  /// are hidden — only messages after it are shown (WhatsApp-style).
+  final DateTime? hiddenAt;
+
+  /// Last time the other user was seen online.
+  final DateTime? otherUserLastSeen;
+  final String? themeColor;
 
   Conversation({
     required this.id,
@@ -21,9 +28,19 @@ class Conversation {
     this.lastMessage,
     this.lastMessageAt,
     this.unreadCount = 0,
-    this.isOnline = false,
+    bool isOnline = false,
     this.isArchived = false,
-  });
+    this.hiddenAt,
+    this.otherUserLastSeen,
+    this.themeColor,
+  }) : _isOnlineField = isOnline;
+
+  bool get isOnline {
+    if (otherUserLastSeen != null) {
+      return DateTime.now().difference(otherUserLastSeen!).abs().inSeconds < 60;
+    }
+    return _isOnlineField;
+  }
 
   String get displayName => otherBusinessName ?? otherUserName ?? 'Unknown';
 
@@ -42,7 +59,29 @@ class Conversation {
       unreadCount: (json['unread_count'] as num?)?.toInt() ?? 0,
       isOnline: json['is_online'] as bool? ?? false,
       isArchived: json['is_archived'] as bool? ?? false,
+      otherUserLastSeen: json['other_user_last_seen'] != null
+          ? DateTime.parse(json['other_user_last_seen'] as String)
+          : null,
+      themeColor: json['theme_color'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'other_user_id': otherUserId,
+      'other_user_name': otherUserName,
+      'other_user_avatar': otherUserAvatar,
+      'other_user_verified': otherUserVerified,
+      'other_business_name': otherBusinessName,
+      'last_message': lastMessage,
+      'last_message_at': lastMessageAt?.toIso8601String(),
+      'unread_count': unreadCount,
+      'is_online': isOnline,
+      'is_archived': isArchived,
+      'other_user_last_seen': otherUserLastSeen?.toIso8601String(),
+      'theme_color': themeColor,
+    };
   }
 }
 
@@ -83,7 +122,7 @@ class Message {
   final String conversationId;
   final String senderId;
   final String content;
-  final String? mediaUrl;
+  final String? _mediaUrlField;
   final String? mediaType;
   final ProductReference? productReference;
   final DateTime createdAt;
@@ -102,7 +141,7 @@ class Message {
     required this.conversationId,
     required this.senderId,
     required this.content,
-    this.mediaUrl,
+    String? mediaUrl,
     this.mediaType,
     this.productReference,
     required this.createdAt,
@@ -114,7 +153,21 @@ class Message {
     this.replyToSenderName,
     this.replyToMediaUrl,
     this.replyToMediaType,
-  });
+  }) : _mediaUrlField = mediaUrl;
+
+  String? get mediaUrl {
+    if (mediaType == 'video' && _mediaUrlField != null && _mediaUrlField.contains('|')) {
+      return _mediaUrlField.split('|')[0];
+    }
+    return _mediaUrlField;
+  }
+
+  String? get thumbnailUrl {
+    if (mediaType == 'video' && _mediaUrlField != null && _mediaUrlField.contains('|')) {
+      return _mediaUrlField.split('|')[1];
+    }
+    return null;
+  }
 
   bool get isReply => replyToMessageId != null;
   bool get isGif => mediaType == 'gif';

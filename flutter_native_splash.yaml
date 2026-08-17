@@ -1,10 +1,29 @@
 flutter_native_splash:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Legacy splash (Android 11 and below, iOS)
+  # ─────────────────────────────────────────────────────────────────────────
+  # The legacy splash draws `image` centered at its native bitmap size for the
+  # device's density bucket. `splash_logo.png` is a 768×768 canvas with the
+  # logo content at ~512px centered, so the rendered logo matches the visual
+  # size of the Android 12+ splash below.
   color: "#FAFAF9"
-  image: assets/logo_highres.png
+  image: assets/splash_logo.png
+  android_gravity: center
+  ios_content_mode: center
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Android 12+ SplashScreen API (API 31+)
+  # ─────────────────────────────────────────────────────────────────────────
+  # On Android 12+, the OS clamps the icon to a fixed canvas and (with
+  # icon_background_color set) masks it to a circle (~visible 160dp of a 240dp
+  # canvas). `splash_logo_android12.png` is a 1152×1152 canvas with the logo
+  # content at 768px (the inner 2/3 safe zone), so it is NOT cropped by the
+  # mask and renders at the SAME visual size as the legacy splash. This fixes
+  # the size mismatch between Android <12 and Android 12+.
   android_12:
-    image: assets/logo_highres.png
+    image: assets/splash_logo_android12.png
     color: "#FAFAF9"
     icon_background_color: "#FAFAF9"
 
+  # Web splash is handled by Flutter itself; disable native generation.
   web: false

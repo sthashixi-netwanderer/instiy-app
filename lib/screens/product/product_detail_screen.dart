@@ -64,7 +64,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Future<void> _loadProduct() async {
     final product = await ref.read(productProvider).getProduct(widget.productId);
     if (!mounted) return;
-    ref.read(productProvider).loadFavoriteIds();
+    unawaited(ref.read(productProvider).loadFavoriteIds());
 
     // Fetch seller's business profile and institutions
     BusinessProfile? profile;
@@ -93,8 +93,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         _isLoading = false;
       });
       _startCountdownTimer();
-      _loadFollowStatus();
-      _loadRelatedProducts();
+      unawaited(_loadFollowStatus());
+      unawaited(_loadRelatedProducts());
     }
   }
 
@@ -264,7 +264,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (_product == null || _isFollowLoading) return;
     final userId = ref.read(authProvider).user?.id;
     if (userId == null) {
-      Navigator.of(context).pushNamed('/login');
+      unawaited(Navigator.of(context).pushNamed('/login'));
       return;
     }
     setState(() => _isFollowLoading = true);
@@ -324,11 +324,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (!mounted) return;
     final conv = ref.read(messageProvider).activeConversation;
     if (conv != null) {
-      Navigator.of(context).push(
+      unawaited(Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ConversationScreen(conversation: conv),
         ),
-      );
+      ));
     }
   }
 
@@ -786,7 +786,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           '/create-listing',
                           arguments: _product,
                         );
-                        if (updated == true) _loadProduct();
+                        if (updated == true) unawaited(_loadProduct());
                       },
                     ),
                   ),

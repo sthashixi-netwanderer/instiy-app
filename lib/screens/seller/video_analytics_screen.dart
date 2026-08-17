@@ -55,13 +55,27 @@ class _VideoAnalyticsScreenState extends ConsumerState<VideoAnalyticsScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Video Analytics')),
       body: _isLoading
-          ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                16,
+                16,
+              ),
+              child: const ListSkeleton(count: 6),
+            )
           : RefreshIndicator(
               onRefresh: _loadAnalytics,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                  16,
+                  16,
+                ),
                 children: [
                   const Text(
                     'Overview',

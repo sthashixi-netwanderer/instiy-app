@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { FileText, Shield, Save, Loader, Eye, Edit3 } from 'lucide-react';
+import { useAlert } from '../components/use-alert';
 
 interface Policy {
   id: string;
@@ -21,6 +22,7 @@ export const Policies: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [saved, setSaved] = useState(false);
+  const { showAlert, AlertComponent } = useAlert();
 
   const fetchPolicies = async () => {
     try {
@@ -77,7 +79,7 @@ export const Policies: React.FC = () => {
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error('Error saving policy:', error);
-      alert('Failed to save policy. Please try again.');
+      showAlert('Error', 'Failed to save policy. Please try again.', 'error');
     } finally {
       setSaving(false);
     }
@@ -263,6 +265,7 @@ export const Policies: React.FC = () => {
         .markdown-preview li { margin: 0.25rem 0; }
         .markdown-preview em { color: hsl(var(--text-tertiary)); }
       `}</style>
+      {AlertComponent}
     </div>
   );
 };

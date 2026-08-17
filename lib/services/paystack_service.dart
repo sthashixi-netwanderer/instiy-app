@@ -10,6 +10,10 @@ class PaystackService {
   static Future<bool> initializeSDK() async {
     if (_initialized) return true;
     try {
+      // Ensure the remote Paystack public key is loaded before initializing
+      // the SDK. On a fast cold boot the secrets fetch may still be in flight,
+      // and payments must not use the local test key.
+      await SecretsService.instance.ensureLoaded();
       _initialized = await _paystack.initialize(SecretsService.instance.paystackPublicKey, false);
       return _initialized;
     } catch (e) {
@@ -27,17 +31,12 @@ class PaystackService {
     Map<String, dynamic>? metadata,
   }) async {
     try {
-      final response = await SupabaseService.client.functions.invoke(
-        'paystack/initialize',
-        body: <String, dynamic>{
-          'email': email,
-          'amount': (amount * 100).toStringAsFixed(0),
-          'reference': ?reference,
-          'metadata': ?metadata,
-        },
-      );
-
-      final data = response.data as Map<String, dynamic>;
+      final data = await SupabaseService.callFunction('paystack/initialize', body: {
+        'email': email,
+        'amount': (amount * 100).toStringAsFixed(0),
+        'reference': ?reference,
+        'metadata': ?metadata,
+      });
       if (data['status'] == true) {
         return PaystackResult(
           success: true,
@@ -53,12 +52,9 @@ class PaystackService {
 
   static Future<PaystackResult> verifyTransaction(String reference) async {
     try {
-      final response = await SupabaseService.client.functions.invoke(
-        'paystack/verify',
-        body: {'reference': reference},
-      );
-
-      final data = response.data as Map<String, dynamic>;
+      final data = await SupabaseService.callFunction('paystack/verify', body: {
+        'reference': reference,
+      });
       if (data['status'] == true) {
         final gatewayResponse = data['data'];
         return PaystackResult(

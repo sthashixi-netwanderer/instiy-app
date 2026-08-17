@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { uploadToR2 } from '../r2Client';
-import { Plus, Edit2, Trash2, Loader, X, Upload, Search, Landmark, Link as LinkIcon, MapPin } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader, Upload, Search, Landmark, Link as LinkIcon, MapPin } from 'lucide-react';
+import { useAlert, useConfirm } from '../components/use-alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/dialog';
 
 interface Institution {
   id: string;
@@ -29,6 +31,8 @@ export const Institutions: React.FC = () => {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { alert, AlertComponent } = useAlert();
+  const { confirm, ConfirmComponent } = useConfirm();
 
   const fetchInstitutions = async () => {
     try {
@@ -78,14 +82,14 @@ export const Institutions: React.FC = () => {
         }
       }
 
-      if (toInsert.length === 0) { alert('No valid institutions found.'); return; }
+      if (toInsert.length === 0) { alert('Info', { description: 'No valid institutions found.' }); return; }
       setLoading(true);
       try {
         const { error } = await supabase.from('institutions').upsert(toInsert, { onConflict: 'code' });
         if (error) throw error;
-        alert(`Imported ${toInsert.length} institutions!`);
+        alert('Success', { description: `Imported ${toInsert.length} institutions!`, variant: 'success' });
         fetchInstitutions();
-      } catch (err: any) { alert('Error: ' + err.message); }
+      } catch (err: any) { alert('Error', { description: 'Error: ' + err.message, variant: 'danger' }); }
       finally { setLoading(false); }
     };
     reader.readAsText(file);
@@ -97,7 +101,7 @@ export const Institutions: React.FC = () => {
     if (!file) return;
     setUploadingLogo(true);
     try { setLogoUrl(await uploadToR2(file, 'institutions/logos')); }
-    catch (err: any) { alert('Error uploading: ' + err.message); }
+    catch (err: any) { alert('Error', { description: 'Error uploading: ' + err.message, variant: 'danger' }); }
     finally { setUploadingLogo(false); }
   };
 
@@ -119,17 +123,18 @@ export const Institutions: React.FC = () => {
       }
       setShowModal(false);
       fetchInstitutions();
-    } catch (error) { alert('Error: ' + (error as any).message); }
+    } catch (error) { alert('Error', { description: 'Error: ' + (error as any).message, variant: 'danger' }); }
     finally { setSubmitting(false); }
   };
 
-  const handleDelete = async (id: string, instName: string) => {
-    if (!window.confirm(`Delete "${instName}"?`)) return;
-    try {
-      const { error } = await supabase.from('institutions').delete().eq('id', id);
-      if (error) throw error;
-      setInstitutions(institutions.filter(i => i.id !== id));
-    } catch (error) { alert('Error: ' + (error as any).message); }
+  const handleDelete = (id: string, instName: string) => {
+    confirm(`Delete "${instName}"?`, async () => {
+      try {
+        const { error } = await supabase.from('institutions').delete().eq('id', id);
+        if (error) throw error;
+        setInstitutions(institutions.filter(i => i.id !== id));
+      } catch (error) { alert('Error', { description: 'Error: ' + (error as any).message, variant: 'danger' }); }
+    }, { confirmLabel: 'Delete', variant: 'danger' });
   };
 
   return (
@@ -212,70 +217,69 @@ export const Institutions: React.FC = () => {
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '480px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.625rem' }}>
-              <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: 'var(--font-title)' }}>
-                <Landmark size={18} style={{ color: 'hsl(var(--accent))' }} />
-                {editingInstitution ? 'Edit Institution' : 'Add Institution'}
-              </h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-secondary))', padding: '4px' }} onClick={() => setShowModal(false)}>
-                <X size={18} />
-              </button>
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Landmark size={18} style={{ color: 'hsl(var(--accent))' }} />
+              {editingInstitution ? 'Edit Institution' : 'Add Institution'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingInstitution ? 'Update the institution details below.' : 'Add a new institution by filling out the form below.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '0.75rem' }}>
+              <div className="form-group">
+                <label className="form-label">Code</label>
+                <input type="text" className="form-control" placeholder="UG" value={code} onChange={(e) => setCode(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Name</label>
+                <input type="text" className="form-control" placeholder="University of Ghana" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className="form-group">
+                <label className="form-label">Location</label>
+                <input type="text" className="form-control" placeholder="Legon" value={location} onChange={(e) => setLocation(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Region</label>
+                <input type="text" className="form-control" placeholder="Greater Accra" value={region} onChange={(e) => setRegion(e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Website</label>
+              <input type="url" className="form-control" placeholder="https://ug.edu.gh" value={url} onChange={(e) => setUrl(e.target.value)} />
             </div>
 
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Code</label>
-                  <input type="text" className="form-control" placeholder="UG" value={code} onChange={(e) => setCode(e.target.value)} required />
+            <div className="form-group">
+              <label className="form-label">Logo</label>
+              <input type="file" accept="image/*" style={{ display: 'none' }} ref={fileInputRef} onChange={handleLogoFileChange} />
+              {logoUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'hsl(var(--bg-surface))', padding: '0.625rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
+                  <img src={logoUrl} alt="Logo" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', color: 'hsl(var(--text-tertiary))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{logoUrl}</div>
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => setLogoUrl('')}>Remove</button>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Name</label>
-                  <input type="text" className="form-control" placeholder="University of Ghana" value={name} onChange={(e) => setName(e.target.value)} required />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Location</label>
-                  <input type="text" className="form-control" placeholder="Legon" value={location} onChange={(e) => setLocation(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Region</label>
-                  <input type="text" className="form-control" placeholder="Greater Accra" value={region} onChange={(e) => setRegion(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Website</label>
-                <input type="url" className="form-control" placeholder="https://ug.edu.gh" value={url} onChange={(e) => setUrl(e.target.value)} />
-              </div>
+              ) : (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '0.75rem' }} onClick={() => fileInputRef.current?.click()} disabled={uploadingLogo}>
+                  {uploadingLogo ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Logo</>}
+                </button>
+              )}
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">Logo</label>
-                <input type="file" accept="image/*" style={{ display: 'none' }} ref={fileInputRef} onChange={handleLogoFileChange} />
-                {logoUrl ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'hsl(var(--bg-surface))', padding: '0.625rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
-                    <img src={logoUrl} alt="Logo" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
-                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', color: 'hsl(var(--text-tertiary))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{logoUrl}</div>
-                    <button type="button" className="btn btn-danger btn-sm" onClick={() => setLogoUrl('')}>Remove</button>
-                  </div>
-                ) : (
-                  <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '0.75rem' }} onClick={() => fileInputRef.current?.click()} disabled={uploadingLogo}>
-                    {uploadingLogo ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Logo</>}
-                  </button>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={submitting}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting || uploadingLogo}>{submitting ? 'Saving...' : 'Save'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={submitting || uploadingLogo}>{submitting ? 'Saving...' : 'Save'}</button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {AlertComponent}
+      {ConfirmComponent}
     </div>
   );
 };

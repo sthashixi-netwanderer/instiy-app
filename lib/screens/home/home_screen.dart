@@ -1,23 +1,21 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../models/carousel_slide_model.dart';
-import '../../models/institution_model.dart';
+
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
-import '../../services/supabase_service.dart';
-import '../../services/institution_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../widgets/app_bottom_nav.dart';
+import '../../widgets/adaptive_nav.dart';
 import '../../widgets/home_carousel.dart';
 import '../../widgets/featured_carousel.dart';
 import '../../widgets/product_section.dart';
 import '../../widgets/category_section.dart';
-import '../../widgets/verification_badge.dart';
+import '../../widgets/user_avatar_menu.dart';
 import '../auth/google_onboarding_view.dart';
 import '../../widgets/responsive_layout.dart';
 
@@ -29,28 +27,31 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
-  List<Institution> _institutions = [];
-  String? _businessName;
+  late final ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final initialOffset = ref.read(homeProvider).scrollOffset;
+    _scrollController = ScrollController(initialScrollOffset: initialOffset);
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(homeProvider).loadAll();
-      final curated = ref.read(curatedProvider);
-      curated.ensureInitialized();
-      curated.loadSections();
-      final carousel = ref.read(carouselProvider);
-      carousel.ensureInitialized();
-      carousel.loadSlides();
-      _loadInstitutions();
-      _loadBusinessName();
+      // Use ensureInitialized — data is loaded once and cached
+      ref.read(homeProvider).ensureInitialized();
+      ref.read(curatedProvider).ensureInitialized();
+      ref.read(carouselProvider).ensureInitialized();
     });
+  }
+
+  void _onScroll() {
+    ref.read(homeProvider).saveScrollOffset(_scrollController.offset);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -60,39 +61,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) {
       ref.read(curatedProvider).refresh();
       ref.read(carouselProvider).refresh();
-    }
-  }
-
-
-  Future<void> _loadInstitutions() async {
-    try {
-      final institutions = await InstitutionService.getInstitutions();
-      if (mounted) setState(() => _institutions = institutions);
-    } catch (_) {}
-  }
-
-  Future<void> _loadBusinessName() async {
-    try {
-      final uid = SupabaseService.instance.currentUser?.id;
-      if (uid == null) return;
-      final data = await SupabaseService.table('business_profiles')
-          .select('business_name')
-          .eq('seller_id', uid)
-          .maybeSingle();
-      if (mounted && data != null) {
-        setState(() => _businessName = data['business_name'] as String?);
-      }
-    } catch (_) {}
-  }
-
-  Institution? _findInstitution(String? universityName) {
-    if (universityName == null || universityName.isEmpty || _institutions.isEmpty) return null;
-    try {
-      return _institutions.firstWhere(
-        (i) => i.name.toLowerCase() == universityName.toLowerCase(),
-      );
-    } catch (_) {
-      return null;
     }
   }
 
@@ -115,8 +83,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     } else if (slide.buttonLinkType == 'category' && slide.buttonLinkValue != null) {
       Navigator.of(context).pushNamed('/explore', arguments: slide.buttonLinkValue);
     } else if (slide.buttonLinkType == 'url' && slide.buttonLinkValue != null) {
-      final uri = Uri.parse(slide.buttonLinkValue!);
-      launchUrl(uri, mode: LaunchMode.externalApplication);
+      // Guard against URL injection: only allow http(s) schemes.
+      final uri = Uri.tryParse(slide.buttonLinkValue!);
+      if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
+        unawaited(launchUrl(uri, mode: LaunchMode.externalApplication).catchError((e) {
+          debugPrint('Could not launch carousel URL: $e');
+          return false;
+        }));
+      } else {
+        debugPrint('Carousel URL blocked (invalid scheme): ${slide.buttonLinkValue}');
+      }
     }
   }
 
@@ -137,52 +113,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.canvasWhite,
-      bottomNavigationBar: const AppBottomNav(currentIndex: 0),
+      extendBodyBehindAppBar: true,
+      bottomNavigationBar: const AdaptiveNav(currentIndex: 0),
       child: Stack(
         children: [
-          Padding(
-            padding: EdgeInsets.only(top: context.rh(84)),
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await home.loadAll();
-                await carouselState.refresh();
-              },
-              child: CustomScrollView(
-                slivers: [
-                  if (carouselState.slides.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: context.rh(16)),
-                        child: HomeCarousel(
-                          slides: carouselState.slides,
-                          linkedProducts: carouselState.linkedProducts,
-                          onButtonTap: _handleCarouselButtonTap,
-                        ),
-                      ),
-                    ),
+          RefreshIndicator(
+            edgeOffset: context.rh(84),
+            onRefresh: () async {
+              await Future.wait([
+                home.loadAll(),
+                carouselState.refresh(),
+                ref.read(curatedProvider).loadSections(),
+              ]);
+            },
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: SizedBox(height: context.rh(84)),
+                ),
+                if (carouselState.slides.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.only(top: context.rh(carouselState.slides.isNotEmpty ? 16 : 20)),
-                      child: home.isLoading && home.featuredProducts.isEmpty
-                          ? _buildCarouselSkeleton()
-                          : FeaturedCarousel(
-                              products: home.featuredProducts,
-                              onTap: _navigateToProduct,
-                            ),
+                      padding: EdgeInsets.only(top: context.rh(16)),
+                      child: HomeCarousel(
+                        slides: carouselState.slides,
+                        linkedProducts: carouselState.linkedProducts,
+                        onButtonTap: _handleCarouselButtonTap,
+                      ),
                     ),
                   ),
-                  ..._buildCuratedSections(),
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: 120),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: context.rh(carouselState.slides.isNotEmpty ? 16 : 20)),
+                    child: home.isLoading && home.featuredProducts.isEmpty
+                        ? _buildCarouselSkeleton()
+                        : FeaturedCarousel(
+                            products: home.featuredProducts,
+                            onTap: _navigateToProduct,
+                          ),
                   ),
-                ],
-              ),
+                ),
+                ..._buildCuratedSections(),
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 120),
+                ),
+              ],
             ),
           ),
           _HomeGlassHeader(
             greeting: _getGreeting(),
-            businessName: _businessName,
-            institution: auth.isAuthenticated ? _findInstitution(auth.user?.university) : null,
+            businessName: home.businessName,
             avatarUrl: auth.user?.avatarUrl,
             fullName: auth.user?.fullName,
             isVerified: auth.user?.isVerified == true,
@@ -198,7 +179,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             onSignOut: () async {
               await auth.signOut();
               if (context.mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false); // ignore: unawaited_futures
               }
             },
           ),
@@ -307,7 +288,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   sellerId: product.sellerId,
                   sellerName: product.sellerName,
                 ),
-                onSeeAll: () => Navigator.of(context).pushNamed('/explore'),
+                onSeeAll: () => Navigator.of(context).pushNamed('/curated-collection', arguments: section.id),
               ),
             ),
           );
@@ -355,7 +336,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   sellerId: product.sellerId,
                   sellerName: product.sellerName,
                 ),
-                onSeeAll: () => Navigator.of(context).pushNamed('/explore'),
+                onSeeAll: () => Navigator.of(context).pushNamed('/curated-collection', arguments: section.id),
               ),
             ),
           );
@@ -468,49 +449,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   }
 }
 
-enum _AvatarMenuItem {
-  wishlist,
-  orders,
-  wallet,
-  following,
-  settings,
-  signOut,
-}
-
-class _AvatarMenuItemRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool destructive;
-
-  const _AvatarMenuItemRow({
-    required this.icon,
-    required this.label,
-    this.destructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: destructive ? AppTheme.destructive : AppTheme.mutedSteel),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: destructive ? AppTheme.destructive : AppTheme.charcoalInk,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _HomeGlassHeader extends ConsumerWidget {
   final String greeting;
   final String? businessName;
-  final Institution? institution;
   final String? avatarUrl;
   final String? fullName;
   final bool isVerified;
@@ -528,7 +469,6 @@ class _HomeGlassHeader extends ConsumerWidget {
   const _HomeGlassHeader({
     required this.greeting,
     this.businessName,
-    this.institution,
     this.avatarUrl,
     this.fullName,
     this.isVerified = false,
@@ -550,13 +490,17 @@ class _HomeGlassHeader extends ConsumerWidget {
     final unreadNotifs = ref.watch(messageProvider).unreadNotificationsCount;
 
     return Positioned(
-      top: context.rh(8),
+      top: MediaQuery.paddingOf(context).top + context.rh(8),
       left: context.rw(12),
       right: context.rw(12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(context.rr(20)),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
+          filter: ImageFilter.compose(
+            outer: ImageFilter.blur(
+                sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+            inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
+          ),
           child: Container(
             decoration: AppTheme.glassDecoration(radius: context.rr(20)),
             padding: context.rPadding(horizontal: 16, vertical: 12),
@@ -566,21 +510,22 @@ class _HomeGlassHeader extends ConsumerWidget {
                   child: _GreetingSection(
                     greeting: greeting,
                     businessName: businessName ?? fullName?.split(' ').first ?? 'Student',
-                    institution: institution,
                   ),
                 ),
                 SizedBox(width: context.rw(12)),
-                _BadgeIconButton(
+                BadgeIconButton(
                   icon: LucideIcons.shoppingCart,
                   count: cart.itemCount,
                   activeColor: AppTheme.accent,
                   onPressed: onCartTap,
                 ),
-                _NotificationButton(
-                  unreadCount: unreadNotifs,
+                BadgeIconButton(
+                  icon: LucideIcons.bell,
+                  count: unreadNotifs,
+                  activeColor: AppTheme.accent,
                   onPressed: onNotificationTap,
                 ),
-                _AvatarSection(
+                UserAvatarMenu(
                   avatarUrl: avatarUrl,
                   fullName: fullName,
                   businessName: businessName,
@@ -606,12 +551,10 @@ class _HomeGlassHeader extends ConsumerWidget {
 class _GreetingSection extends StatelessWidget {
   final String greeting;
   final String businessName;
-  final Institution? institution;
 
   const _GreetingSection({
     required this.greeting,
     required this.businessName,
-    this.institution,
   });
 
   @override
@@ -633,46 +576,6 @@ class _GreetingSection extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (institution != null) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: context.rPadding(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(context.rr(6)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (institution!.logoUrl != null)
-                      Padding(
-                        padding: EdgeInsets.only(right: context.rw(4)),
-                        child: CachedNetworkImage(
-                          imageUrl: institution!.logoUrl!,
-                          width: context.rw(14),
-                          height: context.rh(14),
-                          fit: BoxFit.contain,
-                          memCacheWidth: 14,
-                          errorWidget: (_, _, _) => Icon(LucideIcons.graduationCap, size: context.ri(12), color: AppTheme.accent),
-                        ),
-                      )
-                    else
-                      Padding(
-                        padding: EdgeInsets.only(right: context.rw(4)),
-                        child: Icon(LucideIcons.graduationCap, size: context.ri(12), color: AppTheme.accent),
-                      ),
-                    Text(
-                      institution!.code,
-                      style: TextStyle(
-                        fontSize: context.rsp(12),
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.accent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
         SizedBox(height: context.rh(2)),
@@ -685,208 +588,3 @@ class _GreetingSection extends StatelessWidget {
   }
 }
 
-class _BadgeIconButton extends StatelessWidget {
-  final IconData icon;
-  final int count;
-  final Color activeColor;
-  final VoidCallback onPressed;
-
-  const _BadgeIconButton({
-    required this.icon,
-    required this.count,
-    required this.activeColor,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ShadIconButton.ghost(
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Icon(icon, color: count > 0 ? activeColor : AppTheme.mutedSteel),
-          if (count > 0)
-            Positioned(
-              top: context.rh(-4),
-              right: context.rw(-8),
-              child: Container(
-                padding: context.rPadding(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: AppTheme.destructive,
-                  borderRadius: BorderRadius.circular(context.rr(10)),
-                ),
-                constraints: BoxConstraints(minWidth: context.rw(16), minHeight: context.rh(16)),
-                alignment: Alignment.center,
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: context.rsp(10),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-        ],
-      ),
-      onPressed: onPressed,
-    );
-  }
-}
-
-class _NotificationButton extends ConsumerWidget {
-  final int unreadCount;
-  final VoidCallback onPressed;
-
-  const _NotificationButton({
-    required this.unreadCount,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ShadIconButton.ghost(
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Icon(LucideIcons.bell, color: unreadCount > 0 ? AppTheme.accent : AppTheme.mutedSteel),
-          if (unreadCount > 0)
-            Positioned(
-              top: context.rh(-4),
-              right: context.rw(-8),
-              child: Container(
-                padding: context.rPadding(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: AppTheme.destructive,
-                  borderRadius: BorderRadius.circular(context.rr(10)),
-                ),
-                constraints: BoxConstraints(minWidth: context.rw(16), minHeight: context.rh(16)),
-                alignment: Alignment.center,
-                child: Text(
-                  '$unreadCount',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: context.rsp(10),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-        ],
-      ),
-      onPressed: onPressed,
-    );
-  }
-}
-
-class _AvatarSection extends StatelessWidget {
-  final String? avatarUrl;
-  final String? fullName;
-  final String? businessName;
-  final bool isVerified;
-  final bool isAuthenticated;
-  final VoidCallback onLoginTap;
-  final VoidCallback onWishlistTap;
-  final VoidCallback onOrdersTap;
-  final VoidCallback onWalletTap;
-  final VoidCallback onFollowingTap;
-  final VoidCallback onSettingsTap;
-  final VoidCallback onSignOut;
-
-  const _AvatarSection({
-    this.avatarUrl,
-    this.fullName,
-    this.businessName,
-    this.isVerified = false,
-    this.isAuthenticated = false,
-    required this.onLoginTap,
-    required this.onWishlistTap,
-    required this.onOrdersTap,
-    required this.onWalletTap,
-    required this.onFollowingTap,
-    required this.onSettingsTap,
-    required this.onSignOut,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (!isAuthenticated) {
-      return GestureDetector(
-        onTap: onLoginTap,
-        child: ShadAvatar(
-          null,
-          size: const Size(36, 36),
-          backgroundColor: AppTheme.accent,
-          placeholder: const Text('U', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        ),
-      );
-    }
-
-    return PopupMenuButton<_AvatarMenuItem>(
-      onSelected: (item) {
-        switch (item) {
-          case _AvatarMenuItem.wishlist: onWishlistTap();
-          case _AvatarMenuItem.orders: onOrdersTap();
-          case _AvatarMenuItem.wallet: onWalletTap();
-          case _AvatarMenuItem.following: onFollowingTap();
-          case _AvatarMenuItem.settings: onSettingsTap();
-          case _AvatarMenuItem.signOut:
-            AppTheme.showGlassDialog<bool>(
-              context: context,
-              title: const Text('Sign Out'),
-              description: const Text('Are you sure you want to sign out?'),
-              actions: [
-                ShadButton.ghost(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                ShadButton.destructive(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Sign Out'),
-                ),
-              ],
-            ).then((confirmed) {
-              if (confirmed == true) onSignOut();
-            });
-        }
-      },
-      offset: const Offset(0, 40),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(context.rr(12)),
-        side: const BorderSide(color: AppTheme.whisperBorder),
-      ),
-      color: AppTheme.pureSurface,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ShadAvatar(
-            avatarUrl?.isNotEmpty == true ? avatarUrl : null,
-            size: const Size(36, 36),
-            backgroundColor: AppTheme.accent,
-            placeholder: Text(
-              (businessName ?? fullName ?? 'S')[0].toUpperCase(),
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-          if (isVerified)
-            const Positioned(
-              bottom: -2,
-              right: -2,
-              child: VerificationBadge(size: 14),
-            ),
-        ],
-      ),
-      itemBuilder: (context) => [
-        PopupMenuItem(value: _AvatarMenuItem.wishlist, child: _AvatarMenuItemRow(icon: LucideIcons.heart, label: 'Wishlist')),
-        PopupMenuItem(value: _AvatarMenuItem.orders, child: _AvatarMenuItemRow(icon: LucideIcons.shoppingBag, label: 'My Orders')),
-        PopupMenuItem(value: _AvatarMenuItem.wallet, child: _AvatarMenuItemRow(icon: LucideIcons.wallet, label: 'Wallet')),
-        PopupMenuItem(value: _AvatarMenuItem.following, child: _AvatarMenuItemRow(icon: LucideIcons.users, label: 'Following')),
-        const PopupMenuDivider(),
-        PopupMenuItem(value: _AvatarMenuItem.settings, child: _AvatarMenuItemRow(icon: LucideIcons.settings, label: 'Settings')),
-        PopupMenuItem(value: _AvatarMenuItem.signOut, child: _AvatarMenuItemRow(icon: LucideIcons.logOut, label: 'Sign Out', destructive: true)),
-      ],
-    );
-  }
-}

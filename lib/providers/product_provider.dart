@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product_model.dart';
 import '../models/category_model.dart';
 import '../models/draft_listing_model.dart';
-import '../services/block_service.dart';
 import '../services/draft_service.dart';
+import '../providers/block_provider.dart';
 import '../services/follow_service.dart';
 import '../services/product_service.dart';
 import '../services/supabase_service.dart';
@@ -109,13 +109,10 @@ class ProductProvider extends ChangeNotifier {
 
       final product = await ProductService.getProduct(productId);
       final currentUser = SupabaseService.auth.currentUser;
-      final blockedIds = currentUser != null
-          ? await BlockService.getBlockedUserIds()
-          : <String>[];
 
       final belongs = product.status == ProductStatus.available &&
           product.stockQuantity > 0 &&
-          !blockedIds.contains(product.sellerId) &&
+          !BlockProvider.instance.isUserBlocked(product.sellerId) &&
           (_selectedCategoryId == null || product.categoryId == _selectedCategoryId) &&
           (_searchQuery == null || _searchQuery!.isEmpty ||
               product.title.toLowerCase().contains(_searchQuery!.toLowerCase()) ||
@@ -156,7 +153,7 @@ class ProductProvider extends ChangeNotifier {
 
       notifyListeners();
     } catch (_) {
-      _silentReloadProducts();
+      _silentReloadProducts(); // ignore: unawaited_futures
     }
   }
 
@@ -169,7 +166,6 @@ class ProductProvider extends ChangeNotifier {
       final currentUser = SupabaseService.auth.currentUser;
       if (currentUser != null) {
         _userListings = await ProductService.getUserListings(currentUser.id);
-        _products = await _filterBlockedProducts(_products);
       }
       notifyListeners();
     } catch (_) {}
@@ -229,27 +225,11 @@ class ProductProvider extends ChangeNotifier {
         categoryId: _selectedCategoryId,
         searchQuery: _searchQuery,
       );
-      // Filter out products from blocked users
-      final currentUser = SupabaseService.auth.currentUser;
-      if (currentUser != null) {
-        _products = await _filterBlockedProducts(_products);
-      }
     } catch (e) {
       _error = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
-    }
-  }
-
-  /// Filter out products from blocked users
-  Future<List<Product>> _filterBlockedProducts(List<Product> products) async {
-    try {
-      final blockedIds = await BlockService.getBlockedUserIds();
-      if (blockedIds.isEmpty) return products;
-      return products.where((p) => !blockedIds.contains(p.sellerId)).toList();
-    } catch (_) {
-      return products;
     }
   }
 
@@ -291,6 +271,7 @@ class ProductProvider extends ChangeNotifier {
     String? thumbnailUrl,
     Map<String, double>? institutionDeliveryFees,
     bool showOnClips = false,
+    String? clipVideoUrl,
   }) async {
     try {
       final product = await ProductService.createProduct(
@@ -312,6 +293,7 @@ class ProductProvider extends ChangeNotifier {
         discountEndDate: discountEndDate,
         thumbnailUrl: thumbnailUrl,
         showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrl,
       );
 
       _products.insert(0, product);
@@ -324,7 +306,7 @@ class ProductProvider extends ChangeNotifier {
         final sellerName = product.sellerName ?? 'A seller';
         final thumb = product.thumbnailUrl ??
             (product.imageUrls.isNotEmpty ? product.imageUrls.first : null);
-        FollowService.notifyFollowersOfNewProduct(
+        FollowService.notifyFollowersOfNewProduct( // ignore: unawaited_futures
           sellerId: currentUser.id,
           sellerName: sellerName,
           productId: product.id,
@@ -363,6 +345,7 @@ class ProductProvider extends ChangeNotifier {
     String? thumbnailUrl,
     Map<String, double>? institutionDeliveryFees,
     bool? showOnClips,
+    String? clipVideoUrl,
   }) async {
     try {
       final updatedProduct = await ProductService.updateProduct(
@@ -386,6 +369,7 @@ class ProductProvider extends ChangeNotifier {
         discountEndDate: discountEndDate,
         thumbnailUrl: thumbnailUrl,
         showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrl,
       );
 
       final index = _products.indexWhere((p) => p.id == productId);
@@ -439,16 +423,21 @@ class ProductProvider extends ChangeNotifier {
     loadProducts(refresh: true);
   }
 
-  Future<void> loadUserListings(String userId) async {
-    _isLoading = true;
-    notifyListeners();
+  Future<void> loadUserListings(String userId, {bool silent = false}) async {
+    final showLoading = !silent && _userListings.isEmpty;
+    if (showLoading) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     try {
       _userListings = await ProductService.getUserListings(userId);
     } catch (e) {
       _error = e.toString();
     } finally {
-      _isLoading = false;
+      if (showLoading) {
+        _isLoading = false;
+      }
       notifyListeners();
     }
   }

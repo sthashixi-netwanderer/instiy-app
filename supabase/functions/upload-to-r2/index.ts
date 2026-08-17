@@ -10,7 +10,33 @@ const R2_PUBLIC_URL = Deno.env.get("R2_PUBLIC_URL")!;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "pdf", "m4a"];
+const ALLOWED_FOLDERS = ["uploads", "verifications", "reviews", "avatars", "products", "banners", "chat-media"];
+
+function getContentType(extension: string): string {
+  const types: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    webm: "video/webm",
+    pdf: "application/pdf",
+    m4a: "audio/mp4",
+  };
+  return types[extension.toLowerCase()] || "application/octet-stream";
+}
+
+function sanitizeError(error: unknown): string {
+  console.error("R2 upload error:", error);
+  return "Failed to upload file";
+}
 
 async function hmacSha256(key: Uint8Array, data: string): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
@@ -75,7 +101,29 @@ serve(async (req) => {
       });
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+      return new Response(JSON.stringify({ error: "File too large (max 50MB)" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const fileExt = file.name.split(".").pop() || "jpg";
+    if (!ALLOWED_EXTENSIONS.includes(fileExt.toLowerCase())) {
+      return new Response(JSON.stringify({ error: "Invalid file type" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const folderPrefix = folder.split("/")[0];
+    if (!ALLOWED_FOLDERS.includes(folderPrefix)) {
+      return new Response(JSON.stringify({ error: "Invalid folder" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const randomName = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
     const key = `${folder}/${randomName}.${fileExt}`;
 
@@ -124,7 +172,7 @@ serve(async (req) => {
         Authorization: authorization,
         "x-amz-date": amzDate,
         "x-amz-content-sha256": payloadHash,
-        "Content-Type": file.type,
+        "Content-Type": getContentType(fileExt),
         "Content-Length": body.length.toString(),
         Host: host,
       },
@@ -133,7 +181,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return new Response(JSON.stringify({ error: `R2 upload failed: ${response.status} ${errorText}` }), {
+      return new Response(JSON.stringify({ error: `Upload failed: ${response.status}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -146,7 +194,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
+    return new Response(JSON.stringify({ error: sanitizeError(error) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

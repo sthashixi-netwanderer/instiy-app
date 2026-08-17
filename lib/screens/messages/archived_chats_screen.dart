@@ -31,18 +31,16 @@ class _ArchivedChatsScreenState extends ConsumerState<ArchivedChatsScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
-      appBar: AppBar(
-        title: const Text('Archived'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-      ),
+      extendBodyBehindAppBar: true,
+      appBar: AppTheme.glassAppBar(context: context, title: const Text('Archived')),
       body: msgProv.isLoadingArchived && msgProv.archivedConversations.isEmpty
-          ? const ListSkeleton(count: 6)
+          ? Padding(
+              padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
+              child: const ListSkeleton(count: 6))
           : msgProv.archivedConversations.isEmpty
               ? _buildEmptyState()
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+                  padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + kToolbarHeight + 8, 8, 100),
                   itemCount: msgProv.archivedConversations.length,
                   separatorBuilder: (_, _) => const Divider(indent: 76),
                   itemBuilder: (context, index) {

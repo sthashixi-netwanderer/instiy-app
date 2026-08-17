@@ -12,6 +12,30 @@ List<ProductReview> _parseReviewList(List<dynamic> rawList) {
 
 class SellerService {
   static Future<DashboardStats> getDashboardStats(String userId) async {
+    try {
+      final response = await SupabaseService.client
+          .rpc('get_seller_dashboard_stats', params: {'p_seller_id': userId});
+
+      final data = response as Map<String, dynamic>;
+      return DashboardStats(
+        totalProducts: (data['totalProducts'] as num?)?.toInt() ?? 0,
+        averageRating: (data['averageRating'] as num?)?.toDouble() ?? 0,
+        activeViews: (data['recentProducts'] as num?)?.toInt() ?? 0,
+        followersCount: (data['followersCount'] as num?)?.toInt() ?? 0,
+        pendingOrders: (data['pendingOrders'] as num?)?.toInt() ?? 0,
+        newReviews: (data['newReviews'] as num?)?.toInt() ?? 0,
+        totalSold: (data['totalSold'] as num?)?.toInt() ?? 0,
+        activeListings: (data['activeListings'] as num?)?.toInt() ?? 0,
+        totalRevenue: (data['totalRevenue'] as num?)?.toDouble() ?? 0,
+      );
+    } catch (_) {
+      // Fallback to legacy implementation if RPC not yet deployed
+      return _getDashboardStatsLegacy(userId);
+    }
+  }
+
+  /// Legacy fallback: remove after RPC is deployed
+  static Future<DashboardStats> _getDashboardStatsLegacy(String userId) async {
     final supabase = SupabaseService.instance;
 
     final productsResponse = await supabase
@@ -20,7 +44,6 @@ class SellerService {
         .eq('seller_id', userId);
 
     final allProducts = productsResponse as List;
-    // Total quantity of all products listed
     final totalProducts = allProducts.fold<int>(0, (sum, p) => sum + ((p['stock_quantity'] as num?)?.toInt() ?? 0));
     final activeListings = allProducts.where((p) => p['status'] == 'available').length;
 
@@ -74,8 +97,6 @@ class SellerService {
           .inFilter('product_id', productIds);
 
       final orderItems = orderItemsResponse as List;
-
-      // Sum up quantities sold from order_items
       totalSold = orderItems.fold<int>(0, (sum, oi) => sum + ((oi['quantity'] as num?)?.toInt() ?? 0));
 
       if (orderItems.isNotEmpty) {
@@ -92,7 +113,6 @@ class SellerService {
         for (final oi in orderItems) {
           final order = orderMap[oi['order_id'] as String];
           if (order != null) {
-            // Pending = not delivered yet (pending, paid, processing, etc.)
             if (order['status'] != 'delivered' && order['status'] != 'cancelled') {
               pendingOrders++;
             }
@@ -169,6 +189,25 @@ class SellerService {
   }
 
   static Future<Map<String, dynamic>> getAnalytics(String userId) async {
+    try {
+      final response = await SupabaseService.client
+          .rpc('get_seller_analytics', params: {'p_seller_id': userId});
+
+      final data = response as Map<String, dynamic>;
+      return {
+        'totalOrders': (data['totalOrders'] as num?)?.toInt() ?? 0,
+        'totalEarned': (data['totalEarned'] as num?)?.toDouble() ?? 0,
+        'monthRevenue': (data['monthRevenue'] as num?)?.toDouble() ?? 0,
+        'avgOrderValue': (data['avgOrderValue'] as num?)?.toInt() ?? 0,
+      };
+    } catch (_) {
+      // Fallback to legacy implementation
+      return _getAnalyticsLegacy(userId);
+    }
+  }
+
+  /// Legacy fallback: remove after RPC is deployed
+  static Future<Map<String, dynamic>> _getAnalyticsLegacy(String userId) async {
     final supabase = SupabaseService.instance;
 
     final productIdsResponse = await supabase
@@ -201,20 +240,20 @@ class SellerService {
         final orderMap = {for (final o in orders) o['id'] as String: o};
         totalOrders = items.length;
 
-      final monthStartMs = DateTime.now().toUtc().subtract(const Duration(days: 30)).millisecondsSinceEpoch;
+        final monthStartMs = DateTime.now().toUtc().subtract(const Duration(days: 30)).millisecondsSinceEpoch;
 
-      for (final item in items) {
-        final order = orderMap[item['order_id'] as String];
-        if (order != null && order['payment_status'] == 'paid') {
-          final itemTotal = (item['price'] as num).toDouble() * (item['quantity'] as num).toInt();
-          totalEarned += itemTotal;
+        for (final item in items) {
+          final order = orderMap[item['order_id'] as String];
+          if (order != null && order['payment_status'] == 'paid') {
+            final itemTotal = (item['price'] as num).toDouble() * (item['quantity'] as num).toInt();
+            totalEarned += itemTotal;
 
-          final itemDate = item['created_at'] as String?;
-          if (itemDate != null && DateTime.parse(itemDate).millisecondsSinceEpoch >= monthStartMs) {
-            monthRevenue += itemTotal;
+            final itemDate = item['created_at'] as String?;
+            if (itemDate != null && DateTime.parse(itemDate).millisecondsSinceEpoch >= monthStartMs) {
+              monthRevenue += itemTotal;
+            }
           }
         }
-      }
 
         if (totalOrders > 0) {
           avgOrderValue = (totalEarned / totalOrders).round();
@@ -252,6 +291,17 @@ class SellerService {
     }
   }
 
+  static Future<void> markItemProcessing(String orderItemId) async {
+    final response = await SupabaseService.client.rpc(
+      'mark_item_processing',
+      params: {'p_order_item_id': orderItemId},
+    );
+    final result = _asMap(response);
+    if (result['success'] != true) {
+      throw Exception(result['error'] ?? 'Failed to mark item as processing');
+    }
+  }
+
   static Future<void> cancelOrderItem(String orderItemId, {String? reason}) async {
     final response = await SupabaseService.client.rpc(
       'cancel_seller_order_item',
@@ -272,6 +322,41 @@ class SellerService {
   }
 
   static Future<List<Order>> getSellerOrders(String userId) async {
+    try {
+      final response = await SupabaseService.client
+          .rpc('get_seller_orders', params: {'p_seller_id': userId});
+
+      final rows = response as List;
+      return rows.map((row) {
+        final itemsData = row['items'] as List? ?? [];
+        final items = itemsData.map((oi) => OrderItem.fromJson({
+              ..._asMap(oi),
+              'order_id': row['id'],
+            })).toList();
+
+        return Order(
+          id: row['id'] as String,
+          buyerId: row['buyer_id'] as String,
+          totalAmount: (row['total_amount'] as num).toDouble(),
+          deliveryFee: row['delivery_fee'] != null ? (row['delivery_fee'] as num).toDouble() : 0.0,
+          itemQuantityTotal: (row['item_quantity_total'] as num?)?.toInt() ?? items.length,
+          status: row['status'] as String? ?? 'pending',
+          paymentStatus: row['payment_status'] as String? ?? 'unpaid',
+          deliveryMode: row['delivery_mode'] as String?,
+          deliveryInstitution: row['delivery_institution'] as String?,
+          createdAt: DateTime.parse(row['created_at'] as String),
+          items: items,
+          sellerId: userId,
+        );
+      }).toList();
+    } catch (_) {
+      // Fallback to legacy implementation
+      return _getSellerOrdersLegacy(userId);
+    }
+  }
+
+  /// Legacy fallback: remove after RPC is deployed
+  static Future<List<Order>> _getSellerOrdersLegacy(String userId) async {
     final productIdsResponse = await SupabaseService.table('products')
         .select('id')
         .eq('seller_id', userId);

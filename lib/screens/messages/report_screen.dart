@@ -26,6 +26,12 @@ class _ReportScreenState extends State<ReportScreen> {
   bool _isSubmitting = false;
 
   @override
+  void initState() {
+    super.initState();
+    _descriptionCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _descriptionCtrl.dispose();
     super.dispose();
@@ -56,7 +62,9 @@ class _ReportScreenState extends State<ReportScreen> {
         ShadToaster.of(context).show(
           const ShadToast(
             title: Text('Report submitted'),
-            description: Text('Our team will review your report. Thank you for helping keep Instiy safe.'),
+            description: Text(
+              'Our team will review your report. Thank you for helping keep Instiy safe.',
+            ),
           ),
         );
         Navigator.of(context).pop();
@@ -79,12 +87,18 @@ class _ReportScreenState extends State<ReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: Text('Report ${widget.reportedUserName}'),
       ),
       body: SingleChildScrollView(
-        padding: context.rAll(16),
+        padding: EdgeInsets.fromLTRB(
+          context.rw(16),
+          MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16),
+          context.rw(16),
+          context.rh(16),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -99,39 +113,71 @@ class _ReportScreenState extends State<ReportScreen> {
             SizedBox(height: context.rh(4)),
             Text(
               'Select the reason that best describes the issue.',
-              style: TextStyle(fontSize: context.rsp(13), color: AppTheme.mutedSteel),
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                color: AppTheme.mutedSteel,
+              ),
             ),
             SizedBox(height: context.rh(20)),
-            ...ReportService.categories.values.map((cat) => _CategoryTile(
-              category: cat,
-              isSelected: _selectedCategory == cat.id,
-              onTap: () => setState(() => _selectedCategory = cat.id),
-            )),
+            ...ReportService.categories.values.map(
+              (cat) => _CategoryTile(
+                category: cat,
+                isSelected: _selectedCategory == cat.id,
+                onTap: () => setState(() => _selectedCategory = cat.id),
+              ),
+            ),
             SizedBox(height: context.rh(24)),
             Text(
-              'Additional details (optional)',
+              'Additional details${_selectedCategory == 'other' ? ' (required)' : ' (optional)'}',
               style: TextStyle(
                 fontSize: context.rsp(14),
                 fontWeight: FontWeight.w600,
-                color: AppTheme.charcoalInk,
+                color: _selectedCategory == 'other'
+                    ? AppTheme.destructive
+                    : AppTheme.charcoalInk,
               ),
             ),
             SizedBox(height: context.rh(8)),
             ShadInput(
               controller: _descriptionCtrl,
-              placeholder: const Text('Provide more context about the issue...'),
+              placeholder: Text(
+                _selectedCategory == 'other'
+                    ? 'Please describe the issue...'
+                    : 'Provide more context about the issue...',
+              ),
               maxLines: 4,
             ),
+            if (_selectedCategory == 'other' &&
+                _descriptionCtrl.text.trim().isEmpty)
+              Padding(
+                padding: EdgeInsets.only(top: context.rh(4)),
+                child: Text(
+                  'You must provide details when selecting Other.',
+                  style: TextStyle(
+                    fontSize: context.rsp(12),
+                    color: AppTheme.destructive,
+                  ),
+                ),
+              ),
             SizedBox(height: context.rh(32)),
             SizedBox(
               width: double.infinity,
               child: ShadButton(
-                onPressed: _isSubmitting ? null : _submit,
+                onPressed:
+                    (_isSubmitting ||
+                        _selectedCategory == null ||
+                        (_selectedCategory == 'other' &&
+                            _descriptionCtrl.text.trim().isEmpty))
+                    ? null
+                    : _submit,
                 child: _isSubmitting
                     ? SizedBox(
                         width: context.rw(18),
                         height: context.rh(18),
-                        child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text('Submit Report'),
               ),
@@ -156,16 +202,26 @@ class _CategoryTile extends StatelessWidget {
 
   IconData _getIcon(String name) {
     switch (name) {
-      case 'mail': return LucideIcons.mail;
-      case 'alertTriangle': return LucideIcons.alertTriangle;
-      case 'circleAlert': return LucideIcons.circleAlert;
-      case 'eye': return LucideIcons.eye;
-      case 'user': return LucideIcons.user;
-      case 'messageSquare': return LucideIcons.messageSquare;
-      case 'flame': return LucideIcons.flame;
-      case 'shield': return LucideIcons.shield;
-      case 'ellipsis': return LucideIcons.ellipsis;
-      default: return LucideIcons.circle;
+      case 'mail':
+        return LucideIcons.mail;
+      case 'alertTriangle':
+        return LucideIcons.alertTriangle;
+      case 'circleAlert':
+        return LucideIcons.circleAlert;
+      case 'eye':
+        return LucideIcons.eye;
+      case 'user':
+        return LucideIcons.user;
+      case 'messageSquare':
+        return LucideIcons.messageSquare;
+      case 'flame':
+        return LucideIcons.flame;
+      case 'shield':
+        return LucideIcons.shield;
+      case 'ellipsis':
+        return LucideIcons.ellipsis;
+      default:
+        return LucideIcons.circle;
     }
   }
 
@@ -181,7 +237,9 @@ class _CategoryTile extends StatelessWidget {
           child: Container(
             padding: context.rAll(14),
             decoration: BoxDecoration(
-              color: isSelected ? AppTheme.accent.withValues(alpha: 0.06) : AppTheme.pureSurface,
+              color: isSelected
+                  ? AppTheme.accent.withValues(alpha: 0.06)
+                  : AppTheme.pureSurface,
               borderRadius: BorderRadius.circular(context.rr(12)),
               border: Border.all(
                 color: isSelected ? AppTheme.accent : AppTheme.whisperBorder,
@@ -213,19 +271,28 @@ class _CategoryTile extends StatelessWidget {
                         category.label,
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color: isSelected ? AppTheme.accent : AppTheme.charcoalInk,
+                          color: isSelected
+                              ? AppTheme.accent
+                              : AppTheme.charcoalInk,
                         ),
                       ),
                       SizedBox(height: context.rh(2)),
                       Text(
                         category.description,
-                        style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel),
+                        style: TextStyle(
+                          fontSize: context.rsp(12),
+                          color: AppTheme.mutedSteel,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 if (isSelected)
-                  Icon(LucideIcons.checkCircle, size: context.ri(20), color: AppTheme.accent),
+                  Icon(
+                    LucideIcons.checkCircle,
+                    size: context.ri(20),
+                    color: AppTheme.accent,
+                  ),
               ],
             ),
           ),

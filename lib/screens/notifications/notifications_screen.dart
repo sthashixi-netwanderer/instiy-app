@@ -37,6 +37,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   bool _hasMore = true;
   int _page = 0;
   final ScrollController _scrollController = ScrollController();
+  final _filterPopoverController = ShadPopoverController();
   RealtimeChannel? _notificationsChannel;
 
   // Search & Filter state
@@ -82,6 +83,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _filterPopoverController.dispose();
     if (_notificationsChannel != null) {
       SupabaseService.client.removeChannel(_notificationsChannel!);
     }
@@ -101,7 +103,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
     try {
-      final notifications = await NotificationService.getNotifications(offset: 0);
+      final typeFilter = _typeForFilter(_selectedFilter);
+      final notifications = await NotificationService.getNotifications(
+        offset: 0,
+        type: typeFilter,
+        isRead: _selectedFilter == NotificationFilter.unread ? false : null,
+        searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
       if (mounted) {
         setState(() {
           _notifications = notifications;
@@ -116,7 +124,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     if (_isLoadingMore) return;
     setState(() => _isLoadingMore = true);
     try {
-      final more = await NotificationService.getNotifications(offset: _page * 20);
+      final typeFilter = _typeForFilter(_selectedFilter);
+      final more = await NotificationService.getNotifications(
+        offset: _page * 20,
+        type: typeFilter,
+        isRead: _selectedFilter == NotificationFilter.unread ? false : null,
+        searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
       if (mounted) {
         setState(() {
           _notifications.addAll(more);
@@ -125,6 +139,20 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       }
     } catch (_) {}
     if (mounted) setState(() => _isLoadingMore = false);
+  }
+
+  String? _typeForFilter(NotificationFilter filter) {
+    switch (filter) {
+      case NotificationFilter.all:
+      case NotificationFilter.unread:
+        return null;
+      case NotificationFilter.orders:
+        return 'order';
+      case NotificationFilter.wallet:
+        return 'payment';
+      case NotificationFilter.chats:
+        return 'message';
+    }
   }
 
   Future<void> _markAllRead() async {
@@ -146,6 +174,50 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     });
   }
 
+  Widget _buildFilterItem({
+    required NotificationFilter filter,
+    required IconData icon,
+    required String label,
+  }) {
+    final theme = ShadTheme.of(context);
+    final isSelected = _selectedFilter == filter;
+    final popoverForeground = theme.colorScheme.popoverForeground;
+    final textColor = isSelected ? AppTheme.accent : popoverForeground;
+    final iconColor = isSelected ? AppTheme.accent : theme.colorScheme.mutedForeground;
+
+    return InkWell(
+      onTap: () {
+        _filterPopoverController.hide();
+        setState(() {
+          _selectedFilter = filter;
+        });
+        _page = 0;
+        _hasMore = true;
+        _loadNotifications();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: iconColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: textColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProv = ref.watch(authProvider);
@@ -153,41 +225,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Notifications')),
         body: const Center(child: Text('Sign in to view notifications')),
       );
     }
 
-    final filteredNotifications = _notifications.where((notification) {
-      // 1. Search Query Filter
-      if (_searchQuery.isNotEmpty) {
-        final query = _searchQuery.toLowerCase();
-        final matchTitle = notification.title.toLowerCase().contains(query);
-        final matchBody = notification.body?.toLowerCase().contains(query) ?? false;
-        if (!matchTitle && !matchBody) return false;
-      }
-
-      // 2. Category Filter
-      switch (_selectedFilter) {
-        case NotificationFilter.all:
-          return true;
-        case NotificationFilter.unread:
-          return !notification.isRead;
-        case NotificationFilter.orders:
-          return notification.type == 'order' || 
-                 notification.type == 'delivery' || 
-                 notification.type == 'delivery_approved';
-        case NotificationFilter.wallet:
-          return notification.type == 'payment' || 
-                 notification.type == 'transfer_sent' || 
-                 notification.type == 'transfer_received' || 
-                 notification.type == 'deposit' || 
-                 notification.type == 'withdrawal';
-        case NotificationFilter.chats:
-          return notification.type == 'message' || 
-                 notification.type == 'new_message';
-      }
-    }).toList();
+    final filteredNotifications = _notifications;
 
     final appBarTitle = _isSearching
         ? TextField(
@@ -203,12 +247,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               setState(() {
                 _searchQuery = val.trim();
               });
+              _page = 0;
+              _hasMore = true;
+              _loadNotifications();
             },
           )
         : const Text('Notifications');
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: appBarTitle,
@@ -229,77 +277,69 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   _isSearching = true;
                 }
               });
+              if (!_isSearching) {
+                _page = 0;
+                _hasMore = true;
+                _loadNotifications();
+              }
             },
           ),
-          PopupMenuButton<NotificationFilter>(
-            icon: const Icon(
-              LucideIcons.slidersHorizontal,
-              color: AppTheme.mutedSteel,
-              size: 20,
+          ShadPopover(
+            controller: _filterPopoverController,
+            anchor: const ShadAnchor(
+              childAlignment: Alignment.topRight,
+              overlayAlignment: Alignment.bottomRight,
+              offset: Offset(0, 8),
             ),
-            onSelected: (filter) {
-              setState(() {
-                _selectedFilter = filter;
-              });
-            },
-            offset: const Offset(0, 50),
-            color: AppTheme.pureSurface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppTheme.whisperBorder, width: 0.5),
+            padding: const EdgeInsets.all(8),
+            popover: (context) => SizedBox(
+              width: 200,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildFilterItem(
+                    filter: NotificationFilter.all,
+                    icon: LucideIcons.bell,
+                    label: 'All',
+                  ),
+                  _buildFilterItem(
+                    filter: NotificationFilter.unread,
+                    icon: LucideIcons.mail,
+                    label: 'Unread Only',
+                  ),
+                  _buildFilterItem(
+                    filter: NotificationFilter.orders,
+                    icon: LucideIcons.shoppingBag,
+                    label: 'Orders & Deliveries',
+                  ),
+                  _buildFilterItem(
+                    filter: NotificationFilter.wallet,
+                    icon: LucideIcons.wallet,
+                    label: 'Transactions',
+                  ),
+                  _buildFilterItem(
+                    filter: NotificationFilter.chats,
+                    icon: LucideIcons.messageSquare,
+                    label: 'Chats',
+                  ),
+                ],
+              ),
             ),
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: NotificationFilter.all,
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.bell, size: 16, color: _selectedFilter == NotificationFilter.all ? AppTheme.accent : AppTheme.mutedSteel),
-                    const SizedBox(width: 8),
-                    Text('All', style: TextStyle(fontWeight: _selectedFilter == NotificationFilter.all ? FontWeight.w600 : FontWeight.normal)),
-                  ],
+            child: GestureDetector(
+              onTap: _filterPopoverController.toggle,
+              child: const MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Icon(
+                    LucideIcons.slidersHorizontal,
+                    color: AppTheme.mutedSteel,
+                    size: 20,
+                  ),
                 ),
               ),
-              PopupMenuItem(
-                value: NotificationFilter.unread,
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.mail, size: 16, color: _selectedFilter == NotificationFilter.unread ? AppTheme.accent : AppTheme.mutedSteel),
-                    const SizedBox(width: 8),
-                    Text('Unread Only', style: TextStyle(fontWeight: _selectedFilter == NotificationFilter.unread ? FontWeight.w600 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: NotificationFilter.orders,
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.shoppingBag, size: 16, color: _selectedFilter == NotificationFilter.orders ? AppTheme.accent : AppTheme.mutedSteel),
-                    const SizedBox(width: 8),
-                    Text('Orders & Deliveries', style: TextStyle(fontWeight: _selectedFilter == NotificationFilter.orders ? FontWeight.w600 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: NotificationFilter.wallet,
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.wallet, size: 16, color: _selectedFilter == NotificationFilter.wallet ? AppTheme.accent : AppTheme.mutedSteel),
-                    const SizedBox(width: 8),
-                    Text('Transactions', style: TextStyle(fontWeight: _selectedFilter == NotificationFilter.wallet ? FontWeight.w600 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: NotificationFilter.chats,
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.messageSquare, size: 16, color: _selectedFilter == NotificationFilter.chats ? AppTheme.accent : AppTheme.mutedSteel),
-                    const SizedBox(width: 8),
-                    Text('Chats', style: TextStyle(fontWeight: _selectedFilter == NotificationFilter.chats ? FontWeight.w600 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
           if (!_isSearching && filteredNotifications.any((n) => !n.isRead))
             ShadButton.ghost(
@@ -349,14 +389,23 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ],
       ),
       body: _isLoading
-          ? const ListSkeleton(count: 8)
+          ? Padding(
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight),
+              child: const ListSkeleton(count: 8),
+            )
           : filteredNotifications.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
+                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight,
                   onRefresh: _loadNotifications,
                   child: ListView.separated(
                     controller: _scrollController,
-                    padding: context.rAll(8),
+                    padding: EdgeInsets.fromLTRB(
+                      context.rw(8),
+                      MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(8),
+                      context.rw(8),
+                      context.rh(8),
+                    ),
                     itemCount: filteredNotifications.length + (_hasMore ? 1 : 0),
                     separatorBuilder: (_, _) =>
                         Divider(height: 1, indent: context.rw(16), endIndent: context.rw(16)),
@@ -440,7 +489,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      notification.title,
+                                      _formatCurrencySymbol(notification.title),
                                       style: TextStyle(
                                         fontWeight: notification.isRead
                                             ? FontWeight.normal
@@ -449,7 +498,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                     ),
                                     if (notification.body != null)
                                       Text(
-                                        notification.body!,
+                                        _formatCurrencySymbol(notification.body!),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -635,9 +684,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     
     if (conv != null) {
       provider.setActiveConversation(conv);
-      provider.loadMessages(conv.id);
+      provider.loadMessages(conv.id); // ignore: unawaited_futures
       if (mounted) {
-        Navigator.of(context).push(
+        Navigator.of(context).push( // ignore: unawaited_futures
           MaterialPageRoute(
             builder: (_) => ConversationScreen(conversation: conv),
           ),
@@ -645,7 +694,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       }
     } else {
       if (mounted) {
-        Navigator.of(context).pushNamed('/messages');
+        Navigator.of(context).pushNamed('/messages'); // ignore: unawaited_futures
       }
     }
   }
@@ -734,5 +783,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
     return DateFormat('MMM d').format(date);
+  }
+
+  String _formatCurrencySymbol(String text) {
+    return text
+        .replaceAll(r'GH\u00a2', 'GH₵')
+        .replaceAll(r'GH\\u00a2', 'GH₵')
+        .replaceAll(r'\u00a2', '₵')
+        .replaceAll(r'\\u00a2', '₵')
+        .replaceAll('GH¢', 'GH₵')
+        .replaceAll('¢', '₵');
   }
 }

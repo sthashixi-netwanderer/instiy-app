@@ -113,15 +113,18 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
       await auth.loadUserProfile();
 
       if (mounted) {
+        setState(() => _isLoading = false);
         ShadToaster.of(context).show(
           const ShadToast(title: Text('Profile completed successfully!')),
         );
       }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMsg = 'Failed to complete profile: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMsg = 'Failed to complete profile: $e';
+        });
+      }
     }
   }
 

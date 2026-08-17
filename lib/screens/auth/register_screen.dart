@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/searchable_institution_picker.dart';
 import 'accept_policy_screen.dart';
 import '../../widgets/responsive_layout.dart';
+import '../../widgets/app_button.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -22,6 +24,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _tagController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -30,24 +33,98 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
+  bool _isTagChecking = false;
+  bool _isTagTaken = false;
+  List<String> _recommendedTags = [];
+  Timer? _tagDebounce;
+  Timer? _nameDebounce;
+
+  ProviderSubscription? _authSub;
+
   @override
   void initState() {
     super.initState();
     _nameController.addListener(_onTextChanged);
+    _nameController.addListener(_onNameChanged);
     _emailController.addListener(_onTextChanged);
+    _tagController.addListener(_onTextChanged);
+    _tagController.addListener(_onTagChanged);
     _phoneController.addListener(_onTextChanged);
     _universityController.addListener(_onTextChanged);
     _passwordController.addListener(_onTextChanged);
     _confirmPasswordController.addListener(_onTextChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ref.read(authProvider).isAuthenticated) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+        return;
+      }
+      // Listen for auth state changes (e.g. Google OAuth completing)
+      _authSub = ref.listenManual(authProvider, (previous, next) {
+        if (next.isAuthenticated && mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+        }
+      });
+    });
   }
 
   void _onTextChanged() {
     setState(() {});
   }
 
+  void _onNameChanged() {
+    if (_nameDebounce?.isActive ?? false) _nameDebounce!.cancel();
+    final name = _nameController.text.trim();
+    if (name.length < 3) {
+      setState(() {
+        _recommendedTags = [];
+      });
+      return;
+    }
+
+    _nameDebounce = Timer(const Duration(milliseconds: 600), () async {
+      final recs = await AuthService.generateRecommendedTags(name);
+      if (mounted) {
+        setState(() {
+          _recommendedTags = recs;
+        });
+      }
+    });
+  }
+
+  void _onTagChanged() {
+    if (_tagDebounce?.isActive ?? false) _tagDebounce!.cancel();
+    final tag = _tagController.text.trim().replaceAll(RegExp(r'^\$'), '').toLowerCase();
+
+    if (tag.isEmpty || tag.length < 5) {
+      setState(() {
+        _isTagTaken = false;
+      });
+      return;
+    }
+
+    _tagDebounce = Timer(const Duration(milliseconds: 500), () async {
+      setState(() => _isTagChecking = true);
+      try {
+        final taken = await AuthService.checkWalletTagExists(tag);
+        if (mounted) {
+          setState(() {
+            _isTagTaken = taken;
+            _isTagChecking = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isTagChecking = false);
+        }
+      }
+    });
+  }
+
   bool get _isFormValid =>
       _nameController.text.trim().isNotEmpty &&
       _emailController.text.trim().isNotEmpty &&
+      _tagController.text.trim().isNotEmpty &&
+      !_isTagTaken &&
       _phoneController.text.trim().isNotEmpty &&
       _universityController.text.trim().isNotEmpty &&
       _passwordController.text.isNotEmpty &&
@@ -55,12 +132,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   void dispose() {
+    _authSub?.close();
     _nameController.dispose();
     _emailController.dispose();
+    _tagController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _universityController.dispose();
+    _tagDebounce?.cancel();
+    _nameDebounce?.cancel();
     super.dispose();
   }
 
@@ -74,6 +155,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
+    final tag = _tagController.text.trim().replaceAll(RegExp(r'^\$'), '').toLowerCase();
+    final tagExists = await AuthService.checkWalletTagExists(tag);
+    if (tagExists) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(title: Text('This wallet tag is already taken.')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
     final accepted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => const AcceptPolicyScreen(),
@@ -131,20 +224,52 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   void _showOtpVerificationDialog(String correctOtp, String phoneNumber) {
     final otpController = TextEditingController();
+    final phoneEditController = TextEditingController(text: phoneNumber);
     bool isVerifying = false;
+    bool isResending = false;
+    bool isEditingPhone = false;
     String? otpError;
+    String currentOtp = correctOtp;
+    String currentPhone = phoneNumber;
+
+    int resendCountdown = 30;
+    Timer? countdownTimer;
+    bool hasStartedTimer = false;
+
+    void startTimer(StateSetter setDialogState) {
+      resendCountdown = 30;
+      countdownTimer?.cancel();
+      countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setDialogState(() {
+          if (resendCountdown > 0) {
+            resendCountdown--;
+          } else {
+            timer.cancel();
+          }
+        });
+      });
+    }
 
     AppTheme.showGlassDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            if (!hasStartedTimer) {
+              hasStartedTimer = true;
+              startTimer(setDialogState);
+            }
+
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Verify Phone Number',
+                  isEditingPhone ? 'Edit Phone Number' : 'Verify Phone Number',
                   style: TextStyle(
                     fontSize: context.rsp(16),
                     fontWeight: FontWeight.w600,
@@ -152,24 +277,58 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                 ),
                 SizedBox(height: context.rh(8)),
-                Text(
-                  'We sent a 6-digit verification code to $phoneNumber. Please enter it below to verify your account.',
-                  style: TextStyle(
-                    fontSize: context.rsp(14),
-                    color: AppTheme.mutedSteel,
-                    height: 1.4,
+                if (isEditingPhone) ...[
+                  Text(
+                    'Enter your correct phone number to receive the verification code.',
+                    style: TextStyle(
+                      fontSize: context.rsp(14),
+                      color: AppTheme.mutedSteel,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-                SizedBox(height: context.rh(16)),
-                ShadInput(
-                  controller: otpController,
-                  placeholder: const Text('Enter 6-digit code'),
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  onChanged: (val) {
-                    setDialogState(() {});
-                  },
-                ),
+                  SizedBox(height: context.rh(12)),
+                  ShadInput(
+                    controller: phoneEditController,
+                    placeholder: const Text('Enter new phone number'),
+                    keyboardType: TextInputType.phone,
+                  ),
+                ] else ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'We sent a 6-digit verification code to $currentPhone. Please enter it below to verify your account.',
+                          style: TextStyle(
+                            fontSize: context.rsp(14),
+                            color: AppTheme.mutedSteel,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      ShadIconButton.ghost(
+                        icon: Icon(LucideIcons.pencil, size: context.ri(16), color: AppTheme.accent),
+                        onPressed: () {
+                          setDialogState(() {
+                            isEditingPhone = true;
+                            otpError = null;
+                            phoneEditController.text = currentPhone;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.rh(16)),
+                  ShadInput(
+                    controller: otpController,
+                    placeholder: const Text('Enter 6-digit code'),
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    onChanged: (val) {
+                      setDialogState(() {});
+                    },
+                  ),
+                ],
                 if (otpError != null) ...[
                   SizedBox(height: context.rh(8)),
                   Text(
@@ -182,68 +341,204 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                 ],
                 SizedBox(height: context.rh(20)),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ShadButton.outline(
-                      onPressed: isVerifying ? null : () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    SizedBox(width: context.rw(8)),
-                    ShadButton(
-                      onPressed: (isVerifying || otpController.text.trim().length != 6)
-                          ? null
-                          : () async {
-                              final inputOtp = otpController.text.trim();
-                              if (inputOtp.length != 6) {
+                if (isEditingPhone) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ShadButton.outline(
+                        onPressed: isVerifying
+                            ? null
+                            : () {
                                 setDialogState(() {
-                                  otpError = 'Enter a valid 6-digit code';
+                                  isEditingPhone = false;
+                                  phoneEditController.text = currentPhone;
+                                  otpError = null;
                                 });
-                                return;
-                              }
-
-                              if (inputOtp != correctOtp) {
-                                setDialogState(() {
-                                  otpError = 'Incorrect code. Please try again.';
-                                });
-                                return;
-                              }
-
-                              setDialogState(() {
-                                isVerifying = true;
-                                otpError = null;
-                              });
-
-                              final navigator = Navigator.of(context);
-                              final auth = ref.read(authProvider);
-
-                              final success = await auth.signUp(
-                                email: _emailController.text.trim(),
-                                password: _passwordController.text,
-                                fullName: _nameController.text.trim(),
-                                university: _universityController.text.trim(),
-                                phoneNumber: phoneNumber,
-                              );
-
-                              setDialogState(() {
-                                isVerifying = false;
-                              });
-
-                              if (success) {
-                                navigator.pop();
-                                if (mounted) {
-                                  navigator.pushNamedAndRemoveUntil('/home', (_) => false);
+                              },
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: context.rw(8)),
+                      ShadButton(
+                        onPressed: isVerifying
+                            ? null
+                            : () async {
+                                final newPhone = phoneEditController.text.trim();
+                                final cleaned = newPhone.replaceAll(RegExp(r'\D'), '');
+                                if (cleaned.length < 9) {
+                                  setDialogState(() {
+                                    otpError = 'Please enter a valid phone number';
+                                  });
+                                  return;
                                 }
-                              } else {
+
                                 setDialogState(() {
-                                  otpError = auth.error ?? 'Registration failed. Please try again.';
+                                  isVerifying = true;
+                                  otpError = null;
                                 });
-                              }
-                            },
-                      child: const Text('Verify & Sign Up'),
-                    ),
-                  ],
-                ),
+
+                                try {
+                                  final taken = await AuthService.isPhoneTaken(newPhone);
+                                  if (taken) {
+                                    setDialogState(() {
+                                      isVerifying = false;
+                                      otpError = 'Phone number already registered';
+                                    });
+                                    return;
+                                  }
+
+                                  final newOtp = (100000 + Random().nextInt(900000)).toString();
+                                  final sent = await SmsService.sendOtp(to: newPhone, otp: newOtp);
+                                  
+                                  if (!sent) {
+                                    setDialogState(() {
+                                      isVerifying = false;
+                                      otpError = 'Failed to send OTP. Try again.';
+                                    });
+                                    return;
+                                  }
+
+                                  setDialogState(() {
+                                    currentPhone = newPhone;
+                                    currentOtp = newOtp;
+                                    isEditingPhone = false;
+                                    isVerifying = false;
+                                    _phoneController.text = newPhone;
+                                  });
+
+                                  startTimer(setDialogState);
+                                } catch (e) {
+                                  setDialogState(() {
+                                    isVerifying = false;
+                                    otpError = 'Error: ${e.toString()}';
+                                  });
+                                }
+                              },
+                        child: const Text('Save & Send Code'),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: (isVerifying || resendCountdown > 0)
+                                ? null
+                                : () async {
+                                    setDialogState(() {
+                                      isResending = true;
+                                      otpError = null;
+                                    });
+
+                                    try {
+                                      final newOtp = (100000 + Random().nextInt(900000)).toString();
+                                      final sent = await SmsService.sendOtp(to: currentPhone, otp: newOtp);
+
+                                      if (sent) {
+                                        setDialogState(() {
+                                          currentOtp = newOtp;
+                                          isResending = false;
+                                        });
+                                        startTimer(setDialogState);
+                                      } else {
+                                        setDialogState(() {
+                                          isResending = false;
+                                          otpError = 'Failed to resend code. Try again.';
+                                        });
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() {
+                                        isResending = false;
+                                        otpError = e.toString();
+                                      });
+                                    }
+                                  },
+                            child: Text(
+                              resendCountdown > 0 ? 'Resend code in ${resendCountdown}s' : 'Resend Code',
+                              style: TextStyle(
+                                fontSize: context.rsp(13),
+                                color: resendCountdown > 0 ? AppTheme.mutedSteel : AppTheme.accent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (isResending) ...[
+                            SizedBox(width: context.rw(4)),
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1.5),
+                            ),
+                          ],
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          ShadButton.outline(
+                            onPressed: isVerifying ? null : () => Navigator.of(context).pop(),
+                            child: const Text('Cancel'),
+                          ),
+                          SizedBox(width: context.rw(8)),
+                          ShadButton(
+                            onPressed: (isVerifying || otpController.text.trim().length != 6)
+                                ? null
+                                : () async {
+                                    final inputOtp = otpController.text.trim();
+                                    if (inputOtp.length != 6) {
+                                      setDialogState(() {
+                                        otpError = 'Enter a valid 6-digit code';
+                                      });
+                                      return;
+                                    }
+
+                                    if (inputOtp != currentOtp) {
+                                      setDialogState(() {
+                                        otpError = 'Incorrect code. Please try again.';
+                                      });
+                                      return;
+                                    }
+
+                                    setDialogState(() {
+                                      isVerifying = true;
+                                      otpError = null;
+                                    });
+
+                                    final navigator = Navigator.of(context);
+                                    final auth = ref.read(authProvider);
+
+                                    final success = await auth.signUp(
+                                      email: _emailController.text.trim(),
+                                      password: _passwordController.text,
+                                      fullName: _nameController.text.trim(),
+                                      walletTag: _tagController.text.trim().replaceAll(RegExp(r'^\$'), '').toLowerCase(),
+                                      university: _universityController.text.trim(),
+                                      phoneNumber: currentPhone,
+                                    );
+
+                                    setDialogState(() {
+                                      isVerifying = false;
+                                    });
+
+                                    if (success) {
+                                      navigator.pop();
+                                      if (mounted) {
+                                        navigator.pushNamedAndRemoveUntil('/home', (_) => false); // ignore: unawaited_futures
+                                      }
+                                    } else {
+                                      setDialogState(() {
+                                        otpError = auth.error ?? 'Registration failed. Please try again.';
+                                      });
+                                    }
+                                  },
+                            child: const Text('Verify & Sign Up'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ],
             );
           },
@@ -251,20 +546,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       },
     ).then((_) {
       otpController.dispose();
+      phoneEditController.dispose();
+      countdownTimer?.cancel();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
-
-    if (auth.isAuthenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
-        }
-      });
-    }
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
@@ -356,6 +645,93 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     SizedBox(height: context.rh(12)),
 
                     ShadInputFormField(
+                      id: 'wallet_tag',
+                      controller: _tagController,
+                      label: const Text('Wallet Tag'),
+                      placeholder: const Text('Enter your unique wallet tag'),
+                      leading: Icon(LucideIcons.wallet, size: context.ri(18)),
+                      textInputAction: TextInputAction.next,
+                      validator: (v) {
+                        if (v.isEmpty) return 'Please enter a wallet tag';
+                        final cleaned = v.replaceAll(RegExp(r'^\$'), '');
+                        
+                        // Count alphabetic characters in the tag
+                        final alphabeticCount = cleaned.replaceAll(RegExp(r'[^a-zA-Z]'), '').length;
+                        if (alphabeticCount < 5) {
+                          return 'Tag must contain at least 5 alphabetic characters';
+                        }
+                        if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(cleaned)) {
+                          return 'Only alphanumeric characters are allowed';
+                        }
+                        if (_isTagTaken) {
+                          return 'This wallet tag is already taken';
+                        }
+                        return null;
+                      },
+                      trailing: _isTagChecking
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : _tagController.text.trim().isNotEmpty
+                              ? Icon(
+                                  _isTagTaken ? LucideIcons.circleX : LucideIcons.circleCheck,
+                                  color: _isTagTaken ? AppTheme.destructive : Colors.green,
+                                  size: 18,
+                                )
+                              : null,
+                    ),
+                    if (_recommendedTags.isNotEmpty) ...[
+                      SizedBox(height: context.rh(8)),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Recommended Tags:',
+                          style: TextStyle(
+                            fontSize: context.rsp(12),
+                            color: AppTheme.mutedSteel,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: context.rh(6)),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _recommendedTags.map((tag) {
+                          return GestureDetector(
+                            onTap: () {
+                              _tagController.text = tag;
+                              _onTagChanged();
+                              setState(() {});
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accent.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppTheme.accent.withValues(alpha: 0.25),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                '\$$tag',
+                                style: TextStyle(
+                                  color: AppTheme.accent,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: context.rsp(12),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    SizedBox(height: context.rh(12)),
+
+                    ShadInputFormField(
                       id: 'phone',
                       controller: _phoneController,
                       label: const Text('Phone Number'),
@@ -430,18 +806,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                     SizedBox(height: context.rh(24)),
 
-                    SizedBox(
-                      height: context.rh(50),
-                      child: ShadButton(
-                        onPressed: (_isLoading || !_isFormValid) ? null : _handleRegister,
-                        child: _isLoading
-                            ? SizedBox(
-                                height: context.rh(20),
-                                width: context.rw(20),
-                                child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Text('Create Account'),
-                      ),
+                    AppButton(
+                      onPressed: (_isLoading || !_isFormValid) ? null : _handleRegister,
+                      loading: _isLoading,
+                      child: const Text('Create Account'),
                     ),
 
                     SizedBox(height: context.rh(16)),
@@ -491,7 +859,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                     SizedBox(height: context.rh(20)),
 
-                    ShadButton.outline(
+                    AppButton.outline(
                       onPressed: _isLoading
                           ? null
                           : () async {
@@ -503,7 +871,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               if (accepted != true || !mounted) return;
 
                               setState(() => _isLoading = true);
-                              await auth.signInWithGoogle(isSignUp: true);
+                              await auth.signInWithGoogle();
                               if (mounted) setState(() => _isLoading = false);
                             },
                       child: Row(
@@ -513,15 +881,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             'https://developers.google.com/static/identity/images/g-logo.png',
                             height: context.rh(22),
                             width: context.rw(22),
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(LucideIcons.globe, size: context.ri(24));
-                            },
+                            errorBuilder: (context, error, stackTrace) => Icon(LucideIcons.globe, size: context.ri(24)),
                           ),
                           SizedBox(width: context.rw(12)),
-                          Text(
-                            'Google',
-                            style: TextStyle(fontSize: context.rsp(14)),
-                          ),
+                          Text('Google', style: TextStyle(fontSize: context.rsp(14))),
                         ],
                       ),
                     ),

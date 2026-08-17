@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/app_theme.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
-import '../../services/product_service.dart';
 import '../../services/follow_service.dart';
 import '../../services/video_analytics_service.dart';
 import '../../services/video_service.dart';
@@ -17,12 +13,15 @@ import '../../services/review_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/navigation_service.dart';
 import '../../models/seller_review_model.dart';
-import '../../widgets/app_bottom_nav.dart';
+import '../../widgets/adaptive_nav.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/instiy_logo_placeholder.dart';
 import '../../widgets/review_section.dart';
 import '../../widgets/verification_badge.dart';
+import '../../widgets/share_bottom_sheet.dart';
+import '../../utils/bold_text.dart';
 import '../../utils/responsive.dart';
+import 'package:instiy/utils/formatters.dart';
 
 class VideoFeedScreen extends ConsumerStatefulWidget {
   const VideoFeedScreen({super.key});
@@ -32,19 +31,18 @@ class VideoFeedScreen extends ConsumerStatefulWidget {
 }
 
 class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsBindingObserver, RouteAware {
-  final PageController _pageController = PageController();
-  List<Product> _products = [];
-  bool _isLoading = true;
-  int _focusedIndex = 0;
-  RealtimeChannel? _productsChannel;
+  late final PageController _pageController;
   final ValueNotifier<bool> _canPlay = ValueNotifier(true);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadVideos();
-    _subscribeToProducts();
+    final initialPage = ref.read(videoProvider).focusedIndex;
+    _pageController = PageController(initialPage: initialPage);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(videoProvider).ensureInitialized();
+    });
   }
 
   @override
@@ -53,6 +51,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     final route = ModalRoute.of(context);
     if (route != null) {
       NavigationService.routeObserver.subscribe(this, route);
+      _canPlay.value = route.isCurrent;
     }
   }
 
@@ -76,7 +75,8 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _canPlay.value = false;
     } else if (state == AppLifecycleState.resumed) {
-      _canPlay.value = true;
+      final route = ModalRoute.of(context);
+      _canPlay.value = route?.isCurrent ?? false;
     }
   }
 
@@ -86,93 +86,38 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     _canPlay.value = false;
     WidgetsBinding.instance.removeObserver(this);
     _canPlay.dispose();
-    _productsChannel?.unsubscribe();
     _pageController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadVideos() async {
-    setState(() => _isLoading = true);
-    try {
-      final clips = await ProductService.getClipsProducts();
-      if (mounted) {
-        setState(() {
-          _products = clips;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ShadToaster.of(context).show(
-          ShadToast(
-            title: const Text('Error loading clips'),
-            description: Text(e.toString()),
-          ),
-        );
-      }
-    }
-  }
-
-  void _subscribeToProducts() {
-    _productsChannel = Supabase.instance.client
-        .channel('products-changes')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'products',
-          callback: (payload) {
-            final newProduct = payload.newRecord;
-            if (newProduct['status'] != 'available') return;
-            if (newProduct['stock_quantity'] == null || newProduct['stock_quantity'] <= 0) return;
-            if (newProduct['video_urls'] == null ||
-                (newProduct['video_urls'] as List).isEmpty) {
-              return;
-            }
-
-            _loadVideos();
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.delete,
-          schema: 'public',
-          table: 'products',
-          callback: (payload) {
-            final deletedId = payload.oldRecord['id'] as String?;
-            if (deletedId == null) return;
-            setState(() {
-              _products.removeWhere((p) => p.id == deletedId);
-            });
-          },
-        )
-        .subscribe();
-  }
-
   @override
   Widget build(BuildContext context) {
+    final videoState = ref.watch(videoProvider);
+    final products = videoState.products;
+    final isLoading = videoState.isLoading;
+    final focusedIndex = videoState.focusedIndex;
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBody: true,
-      bottomNavigationBar: const AppBottomNav(currentIndex: 2),
-      body: _isLoading
+      bottomNavigationBar: const AdaptiveNav(currentIndex: 2),
+      body: isLoading
           ? const VideoFeedSkeleton()
-          : _products.isEmpty
+          : products.isEmpty
               ? _buildEmptyState()
               : PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
-                  itemCount: _products.length,
+                  itemCount: products.length,
                   onPageChanged: (index) {
-                    setState(() {
-                      _focusedIndex = index;
-                    });
+                    ref.read(videoProvider).setFocusedIndex(index);
                   },
                   itemBuilder: (context, index) {
-                    final product = _products[index];
+                    final product = products[index];
                     return VideoFeedItem(
                       key: ValueKey(product.id),
                       product: product,
-                      isActive: index == _focusedIndex,
+                      isActive: index == focusedIndex,
                       canPlay: _canPlay,
                     );
                   },
@@ -209,7 +154,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
           ),
           const SizedBox(height: 24),
           ShadButton(
-            onPressed: _loadVideos,
+            onPressed: () => ref.read(videoProvider).loadVideos(silent: false),
             child: const Text('Refresh'),
           ),
         ],
@@ -250,6 +195,8 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
   int _likeCount = 0;
   int _reviewCount = 0;
   bool _isDescriptionExpanded = false;
+  String? _speedText;
+  bool _showSpeedIndicator = false;
 
   bool get _isOwnProduct {
     final userId = ref.read(authProvider).user?.id;
@@ -291,9 +238,9 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
 
   void _onCanPlayChanged() {
     if (!widget.canPlay.value) {
-      _disposeVideo();
+      _pauseVideo();
     } else if (widget.isActive) {
-      _initVideo();
+      _resumeVideo();
     }
   }
 
@@ -307,25 +254,25 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
 
   Future<void> _initVideo() async {
     if (_controller != null && _isInitialized) {
-      _controller!.play();
+      _controller!.play(); // ignore: unawaited_futures
       setState(() {
         _isPlaying = true;
         _isMuted = false;
       });
-      _controller!.setVolume(_hasAudio ? 1.0 : 0.0);
+      _controller!.setVolume(_hasAudio ? 1.0 : 0.0); // ignore: unawaited_futures
       if (!_isOwnProduct) {
-        VideoAnalyticsService.recordView(widget.product.id);
+        VideoAnalyticsService.recordView(widget.product.id); // ignore: unawaited_futures
       }
       return;
     }
     if (widget.product.videoUrls.isEmpty) return;
 
-    final videoUrl = widget.product.videoUrls.first;
+    final videoUrl = widget.product.clipVideoUrl ?? widget.product.videoUrls.first;
     _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
 
     try {
       await _controller!.initialize();
-      _controller!.setLooping(true);
+      _controller!.setLooping(true); // ignore: unawaited_futures
 
       // Check if video has audio track
       final hasAudio = await VideoService.checkVideoHasAudio(videoUrl);
@@ -336,12 +283,12 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
           _hasAudio = hasAudio;
           _isMuted = !hasAudio; // auto-mute if no audio
         });
-        _controller!.setVolume(hasAudio ? 1.0 : 0.0);
+        _controller!.setVolume(hasAudio ? 1.0 : 0.0); // ignore: unawaited_futures
         if (widget.isActive) {
-          _controller!.play();
+          _controller!.play(); // ignore: unawaited_futures
           setState(() => _isPlaying = true);
           if (!_isOwnProduct) {
-            VideoAnalyticsService.recordView(widget.product.id);
+            VideoAnalyticsService.recordView(widget.product.id); // ignore: unawaited_futures
           }
         }
       }
@@ -359,6 +306,28 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
           _isInitialized = false;
           _isPlaying = false;
         });
+      }
+    }
+  }
+
+  void _pauseVideo() {
+    if (_controller == null || !_isInitialized) return;
+    if (_controller!.value.isPlaying) {
+      _controller!.pause();
+      if (mounted) setState(() => _isPlaying = false);
+    }
+  }
+
+  void _resumeVideo() {
+    if (_controller == null || !_isInitialized) {
+      _initVideo();
+      return;
+    }
+    if (!_controller!.value.isPlaying) {
+      _controller!.play();
+      if (mounted) {
+        setState(() => _isPlaying = true);
+        _controller!.setVolume(_hasAudio ? 1.0 : 0.0);
       }
     }
   }
@@ -437,7 +406,10 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
     if (_isFollowLoading) return;
     final userId = ref.read(authProvider).user?.id;
     if (userId == null) {
-      Navigator.of(context).pushNamed('/login');
+      Navigator.of(context).pushNamed('/login'); // ignore: unawaited_futures
+      return;
+    }
+    if (userId == widget.product.sellerId) {
       return;
     }
     setState(() => _isFollowLoading = true);
@@ -473,217 +445,30 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
     }
   }
 
+  Future<void> _toggleLike() async {
+    final userId = ref.read(authProvider).user?.id;
+    if (userId == null) {
+      Navigator.of(context).pushNamed('/login'); // ignore: unawaited_futures
+      return;
+    }
+    final prodProv = ref.read(productProvider);
+    final wasLiked = prodProv.isFavorited(widget.product.id);
+    await prodProv.toggleFavorite(widget.product.id);
+    if (!mounted) return;
+    final isLiked = prodProv.isFavorited(widget.product.id);
+    if (isLiked == wasLiked) return;
+    setState(() {
+      if (isLiked) {
+        _likeCount++;
+      } else if (_likeCount > 0) {
+        _likeCount--;
+      }
+    });
+  }
+
   String get _shareText {
     final p = widget.product;
-    return 'Check out "${p.title}" on Instiy - GH\u00a2 ${p.price.toStringAsFixed(2)}';
-  }
-
-  void _showShareSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Share to',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.charcoalInk,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildShareOption(
-                      assetPath: 'assets/whatsapp-svgrepo-com.svg',
-                      bgColor: const Color(0xFF25D366),
-                      label: 'WhatsApp',
-                      onTap: () => _shareToSocial('whatsapp'),
-                    ),
-                    _buildShareOption(
-                      assetPath: 'assets/x.png',
-                      bgColor: const Color(0xFF000000),
-                      label: 'X',
-                      onTap: () => _shareToSocial('twitter'),
-                    ),
-                    _buildShareOption(
-                      assetPath: 'assets/facebook-svgrepo-com.svg',
-                      bgColor: const Color(0xFF1877F2),
-                      label: 'Facebook',
-                      onTap: () => _shareToSocial('facebook'),
-                    ),
-                    _buildShareOption(
-                      assetPath: 'assets/instagram-svgrepo-com.svg',
-                      bgColor: const Color(0xFFE4405F),
-                      label: 'Instagram',
-                      onTap: () => _shareToSocial('instagram'),
-                    ),
-                    _buildShareOption(
-                      icon: Icons.copy,
-                      bgColor: AppTheme.mutedSteel,
-                      label: 'Copy Link',
-                      onTap: () => _shareToSocial('copy_link'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShareOption({
-    String? assetPath,
-    IconData? icon,
-    required Color bgColor,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    Widget iconWidget;
-    if (assetPath != null) {
-      if (assetPath.endsWith('.svg')) {
-        iconWidget = SvgPicture.asset(
-          assetPath,
-          width: 28,
-          height: 28,
-        );
-      } else {
-        iconWidget = Image.asset(
-          assetPath,
-          width: 28,
-          height: 28,
-        );
-      }
-    } else {
-      iconWidget = Icon(icon, color: bgColor, size: 28);
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: bgColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Center(child: iconWidget),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: AppTheme.charcoalInk),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _shareToSocial(String platform) async {
-    final text = Uri.encodeComponent(_shareText);
-    final productId = widget.product.id;
-    bool launched = false;
-
-    switch (platform) {
-      case 'whatsapp':
-        // Try app deep link first, fallback to web
-        final appUrl = Uri.parse('whatsapp://send?text=$text');
-        final webUrl = Uri.parse('https://wa.me/?text=$text');
-        if (await canLaunchUrl(appUrl)) {
-          launched = await launchUrl(appUrl, mode: LaunchMode.externalApplication);
-        } else if (await canLaunchUrl(webUrl)) {
-          launched = await launchUrl(webUrl, mode: LaunchMode.externalApplication);
-        }
-
-      case 'twitter':
-        // Try app deep link first, fallback to web intent
-        final appUrl = Uri.parse('twitter://post?message=$text');
-        final webUrl = Uri.parse('https://x.com/intent/post?text=$text');
-        if (await canLaunchUrl(appUrl)) {
-          launched = await launchUrl(appUrl, mode: LaunchMode.externalApplication);
-        } else if (await canLaunchUrl(webUrl)) {
-          launched = await launchUrl(webUrl, mode: LaunchMode.externalApplication);
-        }
-
-      case 'facebook':
-        // Try app deep link first, fallback to web share dialog
-        final appUrl = Uri.parse('fb://sharer/sharer.php?quote=$text');
-        final webUrl = Uri.parse('https://www.facebook.com/sharer/sharer.php?quote=$text');
-        if (await canLaunchUrl(appUrl)) {
-          launched = await launchUrl(appUrl, mode: LaunchMode.externalApplication);
-        } else if (await canLaunchUrl(webUrl)) {
-          launched = await launchUrl(webUrl, mode: LaunchMode.externalApplication);
-        }
-
-      case 'instagram':
-        // No deep link for sharing text — copy to clipboard
-        await Clipboard.setData(ClipboardData(text: _shareText));
-        if (mounted) {
-          ShadToaster.of(context).show(
-            const ShadToast(title: Text('Copied! Open Instagram and paste')),
-          );
-        }
-        if (!_isOwnProduct) {
-          VideoAnalyticsService.recordShare(productId, platform);
-        }
-        if (mounted) Navigator.of(context).pop();
-        return;
-
-      case 'copy_link':
-        await Clipboard.setData(ClipboardData(text: _shareText));
-        if (mounted) {
-          ShadToaster.of(context).show(
-            const ShadToast(title: Text('Link copied to clipboard!')),
-          );
-        }
-        if (!_isOwnProduct) {
-          VideoAnalyticsService.recordShare(productId, platform);
-        }
-        if (mounted) Navigator.of(context).pop();
-        return;
-    }
-
-    // If nothing launched (app not installed, URL failed), copy to clipboard as fallback
-    if (!launched) {
-      await Clipboard.setData(ClipboardData(text: _shareText));
-      if (mounted) {
-        ShadToaster.of(context).show(
-          const ShadToast(title: Text('Copied to clipboard')),
-        );
-      }
-    }
-
-    if (!_isOwnProduct) {
-      VideoAnalyticsService.recordShare(productId, platform);
-    }
-    if (mounted) Navigator.of(context).pop();
+    return 'Check out "${BoldText.convert(p.title)}" on Instiy - ${formatGhs(p.effectivePrice)}\n\nLink: https://instiy.com/products/${p.slug}-${p.id}';
   }
 
   @override
@@ -691,13 +476,43 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
     final prodProv = ref.watch(productProvider);
     final isLiked = prodProv.isFavorited(widget.product.id);
 
-    return Stack(
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity != null && details.primaryVelocity! < -100) {
+          if (widget.product.sellerId.isNotEmpty) {
+            Navigator.of(context).pushNamed(
+              '/business-profile',
+              arguments: widget.product.sellerId,
+            );
+          }
+        }
+      },
+      child: Stack(
       children: [
         // Video Player Background
         Positioned.fill(
           child: GestureDetector(
             onTap: _togglePlayPause,
             onDoubleTap: _handleDoubleTap,
+            onLongPressStart: (details) {
+              if (!_isInitialized || _controller == null) return;
+              final screenWidth = MediaQuery.of(context).size.width;
+              if (details.localPosition.dx > screenWidth / 2) {
+                _controller!.setPlaybackSpeed(2.0);
+                setState(() { _speedText = '2x'; _showSpeedIndicator = true; });
+              } else {
+                final current = _controller!.value.position;
+                final newPos = current - const Duration(seconds: 10);
+                _controller!.seekTo(newPos > Duration.zero ? newPos : Duration.zero);
+                setState(() { _speedText = '\u21A9 10s'; _showSpeedIndicator = true; });
+              }
+            },
+            onLongPressEnd: (_) {
+              if (_controller != null && _isInitialized) {
+                _controller!.setPlaybackSpeed(1.0);
+              }
+              setState(() { _speedText = null; _showSpeedIndicator = false; });
+            },
             child: Container(
               color: Colors.black,
               child: _isInitialized && _controller != null
@@ -738,6 +553,26 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
                 Icons.favorite,
                 color: Colors.red,
                 size: 100,
+              ),
+            ),
+          ),
+
+        // Speed/Seek overlay indicator
+        if (_showSpeedIndicator && _speedText != null)
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: _speedText!.contains('2x') ? AppTheme.accent.withValues(alpha: 0.85) : Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _speedText!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -792,23 +627,10 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
               if (!_isOwnProduct) ...[
                 const SizedBox(height: 20),
                 _buildOverlayIconButton(
-                  icon: _isFollowing ? LucideIcons.userMinus : LucideIcons.userPlus,
-                  color: _isFollowing ? Colors.white70 : AppTheme.accent,
-                  label: _isFollowLoading
-                      ? '...'
-                      : _isFollowing
-                          ? 'Unfollow'
-                          : 'Follow',
-                  onTap: _isFollowLoading ? () {} : _toggleFollow,
-                ),
-              ],
-              if (!_isOwnProduct) ...[
-                const SizedBox(height: 20),
-                _buildOverlayIconButton(
                   icon: isLiked ? Icons.favorite : Icons.favorite_border,
                   color: isLiked ? Colors.red : Colors.white,
                   label: _likeCount > 0 ? _formatCount(_likeCount) : 'Like',
-                  onTap: () => prodProv.toggleFavorite(widget.product.id),
+                  onTap: _toggleLike,
                 ),
               ],
               const SizedBox(height: 20),
@@ -823,7 +645,13 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
                 icon: LucideIcons.share2,
                 color: Colors.white,
                 label: 'Share',
-                onTap: _showShareSheet,
+                onTap: () {
+                  ShareBottomSheet.show(
+                    context,
+                    shareText: _shareText,
+                    analyticsId: widget.product.id,
+                  );
+                },
               ),
             ],
           ),
@@ -839,18 +667,71 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
             children: [
               // Seller Info
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    '@${widget.product.businessName ?? widget.product.sellerName ?? 'seller'}',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: context.rsp(16),
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (widget.product.sellerId.isNotEmpty) {
+                          Navigator.of(context).pushNamed(
+                            '/business-profile',
+                            arguments: widget.product.sellerId,
+                          );
+                        }
+                      },
+                      child: Text(
+                        '@${widget.product.businessName ?? widget.product.sellerName ?? 'seller'}',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: context.rsp(16),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                   if (widget.product.isSellerVerified) ...[
                     const SizedBox(width: 6),
                     VerificationBadge(size: 14),
+                  ],
+                  // Only show the Follow button while NOT following. Once the
+                  // user follows the seller, the button is hidden entirely on
+                  // the clips screen (no "Following" state shown here).
+                  if (!_isOwnProduct && !_isFollowing) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Text(
+                        '•',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _isFollowLoading ? () {} : _toggleFollow,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: AppTheme.accent,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          _isFollowLoading ? '...' : 'Follow',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: context.rsp(11),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -907,7 +788,7 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          'GH₵ ${widget.product.effectivePrice.toStringAsFixed(2)}',
+                          '${formatGhs(widget.product.effectivePrice)}',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -927,7 +808,7 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
                               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 4)],
                             ),
                             child: Text(
-                              '-${widget.product.discountPercent.toStringAsFixed(0)}%',
+                              '-${formatCurrency(widget.product.discountPercent)}%',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -981,6 +862,7 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
             ),
           ),
       ],
+    ),
     );
   }
 
@@ -1198,7 +1080,7 @@ class _CommentsBottomSheetState extends ConsumerState<_CommentsBottomSheet> {
   Future<void> _submitReview() async {
     final user = ref.read(authProvider).user;
     if (user == null) {
-      Navigator.of(context).pushNamed('/login');
+      Navigator.of(context).pushNamed('/login'); // ignore: unawaited_futures
       return;
     }
     if (_commentController.text.trim().isEmpty) return;
@@ -1447,7 +1329,7 @@ class _CommentItem extends StatelessWidget {
                         ],
                         onSelected: (v) async {
                           if (v == 'edit') {
-                            showShadSheet(
+                            showShadSheet( // ignore: unawaited_futures
                               context: context,
                               builder: (ctx) => ShadSheet(
                                 title: const Text('Edit Your Review'),

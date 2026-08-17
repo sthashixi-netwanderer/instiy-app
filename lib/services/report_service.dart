@@ -120,8 +120,23 @@ class ReportService {
       'reporter_id': uid,
       'reported_user_id': reportedUserId,
       'category': category,
-      'description': description?.trim().isNotEmpty == true ? description!.trim() : null,
+      'description': description?.trim().isNotEmpty == true
+          ? description!.trim()
+          : null,
       'conversation_id': conversationId,
+    });
+  }
+
+  /// Submit a user complaint (for suspended users)
+  static Future<void> submitComplaint({
+    required String userId,
+    required String complaintText,
+    String? reportId,
+  }) async {
+    await SupabaseService.client.from('user_complaints').insert({
+      'user_id': userId,
+      'complaint_text': complaintText.trim(),
+      'report_id': reportId,
     });
   }
 
@@ -143,7 +158,9 @@ class ReportService {
       'reported_user_id': reportedUserId,
       'product_id': productId,
       'category': category,
-      'description': description?.trim().isNotEmpty == true ? description!.trim() : null,
+      'description': description?.trim().isNotEmpty == true
+          ? description!.trim()
+          : null,
     });
 
     // Send confirmation email to reporter

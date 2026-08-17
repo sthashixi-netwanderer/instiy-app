@@ -1,11 +1,35 @@
 import 'dart:math';
 import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'supabase_service.dart';
 import '../models/wallet_model.dart';
+import '../models/withdrawal_fees_model.dart';
 import 'local_notification_service.dart';
 import 'email_service.dart';
 
 class WalletService {
+  static const Map<String, String> bankLogos = {
+    'GCB Bank': 'assets/bank_logos/logo.png',
+    'Ecobank': 'assets/bank_logos/ecobank-seeklogo.svg',
+    'Absa Bank': 'assets/bank_logos/absa-logo-bg-gh.png',
+    'CalBank': 'assets/bank_logos/calbank.png',
+    'Republic Bank': 'assets/bank_logos/republic-logo.png',
+    'Zenith Bank': 'assets/bank_logos/zenith-logo.png',
+    'Stanbic Bank': 'assets/bank_logos/stanbic bank.jpg',
+    'UBA': 'assets/bank_logos/UBA-Favicon.png',
+    'Agricultural Development Bank': 'assets/bank_logos/adb.png',
+    'Consolidated Bank Ghana': 'assets/bank_logos/cbg.png',
+    'First Bank': 'assets/bank_logos/firstbank.png',
+    'Guaranty Trust Bank': 'assets/bank_logos/gtco.svg',
+    'National Investment Bank': 'assets/bank_logos/nib.png',
+    'OmniBSIC Bank': 'assets/bank_logos/omnibsic-logo.png',
+  };
+
+  static String? getBankLogoPath(String? provider) {
+    if (provider == null) return null;
+    return bankLogos[provider];
+  }
+
   static Future<Wallet?> getWallet() async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser?.id;
@@ -124,11 +148,33 @@ class WalletService {
         .toList();
   }
 
+  static Future<WithdrawalFees> getWithdrawalFees() async {
+    final supabase = SupabaseService.instance;
+    try {
+      final response = await supabase
+          .from('platform_settings')
+          .select('value')
+          .eq('key', 'withdrawal_fees')
+          .maybeSingle();
+
+      if (response != null && response['value'] != null) {
+        return WithdrawalFees.fromJson(
+          Map<String, dynamic>.from(response['value'] as Map),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to load withdrawal fees: $e');
+    }
+    return const WithdrawalFees(mobileMoneyRate: 0.02, bankRate: 0.01);
+  }
+
   static Future<void> requestWithdrawal({
     required double amount,
     required String methodType,
     String? providerType,
     String? accountDetails,
+    double? feeAmount,
+    double? amountToReceive,
   }) async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser!.id;
@@ -139,6 +185,8 @@ class WalletService {
       'method_type': methodType,
       'provider_type': providerType,
       'account_details': accountDetails,
+      'fee_amount': feeAmount,
+      'amount_to_receive': amountToReceive,
       'status': 'pending',
     });
   }

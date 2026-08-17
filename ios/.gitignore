@@ -27,9 +27,6 @@ Flutter/flutter_export_environment.sh
 ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 
-# Generated at CI time by .github/workflows/ios.yml, never committed.
-ExportOptions.plist
-
 # Exceptions to above rules.
 !default.mode1v3
 !default.mode2v3

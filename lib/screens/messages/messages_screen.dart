@@ -1,7 +1,8 @@
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,29 +10,31 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:video_player/video_player.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:record/record.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:giphy_get/giphy_get.dart';
 import '../../config/app_theme.dart';
 import '../../services/secrets_service.dart';
+import 'recording_helper.dart';
 import '../../utils/responsive.dart';
 import '../../models/message_model.dart';
+import '../../models/chat_background_model.dart';
 import '../../providers/providers.dart';
 import '../../widgets/verification_badge.dart';
 import '../../providers/message_provider.dart';
 
 
 import '../../services/storage_service.dart';
-import '../../widgets/app_bottom_nav.dart';
+import '../../widgets/adaptive_nav.dart';
 import '../../widgets/media_viewer.dart';
 import '../../widgets/skeleton.dart';
 import 'report_screen.dart';
 import 'archived_chats_screen.dart';
 import 'blocked_chats_screen.dart';
+import 'chat_user_info_screen.dart';
+import 'chat_background_settings_screen.dart';
 
 class MessagesScreen extends ConsumerStatefulWidget {
   const MessagesScreen({super.key});
@@ -59,6 +62,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(
           context: context,
           title: const Text('Messages'),
@@ -76,6 +80,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
       extendBody: true,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: const Text('Messages'),
@@ -101,7 +106,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 3),
+      bottomNavigationBar: const AdaptiveNav(currentIndex: 3),
       body: RefreshIndicator(
         onRefresh: () => msgProv.loadConversations(),
         child: msgProv.isLoading && conversations.isEmpty
@@ -109,7 +114,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             : conversations.isEmpty
                 ? _buildEmptyState()
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+                    padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + kToolbarHeight + 8, 8, 100),
                     itemCount: conversations.length + (msgProv.hasMoreConversations ? 1 : 0),
                     separatorBuilder: (_, _) =>
                         const Divider(indent: 76),
@@ -184,7 +189,34 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     } else if (action == 'unarchive') {
       msgProv.unarchiveConversation(conv.id);
       ShadToaster.of(context).show(ShadToast(title: const Text('Chat unarchived')));
+    } else if (action == 'delete') {
+      _confirmDeleteChat(conv);
     }
+  }
+
+  void _confirmDeleteChat(dynamic conv) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete chat'),
+        content: Text('Are you sure you want to delete the chat with ${conv.displayName}? This will hide the conversation from your list.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(messageProvider).hideConversation(conv.id);
+              ShadToaster.of(context).show(ShadToast(title: const Text('Chat deleted')));
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -319,6 +351,14 @@ class _ConversationTile extends StatelessWidget {
                 onMenuAction?.call(isArchived ? 'unarchive' : 'archive');
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Delete chat'),
+              onTap: () {
+                Navigator.pop(context);
+                onMenuAction?.call('delete');
+              },
+            ),
           ],
         ),
       ),
@@ -341,7 +381,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   final _scrollCtrl = ScrollController();
   Map<String, dynamic>? _productReference;
   bool _isSendingMedia = false;
-  List<File> _pendingMediaList = [];
+  List<dynamic> _pendingMediaList = [];
   List<bool> _pendingIsVideoList = [];
   String? _firstUnreadMessageId;
   bool _hasSetInitialScroll = false;
@@ -363,9 +403,77 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   String? _recordPath;
   int _recordDurationSeconds = 0;
   Timer? _recordTimer;
-  final _audioRecorder = AudioRecorder();
+
+  // Chat background state
+  ChatBackground? _chatBackground;
 
   final FocusNode _messageFocusNode = FocusNode();
+
+  /// Resolved chat theme colour — reads from the **provider's** live
+  /// [activeConversation] so that changes made on the chat-info screen
+  /// (which updates the provider and calls notifyListeners) are reflected
+  /// instantly without needing to pop/re-push the route.
+  Color get _chatColor {
+    final live = ref.read(messageProvider).activeConversation;
+    final hex = (live != null && live.id == widget.conversation.id)
+        ? live.themeColor
+        : widget.conversation.themeColor;
+    return AppTheme.parseHexColor(hex) ?? AppTheme.accent;
+  }
+
+  static const Map<String, List<Color>> _bgGradients = {
+    'Sunset': [Color(0xFFFF5F6D), Color(0xFFFFC371)],
+    'Ocean': [Color(0xFF2193b0), Color(0xFF6dd5ed)],
+    'Lavender': [Color(0xFFe96443), Color(0xFF904e95)],
+    'Purple Magic': [Color(0xFF4e54c8), Color(0xFF8f94fb)],
+    'Charcoal': [Color(0xFF373B44), Color(0xFF4286f4)],
+    'Emerald': [Color(0xFF11998e), Color(0xFF38ef7d)],
+  };
+
+  Widget _buildChatBackground() {
+    final bg = _chatBackground;
+    if (bg == null || bg.backgroundType == 'none') {
+      return const SizedBox.shrink();
+    }
+
+    Widget bgWidget;
+    if (bg.backgroundType == 'gradient' && bg.gradientName != null) {
+      final colors = _bgGradients[bg.gradientName!];
+      if (colors == null) return const SizedBox.shrink();
+      bgWidget = Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: colors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+      );
+    } else if (bg.backgroundType == 'image' && bg.localImagePath != null) {
+      if (kIsWeb) {
+        return const SizedBox.shrink();
+      }
+      bgWidget = Image.file(
+        File(bg.localImagePath!),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    } else {
+      return const SizedBox.shrink();
+    }
+
+    if (bg.blurIntensity > 0) {
+      return ImageFiltered(
+        imageFilter: ImageFilter.blur(
+          sigmaX: bg.blurIntensity,
+          sigmaY: bg.blurIntensity,
+        ),
+        child: bgWidget,
+      );
+    }
+
+    return bgWidget;
+  }
 
   @override
   void initState() {
@@ -379,6 +487,21 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       if (mounted) setState(() {});
     });
     _scrollCtrl.addListener(_scrollListener);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadChatBackground());
+  }
+
+  Future<void> _loadChatBackground() async {
+    final auth = ref.read(authProvider);
+    final userId = auth.user?.id;
+    if (userId == null) return;
+
+    final bgProv = ref.read(chatBackgroundProvider);
+    await bgProv.loadBackground(userId, widget.conversation.id);
+    if (mounted) {
+      setState(() {
+        _chatBackground = bgProv.background;
+      });
+    }
   }
 
   void _scrollListener() {
@@ -407,9 +530,11 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     _messageFocusNode.dispose();
     _messageProvider.disposeConversation();
     _recordTimer?.cancel();
-    _audioRecorder.dispose();
+    RecordingHelper.dispose();
     super.dispose();
   }
+
+  Future<Uint8List?> _readFileBytes(String path) => RecordingHelper.readFileBytes(path);
 
   void _removeReference() {
     setState(() {
@@ -427,6 +552,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         break;
       case 'report':
         _openReportScreen(otherUserId);
+        break;
+      case 'chat_background':
+        _openChatBackgroundSettings();
         break;
     }
   }
@@ -484,6 +612,20 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         ),
       ),
     );
+  }
+
+  void _openChatBackgroundSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatBackgroundSettingsScreen(
+          conversationId: widget.conversation.id,
+        ),
+      ),
+    );
+    // Reload background when returning from settings
+    if (mounted) {
+      unawaited(_loadChatBackground());
+    }
   }
 
   // ── Selection ──
@@ -705,7 +847,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     if (source == null) return;
 
     if (source == 'gif') {
-      _openGifPicker();
+      unawaited(_openGifPicker());
       return;
     }
 
@@ -715,58 +857,29 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     if (isVideo) {
       final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
       if (picked == null) return;
-      await _handleVideoPicked(File(picked.path));
+      final bytes = await picked.readAsBytes();
+      await _handleVideoPicked(bytes, picked.name);
     } else {
       final pickedList = await picker.pickMultiImage(maxWidth: 1080, maxHeight: 1080, imageQuality: 60);
       if (pickedList.isEmpty) return;
       for (final picked in pickedList) {
-        await _handleImagePicked(File(picked.path));
+        final bytes = await picked.readAsBytes();
+        await _handleImagePicked(bytes, picked.name);
       }
     }
   }
 
-  Future<void> _handleImagePicked(File file) async {
+  Future<void> _handleImagePicked(dynamic bytes, String name) async {
     setState(() {
-      _pendingMediaList.add(file);
+      _pendingMediaList.add(bytes);
       _pendingIsVideoList.add(false);
     });
   }
 
-  Future<void> _handleVideoPicked(File file) async {
-    // Check duration and trim if > 15s
-    final controller = VideoPlayerController.file(file);
-    await controller.initialize();
-    final duration = controller.value.duration;
-    await controller.dispose();
-
-    File fileToSend = file;
-    if (duration.inSeconds > 15) {
-      if (!mounted) return;
-      final startSecond = await showDialog<int>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _VideoTrimDialog(file: file, maxSeconds: 15),
-      );
-
-      if (startSecond == null) {
-        // User cancelled trimming, skip sending
-        return;
-      }
-
-      final trimmed = await _trimVideo(file, maxSeconds: 15, startSecond: startSecond);
-      if (trimmed != null) {
-        fileToSend = trimmed;
-      }
-    }
-
-    // Compress video to reduce file size
-    final compressed = await _compressVideo(fileToSend);
-    if (compressed != null) {
-      fileToSend = compressed;
-    }
-
+  Future<void> _handleVideoPicked(dynamic bytes, String name) async {
+    // Add the video bytes — backend handles duration check and trimming.
     setState(() {
-      _pendingMediaList.add(fileToSend);
+      _pendingMediaList.add(bytes);
       _pendingIsVideoList.add(true);
     });
   }
@@ -781,20 +894,29 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   Future<void> _openGifPicker() async {
     // Dismiss system keyboard
     FocusScope.of(context).unfocus();
-    final gif = await GiphyGet.getGif(
-      context: context,
-      apiKey: SecretsService.instance.giphyApiKey,
-      showGIFs: true,
-      showStickers: true,
-      showEmojis: true,
-      tabColor: AppTheme.accent,
-    );
-    if (gif != null) {
-      final url = gif.images?.original?.url ??
-          gif.images?.fixedHeight?.url ??
-          gif.images?.downsized?.url;
-      if (url != null) {
-        await _sendDirectMedia(url, 'gif');
+    try {
+      final gif = await GiphyGet.getGif(
+        context: context,
+        apiKey: SecretsService.instance.giphyApiKey,
+        showGIFs: true,
+        showStickers: true,
+        showEmojis: true,
+        tabColor: AppTheme.accent,
+      );
+      if (gif != null) {
+        final url = gif.images?.original?.url ??
+            gif.images?.fixedHeight?.url ??
+            gif.images?.downsized?.url;
+        if (url != null) {
+          await _sendDirectMedia(url, 'gif');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error opening GIF picker: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast(title: Text('Could not open GIF picker: $e')),
+        );
       }
     }
   }
@@ -812,18 +934,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     } catch (_) {}
   }
 
-  Future<File?> _trimVideo(File file, {required int maxSeconds, int startSecond = 0}) async {
-    // Offloaded to backend for low-end device optimization
-    return file;
-  }
-
-  Future<File?> _compressVideo(File file) async {
-    // Offloaded to backend for low-end device optimization
-    return file;
-  }
-
   void _sendMediaFireAndForget({
-    required File file,
+    required dynamic file,
     required String mediaType,
     required String caption,
     String? replyToMessageId,
@@ -837,9 +949,15 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     () async {
       try {
         final folder = 'chat-media/${mediaType == 'video' ? 'videos' : 'images'}';
-        final url = mediaType == 'video'
-            ? await StorageService.uploadFile(file: file, folder: folder, contentType: 'video/mp4', extension: 'mp4')
-            : await StorageService.uploadImage(file: file, folder: folder);
+        final ext = mediaType == 'video' ? 'mp4' : 'jpg';
+        final rawBytes = file is List<int> ? file : await _readFileBytes('$file');
+        final bytes = rawBytes is Uint8List ? rawBytes : (rawBytes != null ? Uint8List.fromList(rawBytes) : null);
+        if (bytes == null) throw Exception('Could not read media file');
+        final url = await StorageService.uploadImageBytes(
+          bytes: bytes,
+          folder: folder,
+          extension: ext,
+        );
 
         if (mounted) {
           await ref.read(messageProvider).sendMediaMessage(
@@ -860,8 +978,16 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   Future<void> _startRecording() async {
+    if (kIsWeb) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(title: Text('Voice recording is not available on web.')),
+        );
+      }
+      return;
+    }
     try {
-      final hasPermission = await _audioRecorder.hasPermission();
+      final hasPermission = await RecordingHelper.hasPermission();
       if (!hasPermission) {
         if (mounted) {
           ShadToaster.of(context).show(
@@ -871,13 +997,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         return;
       }
 
-      final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-      await _audioRecorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000, sampleRate: 44100),
-        path: path,
-      );
+      final path = await RecordingHelper.startRecording();
 
       setState(() {
         _isRecording = true;
@@ -894,18 +1014,20 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       });
     } catch (e) {
       debugPrint('Error starting recording: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast(title: Text('Could not start recording: $e')),
+        );
+      }
     }
   }
 
   Future<void> _cancelRecording() async {
     try {
       _recordTimer?.cancel();
-      await _audioRecorder.stop();
+      await RecordingHelper.stopRecording();
       if (_recordPath != null) {
-        final file = File(_recordPath!);
-        if (await file.exists()) {
-          await file.delete();
-        }
+        await RecordingHelper.deleteFile(_recordPath!);
       }
       setState(() {
         _isRecording = false;
@@ -920,51 +1042,43 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   Future<void> _stopAndSendRecording() async {
     try {
       _recordTimer?.cancel();
-      final path = await _audioRecorder.stop();
+      final path = await RecordingHelper.stopRecording();
       setState(() {
         _isRecording = false;
       });
 
       if (path == null) return;
-      final file = File(path);
-      if (!await file.exists()) return;
+      if (!await RecordingHelper.fileExists(path)) return;
 
-      final dir = await getTemporaryDirectory();
-      final localCopy = File('${dir.path}/local_voice_${DateTime.now().millisecondsSinceEpoch}.m4a');
-      await file.copy(localCopy.path);
+      final tempDir = await RecordingHelper.getTempDir();
+      final localCopyPath = '$tempDir/local_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await RecordingHelper.copyFile(path, localCopyPath);
 
-      _sendVoiceNoteFireAndForget(localCopy, file);
+      _sendVoiceNoteFireAndForget(localCopyPath, path);
     } catch (e) {
       debugPrint('Error stopping and sending recording: $e');
     }
   }
 
-  void _sendVoiceNoteFireAndForget(File localFile, File tempFile) {
+  void _sendVoiceNoteFireAndForget(String localPath, String tempPath) {
     setState(() => _isSendingMedia = true);
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     () async {
       try {
         final folder = 'chat-media/audio';
-        final url = await StorageService.uploadFile(
-          file: tempFile,
+        // Read bytes from the temp file and upload via bytes.
+        final tempFile = await _readFileBytes(tempPath);
+        if (tempFile == null) throw Exception('Could not read recording file');
+        final url = await StorageService.uploadImageBytes(
+          bytes: tempFile,
           folder: folder,
-          contentType: 'audio/mp4',
           extension: 'm4a',
         );
 
-        final filename = Uri.parse(url).pathSegments.last;
-        final docsDir = await getApplicationDocumentsDirectory();
-        final voiceNotesDir = Directory('${docsDir.path}/voice_notes');
-        if (!await voiceNotesDir.exists()) {
-          await voiceNotesDir.create(recursive: true);
-        }
-        final finalLocalFile = File('${voiceNotesDir.path}/$filename');
-        await localFile.copy(finalLocalFile.path);
-
         try {
-          if (await localFile.exists()) await localFile.delete();
-          if (await tempFile.exists()) await tempFile.delete();
+          await RecordingHelper.deleteFile(localPath);
+          await RecordingHelper.deleteFile(tempPath);
         } catch (_) {}
 
         if (mounted) {
@@ -1010,8 +1124,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
             const SizedBox(height: 12),
             _MediaOption(
               icon: LucideIcons.image,
-              iconColor: AppTheme.accent,
-              iconBgColor: AppTheme.accent.withValues(alpha: 0.1),
+              iconColor: _chatColor,
+              iconBgColor: _chatColor.withValues(alpha: 0.1),
               title: 'Photo',
               subtitle: 'Send a photo from gallery',
               onTap: () => Navigator.of(ctx).pop('image'),
@@ -1019,8 +1133,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
             const SizedBox(height: 8),
             _MediaOption(
               icon: LucideIcons.video,
-              iconColor: AppTheme.accent,
-              iconBgColor: AppTheme.accent.withValues(alpha: 0.1),
+              iconColor: _chatColor,
+              iconBgColor: _chatColor.withValues(alpha: 0.1),
               title: 'Video',
               subtitle: 'Send a video (max 15s)',
               onTap: () => Navigator.of(ctx).pop('video'),
@@ -1058,6 +1172,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: _isSelectionMode
           ? AppTheme.glassAppBar(
               context: context,
@@ -1075,54 +1190,75 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
             )
           : AppTheme.glassAppBar(
               context: context,
-              title: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ShadAvatar(
-                    widget.conversation.otherUserAvatar,
-                    size: const Size(36, 36),
-                    backgroundColor: AppTheme.accent,
-                    placeholder: Text(
-                      widget.conversation.displayName.isNotEmpty
-                          ? widget.conversation.displayName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+              title: GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ChatUserInfoScreen(
+                        conversation: widget.conversation,
                       ),
                     ),
-                  ),
-                  SizedBox(width: context.rw(10)),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                widget.conversation.displayName,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (widget.conversation.otherUserVerified) ...[
-                              const SizedBox(width: 4),
-                              VerificationBadge(size: 14),
-                            ],
-                          ],
+                  );
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ShadAvatar(
+                      widget.conversation.otherUserAvatar,
+                      size: const Size(36, 36),
+                      backgroundColor: AppTheme.accent,
+                      placeholder: Text(
+                        widget.conversation.displayName.isNotEmpty
+                            ? widget.conversation.displayName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    SizedBox(width: context.rw(10)),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.conversation.displayName,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (widget.conversation.otherUserVerified) ...[
+                                const SizedBox(width: 4),
+                                VerificationBadge(size: 14),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 PopupMenuButton<String>(
                   icon: const Icon(LucideIcons.ellipsis, size: 20),
                   onSelected: (value) => _handleMenuAction(value, otherUserId, isBlocked),
                   itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'chat_background',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.image, size: 18, color: AppTheme.mutedSteel),
+                          SizedBox(width: 10),
+                          Text('Chat Background'),
+                        ],
+                      ),
+                    ),
                     PopupMenuItem(
                       value: isBlocked ? 'unblock' : 'block',
                       child: Row(
@@ -1159,6 +1295,10 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           Expanded(
             child: Stack(
               children: [
+                // Chat background layer
+                Positioned.fill(
+                  child: _buildChatBackground(),
+                ),
                 msgProv.isLoading && msgProv.messages.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.all(16),
@@ -1179,9 +1319,45 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                             child: Text('Start a conversation',
                                 style: TextStyle(color: AppTheme.mutedSteel)),
                           )
-                        : ListView.builder(
+                        : Positioned.fill(
+                          child: Column(
+                            children: [
+                              if (msgProv.themeChangeNotice != null)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                                  child: Row(
+                                    children: [
+                                      Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _chatColor.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(LucideIcons.palette, size: 12, color: _chatColor),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              msgProv.themeChangeNotice!,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: _chatColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                    ],
+                                  ),
+                                ),
+                              Expanded(
+                                child: ListView.builder(
                             controller: _scrollCtrl,
-                            padding: const EdgeInsets.all(16),
+                            padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
                             itemCount: msgProv.messages.length + (msgProv.hasMoreMessages ? 1 : 0),
                             itemBuilder: (context, index) {
                               if (index == 0 && msgProv.hasMoreMessages) {
@@ -1207,6 +1383,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                 isSelected: _selectedMessageIds.contains(msg.id),
                                 isSelectionMode: _isSelectionMode,
                                 isHighlighted: _highlightedMessageId == msg.id,
+                                chatColor: _chatColor,
                                 onLongPress: () => isMe ? _enterSelectionMode(msg.id) : null,
                                 onTap: () {
                                   if (_isSelectionMode && isMe) {
@@ -1228,15 +1405,15 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                             decoration: BoxDecoration(
-                                              color: AppTheme.accent.withValues(alpha: 0.1),
+                                              color: _chatColor.withValues(alpha: 0.1),
                                               borderRadius: BorderRadius.circular(12),
                                             ),
-                                            child: const Text(
+                                            child: Text(
                                               'Unread Messages',
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
-                                                color: AppTheme.accent,
+                                                color: _chatColor,
                                               ),
                                             ),
                                           ),
@@ -1251,6 +1428,10 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                               return child;
                             },
                           ),
+                              ),
+                            ],
+                          ),
+                        ),
                 if (_showScrollDownButton)
                   Positioned(
                     bottom: 16,
@@ -1281,11 +1462,13 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
               otherUserName: widget.conversation.otherUserName ?? '',
               otherUserVerified: widget.conversation.otherUserVerified,
               otherBusinessName: widget.conversation.otherBusinessName ?? '',
+              chatColor: _chatColor,
               onRemove: _clearReply,
             ),
           if (_productReference != null)
             _ProductReferenceCard(
               reference: _productReference!,
+              chatColor: _chatColor,
               onRemove: _removeReference,
             ),
           // Media preview
@@ -1359,7 +1542,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                   ),
                   ShadIconButton.ghost(
                     icon: const Icon(LucideIcons.plus, size: 20),
-                    foregroundColor: AppTheme.accent,
+                    foregroundColor: _chatColor,
                     onPressed: _pickMedia,
                   ),
                 ],
@@ -1416,7 +1599,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                         const SizedBox(width: 8),
                         ShadIconButton.ghost(
                           icon: const Icon(LucideIcons.send),
-                          foregroundColor: AppTheme.accent,
+                          foregroundColor: _chatColor,
                           onPressed: _stopAndSendRecording,
                         ),
                       ],
@@ -1467,7 +1650,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                             if (hasInput) {
                               return ShadIconButton.ghost(
                                 icon: const Icon(LucideIcons.send),
-                                foregroundColor: AppTheme.accent,
+                                foregroundColor: _chatColor,
                                 onPressed: _sendMessage,
                               );
                             } else {
@@ -1497,6 +1680,7 @@ class _ReplyPreviewCard extends StatelessWidget {
   final String otherUserName;
   final bool otherUserVerified;
   final String otherBusinessName;
+  final Color chatColor;
   final VoidCallback onRemove;
 
   const _ReplyPreviewCard({
@@ -1505,6 +1689,7 @@ class _ReplyPreviewCard extends StatelessWidget {
     required this.otherUserName,
     this.otherUserVerified = false,
     this.otherBusinessName = '',
+    required this.chatColor,
     required this.onRemove,
   });
 
@@ -1534,8 +1719,8 @@ class _ReplyPreviewCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppTheme.warmMist,
           borderRadius: BorderRadius.circular(10),
-          border: const Border(
-            left: BorderSide(color: AppTheme.accent, width: 3),
+          border: Border(
+            left: BorderSide(color: chatColor, width: 3),
           ),
         ),
         child: Row(
@@ -1551,10 +1736,10 @@ class _ReplyPreviewCard extends StatelessWidget {
                       Flexible(
                         child: Text(
                           displayName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: AppTheme.accent,
+                            color: chatColor,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1611,10 +1796,12 @@ class _ReplyPreviewCard extends StatelessWidget {
 
 class _ProductReferenceCard extends StatelessWidget {
   final Map<String, dynamic> reference;
+  final Color chatColor;
   final VoidCallback onRemove;
 
   const _ProductReferenceCard({
     required this.reference,
+    required this.chatColor,
     required this.onRemove,
   });
 
@@ -1636,7 +1823,7 @@ class _ProductReferenceCard extends StatelessWidget {
             width: 4,
             height: 56,
             decoration: BoxDecoration(
-              color: AppTheme.accent,
+              color: chatColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1689,9 +1876,9 @@ class _ProductReferenceCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'GH\u00a2 ${price.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: AppTheme.accent,
+                    color: chatColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1715,6 +1902,7 @@ class _MessageBubble extends StatefulWidget {
   final bool isSelected;
   final bool isSelectionMode;
   final bool isHighlighted;
+  final Color chatColor;
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final VoidCallback? onSwipeReply;
@@ -1726,6 +1914,7 @@ class _MessageBubble extends StatefulWidget {
     this.isSelected = false,
     this.isSelectionMode = false,
     this.isHighlighted = false,
+    required this.chatColor,
     this.onLongPress,
     this.onTap,
     this.onSwipeReply,
@@ -1802,7 +1991,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
           borderRadius: BorderRadius.circular(8),
           border: Border(
             left: BorderSide(
-              color: widget.isMe ? Colors.white.withValues(alpha: 0.5) : AppTheme.accent,
+              color: widget.isMe ? Colors.white.withValues(alpha: 0.5) : widget.chatColor,
               width: 3,
             ),
           ),
@@ -1819,7 +2008,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: widget.isMe ? Colors.white.withValues(alpha: 0.9) : AppTheme.accent,
+                      color: widget.isMe ? Colors.white.withValues(alpha: 0.9) : widget.chatColor,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -1897,7 +2086,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
         builder: (context, child) {
           return Container(
             color: widget.isHighlighted
-                ? AppTheme.accent.withValues(alpha: _highlightAnim.value)
+                ? widget.chatColor.withValues(alpha: _highlightAnim.value)
                 : Colors.transparent,
             child: child,
           );
@@ -1917,7 +2106,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                     child: Icon(
                       LucideIcons.reply,
                       size: 20,
-                      color: AppTheme.accent,
+                      color: widget.chatColor,
                     ),
                   ),
                 ),
@@ -1933,10 +2122,10 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                   width: 22,
                   height: 22,
                   decoration: BoxDecoration(
-                    color: widget.isSelected ? AppTheme.accent : Colors.white,
+                    color: widget.isSelected ? widget.chatColor : Colors.white,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: widget.isSelected ? AppTheme.accent : AppTheme.whisperBorder,
+                      color: widget.isSelected ? widget.chatColor : AppTheme.whisperBorder,
                       width: 1.5,
                     ),
                   ),
@@ -1964,8 +2153,8 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 ),
                 decoration: BoxDecoration(
                   color: widget.isSelected
-                      ? (widget.isMe ? AppTheme.accent.withValues(alpha: 0.8) : AppTheme.pureSurface.withValues(alpha: 0.8))
-                      : (widget.isMe ? AppTheme.accent : AppTheme.pureSurface),
+                      ? (widget.isMe ? widget.chatColor.withValues(alpha: 0.8) : AppTheme.pureSurface.withValues(alpha: 0.8))
+                      : (widget.isMe ? widget.chatColor : AppTheme.pureSurface),
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
                     topRight: const Radius.circular(16),
@@ -1981,13 +2170,14 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                     if (msg.isReply) _buildReplyQuote(),
                     if (hasMedia)
                       if (isVoice)
-                        _VoiceBubbleContent(message: msg, isMe: widget.isMe)
+                        _VoiceBubbleContent(message: msg, isMe: widget.isMe, chatColor: widget.chatColor)
                       else
                         _MediaBubbleContent(message: msg, isMe: widget.isMe),
                     if (hasProduct)
                       _InlineProductCard(
                         reference: msg.productReference,
                         isMe: widget.isMe,
+                        chatColor: widget.chatColor,
                       ),
                     if (hasContent)
                       Padding(
@@ -2008,7 +2198,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                             color: widget.isMe ? Colors.white : AppTheme.charcoalInk,
                           ),
                           linkStyle: TextStyle(
-                            color: widget.isMe ? Colors.yellow : AppTheme.accent,
+                            color: widget.isMe ? Colors.yellow : widget.chatColor,
                             decoration: TextDecoration.underline,
                           ),
                         ),
@@ -2130,8 +2320,9 @@ class _MediaBubbleContent extends StatelessWidget {
 class _InlineProductCard extends StatelessWidget {
   final dynamic reference;
   final bool isMe;
+  final Color chatColor;
 
-  const _InlineProductCard({required this.reference, required this.isMe});
+  const _InlineProductCard({required this.reference, required this.isMe, required this.chatColor});
 
   @override
   Widget build(BuildContext context) {
@@ -2225,7 +2416,7 @@ class _InlineProductCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: isMe ? Colors.white.withValues(alpha: 0.9) : AppTheme.accent,
+                              color: isMe ? Colors.white.withValues(alpha: 0.9) : chatColor,
                             ),
                           ),
                         ],
@@ -2241,7 +2432,7 @@ class _InlineProductCard extends StatelessWidget {
                       Icon(
                         LucideIcons.externalLink,
                         size: 11,
-                        color: isMe ? Colors.white.withValues(alpha: 0.7) : AppTheme.accent,
+                        color: isMe ? Colors.white.withValues(alpha: 0.7) : chatColor,
                       ),
                       const SizedBox(width: 3),
                       Text(
@@ -2249,7 +2440,7 @@ class _InlineProductCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: isMe ? Colors.white.withValues(alpha: 0.7) : AppTheme.accent,
+                          color: isMe ? Colors.white.withValues(alpha: 0.7) : chatColor,
                         ),
                       ),
                     ],
@@ -2369,8 +2560,9 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot> with SingleTickerProvi
 class _VoiceBubbleContent extends StatefulWidget {
   final Message message;
   final bool isMe;
+  final Color chatColor;
 
-  const _VoiceBubbleContent({required this.message, required this.isMe});
+  const _VoiceBubbleContent({required this.message, required this.isMe, required this.chatColor});
 
   @override
   State<_VoiceBubbleContent> createState() => _VoiceBubbleContentState();
@@ -2380,6 +2572,7 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
   bool _isDownloaded = false;
   bool _isDownloading = false;
   AudioPlayer? _player;
+  Source? _audioSource;
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
@@ -2395,8 +2588,13 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
 
   Future<void> _checkIfDownloaded() async {
     try {
-      final file = await _getLocalFile();
-      final exists = await file.exists();
+      if (kIsWeb) {
+        // On web, voice notes are always streamed from network.
+        if (mounted) setState(() { _isDownloaded = false; });
+        return;
+      }
+      final path = await _getLocalFilePath();
+      final exists = await RecordingHelper.fileExists(path);
       if (mounted) {
         setState(() {
           _isDownloaded = exists;
@@ -2405,15 +2603,12 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
     } catch (_) {}
   }
 
-  Future<File> _getLocalFile() async {
+  Future<String> _getLocalFilePath() async {
     final uri = Uri.parse(widget.message.mediaUrl!);
     final filename = uri.pathSegments.last;
-    final docsDir = await getApplicationDocumentsDirectory();
-    final voiceNotesDir = Directory('${docsDir.path}/voice_notes');
-    if (!await voiceNotesDir.exists()) {
-      await voiceNotesDir.create(recursive: true);
-    }
-    return File('${voiceNotesDir.path}/$filename');
+    final docsDir = await RecordingHelper.getDocsDir();
+    final voiceNotesDir = '$docsDir/voice_notes';
+    return '$voiceNotesDir/$filename';
   }
 
   Future<void> _downloadVoiceNote() async {
@@ -2424,10 +2619,14 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
 
     try {
       final response = await http.get(Uri.parse(widget.message.mediaUrl!));
-      if (response.statusCode == 200) {
-        final file = await _getLocalFile();
-        await file.writeAsBytes(response.bodyBytes);
-        
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        if (!kIsWeb) {
+          // On mobile, save to local file for offline playback.
+          final path = await _getLocalFilePath();
+          final file = File(path);
+          await file.create(recursive: true);
+          await file.writeAsBytes(response.bodyBytes);
+        }
         if (mounted) {
           setState(() {
             _isDownloaded = true;
@@ -2435,7 +2634,7 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
           });
         }
 
-        // Delete from R2 storage immediately
+        // Delete from R2 storage only after successful save
         try {
           await StorageService.deleteImage(widget.message.mediaUrl!);
         } catch (e) {
@@ -2484,8 +2683,23 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
       }
     });
 
-    final file = await _getLocalFile();
-    await player.setSource(DeviceFileSource(file.path));
+    try {
+      if (!kIsWeb) {
+        final filePath = await _getLocalFilePath();
+        final file = File(filePath);
+        if (await file.exists() && await file.length() > 0) {
+          _audioSource = DeviceFileSource(filePath);
+        } else {
+          _audioSource = UrlSource(widget.message.mediaUrl!);
+        }
+      } else {
+        _audioSource = UrlSource(widget.message.mediaUrl!);
+      }
+    } catch (e) {
+      debugPrint('Error setting audio source: $e');
+      _audioSource = UrlSource(widget.message.mediaUrl!);
+    }
+    await player.setSource(_audioSource!);
     
     _player = player;
   }
@@ -2494,6 +2708,12 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
     try {
       if (!_isDownloaded) {
         await _downloadVoiceNote();
+        if (_isDownloaded) {
+          await _initPlayer();
+          if (_player != null && _audioSource != null) {
+            await _player!.play(_audioSource!);
+          }
+        }
         return;
       }
 
@@ -2502,7 +2722,19 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
       if (_isPlaying) {
         await _player?.pause();
       } else {
-        await _player?.resume();
+        // If duration is 0, player may have failed to load - reset and retry
+        if (_duration == Duration.zero && _player != null) {
+          await _player!.dispose();
+          _player = null;
+          _audioSource = null;
+          _stateSub?.cancel();
+          _posSub?.cancel();
+          _durSub?.cancel();
+          await _initPlayer();
+        }
+        if (_audioSource != null) {
+          await _player?.play(_audioSource!);
+        }
       }
     } catch (e) {
       debugPrint('Error toggling playback: $e');
@@ -2526,7 +2758,7 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = widget.isMe ? Colors.white : AppTheme.accent;
+    final accentColor = widget.isMe ? Colors.white : widget.chatColor;
     final textColor = widget.isMe ? Colors.white70 : AppTheme.mutedSteel;
 
     return SizedBox(
@@ -2589,10 +2821,10 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
                       trackHeight: 2.0,
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
                       overlayShape: const RoundSliderOverlayShape(overlayRadius: 14.0),
-                      activeTrackColor: widget.isMe ? Colors.white : AppTheme.accent,
+                      activeTrackColor: widget.isMe ? Colors.white : widget.chatColor,
                       inactiveTrackColor: widget.isMe ? Colors.white38 : AppTheme.whisperBorder,
-                      thumbColor: widget.isMe ? Colors.white : AppTheme.accent,
-                      overlayColor: widget.isMe ? Colors.white12 : AppTheme.accent.withValues(alpha: 0.1),
+                      thumbColor: widget.isMe ? Colors.white : widget.chatColor,
+                      overlayColor: widget.isMe ? Colors.white12 : widget.chatColor.withValues(alpha: 0.1),
                     ),
                     child: Slider(
                       value: _position.inMilliseconds.toDouble(),
@@ -2707,7 +2939,7 @@ class _VoiceRecordingWaveState extends State<_VoiceRecordingWave> with SingleTic
 
 
 class _VideoTrimDialog extends StatefulWidget {
-  final File file;
+  final dynamic file;
   final int maxSeconds;
 
   const _VideoTrimDialog({required this.file, required this.maxSeconds});
@@ -2725,11 +2957,11 @@ class _VideoTrimDialogState extends State<_VideoTrimDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(widget.file)
+    // On web, this dialog is never shown (kIsWeb guard in _handleVideoPicked).
+    // On mobile, widget.file is a dart:io File.
+    _controller = VideoPlayerController.networkUrl(Uri.parse('about:blank'))
       ..initialize().then((_) {
-        setState(() {
-          _initialized = true;
-        });
+        if (mounted) setState(() { _initialized = true; });
       });
   }
 

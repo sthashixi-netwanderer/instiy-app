@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../services/policy_service.dart';
 import '../../utils/responsive.dart';
 
-class AcceptPolicyScreen extends StatefulWidget {
+class AcceptPolicyScreen extends ConsumerStatefulWidget {
   const AcceptPolicyScreen({super.key});
 
   @override
-  State<AcceptPolicyScreen> createState() => _AcceptPolicyScreenState();
+  ConsumerState<AcceptPolicyScreen> createState() => _AcceptPolicyScreenState();
 }
 
-class _AcceptPolicyScreenState extends State<AcceptPolicyScreen> {
+class _AcceptPolicyScreenState extends ConsumerState<AcceptPolicyScreen> {
   String _privacyContent = '';
   String _termsContent = '';
   bool _isLoading = true;
@@ -54,6 +55,7 @@ class _AcceptPolicyScreenState extends State<AcceptPolicyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context,
         title: const Text('Terms & Privacy'),
         leading: ShadIconButton.ghost(
@@ -67,7 +69,7 @@ class _AcceptPolicyScreenState extends State<AcceptPolicyScreen> {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: context.rAll(16),
+                    padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
                     children: [
                       // Privacy Policy
                       _buildSectionHeader('Privacy Policy', LucideIcons.shield),

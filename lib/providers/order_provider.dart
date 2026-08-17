@@ -6,6 +6,8 @@ import '../models/cart_model.dart';
 import '../services/order_service.dart';
 import '../services/supabase_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/product_service.dart';
+import '../services/email_service.dart';
 
 class OrderProvider extends ChangeNotifier {
   List<Order> _orders = [];
@@ -150,11 +152,51 @@ class OrderProvider extends ChangeNotifier {
       // Send device notification
       final orderId = result['order_id'] as String?;
       final totalAmount = cartItems.fold<double>(0, (sum, item) => sum + item.totalPrice);
+      final deliveryFee = deliveryMode == 'delivery'
+          ? cartItems.fold<double>(0, (sum, item) => sum + item.deliveryFee)
+          : 0.0;
       if (orderId != null) {
         await LocalNotificationService.notifyOrderPlaced(
           orderId: orderId,
           amount: totalAmount,
+          deliveryFee: deliveryFee,
         );
+
+        // Check if any product went out of stock to notify the seller
+        for (final item in cartItems) {
+          try {
+            final product = await ProductService.getProduct(item.productId);
+            if (product.stockQuantity <= 0) {
+              // Send in-app notification to the seller
+              await SupabaseService.table('notifications').insert({
+                'user_id': product.sellerId,
+                'title': 'Product Out of Stock',
+                'body': 'Your product "${product.title}" is now out of stock.',
+                'type': 'out_of_stock',
+                'data': {'product_id': product.id},
+              });
+
+              // Send email notification to the seller
+              if (product.sellerEmail != null && product.sellerEmail!.isNotEmpty) {
+                await EmailService.sendProductOutOfStock(
+                  sellerEmail: product.sellerEmail!,
+                  productTitle: product.title,
+                );
+              }
+            } else if (product.stockQuantity < 5) {
+              // Low stock warning
+              if (product.sellerEmail != null && product.sellerEmail!.isNotEmpty) {
+                await EmailService.sendProductLowStock(
+                  sellerEmail: product.sellerEmail!,
+                  productTitle: product.title,
+                  remainingStock: product.stockQuantity,
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint('Failed to check stock for out-of-stock notification: $e');
+          }
+        }
       }
 
       return null;
@@ -163,13 +205,17 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> cancelOrder(String orderId) async {
+  Future<bool> cancelOrder(String orderId) async {
     try {
-      await OrderService.cancelOrder(orderId);
-      await loadOrders();
+      final success = await OrderService.cancelOrder(orderId);
+      if (success) {
+        await loadOrders();
+      }
+      return success;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      return false;
     }
   }
 

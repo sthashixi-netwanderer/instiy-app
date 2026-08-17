@@ -374,6 +374,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
     if (_checkingLock) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Orders')),
         body: const Padding(
           padding: EdgeInsets.all(16),
@@ -385,6 +386,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
     if (_isLocked) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Orders')),
         body: Center(
           child: Column(
@@ -442,41 +444,22 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, 
         title: const Text('Orders'),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(context.rw(16), context.rh(12), context.rw(16), 0),
-            child: Row(
-              children: [
-                _FilterChip(
-                  label: 'All',
-                  selected: _filter == 'all',
-                  onTap: () => setState(() => _filter = 'all'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Pending',
-                  selected: _filter == 'pending',
-                  onTap: () => setState(() => _filter = 'pending'),
-                ),
-                SizedBox(width: context.rw(8)),
-                _FilterChip(
-                  label: 'Delivered',
-                  selected: _filter == 'delivered',
-                  onTap: () => setState(() => _filter = 'delivered'),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: context.rh(8)),
-          Expanded(
+          // Content extends behind the filter chips
+          Positioned.fill(
             child: RefreshIndicator(
+              edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight + 56,
               onRefresh: _loadOrders,
               child: _isLoading
-                  ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
+                  ? Padding(
+                      padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 64, 16, 16),
+                      child: const ListSkeleton(count: 6),
+                    )
                   : _error != null
                       ? SingleChildScrollView(
                           physics: const AlwaysScrollableScrollPhysics(),
@@ -522,7 +505,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
                             )
                           : ListView.separated(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.all(16),
+                              padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 64, 16, 16),
                               itemCount: _filteredOrders.length,
                               separatorBuilder: (_, _) => const SizedBox(height: 12),
                               itemBuilder: (context, index) => _SellerOrderCard(
@@ -532,6 +515,36 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
                                 onCancelItem: _cancelItem,
                               ),
                             ),
+            ),
+          ),
+          // Floating filter chips (transparent to content behind)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(12),
+            left: context.rw(16),
+            right: context.rw(16),
+            child: Material(
+              color: Colors.transparent,
+              child: Row(
+                children: [
+                  _FilterChip(
+                    label: 'All',
+                    selected: _filter == 'all',
+                    onTap: () => setState(() => _filter = 'all'),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Pending',
+                    selected: _filter == 'pending',
+                    onTap: () => setState(() => _filter = 'pending'),
+                  ),
+                  SizedBox(width: context.rw(8)),
+                  _FilterChip(
+                    label: 'Delivered',
+                    selected: _filter == 'delivered',
+                    onTap: () => setState(() => _filter = 'delivered'),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

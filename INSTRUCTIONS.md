@@ -102,6 +102,11 @@ creep search "flutter firebase messaging known issues 2026" -n 3
 ## Codebase Context
 
 - **Stack**: Flutter + Supabase + shadcn_ui
-- **State**: Provider (ChangeNotifier)
-- **Storage**: Supabase + Cloudflare R2
+- **State**: Riverpod 3.x. Most feature state uses `ChangeNotifierProvider`
+  (legacy import) wrapping `ChangeNotifier` classes; newer code uses Riverpod
+  code generation (`@riverpod`, `*.g.dart`).
+- **Storage**: Supabase (Postgres/Auth) + Cloudflare R2 (media, via API proxy)
+- **Cache**: Hive (offline-first product feed) + SharedPreferences (prefs)
 - **Platform**: Android & iOS
+
+> For a full architecture and conventions guide, see **ARCHITECTURE.md**.

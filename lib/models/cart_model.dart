@@ -43,6 +43,34 @@ class CartItem {
     );
   }
 
+  CartItem copyWith({
+    String? id,
+    String? productId,
+    String? title,
+    String? thumbnail,
+    double? price,
+    int? quantity,
+    int? stock,
+    String? sellerId,
+    String? sellerName,
+    bool? isAvailable,
+    double? deliveryFee,
+  }) {
+    return CartItem(
+      id: id ?? this.id,
+      productId: productId ?? this.productId,
+      title: title ?? this.title,
+      thumbnail: thumbnail ?? this.thumbnail,
+      price: price ?? this.price,
+      quantity: quantity ?? this.quantity,
+      stock: stock ?? this.stock,
+      sellerId: sellerId ?? this.sellerId,
+      sellerName: sellerName ?? this.sellerName,
+      isAvailable: isAvailable ?? this.isAvailable,
+      deliveryFee: deliveryFee ?? this.deliveryFee,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'product_id': productId,
@@ -86,6 +114,27 @@ class CartState {
       deliveryTotal: (json['delivery_total'] as num?)?.toDouble() ?? 0,
       totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0,
       hasUnavailableItems: json['has_unavailable_items'] as bool? ?? false,
+    );
+  }
+
+  CartState copyWith({
+    List<CartItem>? items,
+    int? itemCount,
+    double? subtotalAmount,
+    double? deliveryTotal,
+    double? totalAmount,
+    bool? hasUnavailableItems,
+  }) {
+    final newItems = items ?? this.items;
+    final newSubtotal = subtotalAmount ?? newItems.fold<double>(0.0, (sum, i) => sum + i.totalPrice);
+    final newDelivery = deliveryTotal ?? newItems.fold<double>(0.0, (sum, i) => sum + i.deliveryFee);
+    return CartState(
+      items: newItems,
+      itemCount: itemCount ?? newItems.length,
+      subtotalAmount: newSubtotal,
+      deliveryTotal: newDelivery,
+      totalAmount: totalAmount ?? (newSubtotal + newDelivery),
+      hasUnavailableItems: hasUnavailableItems ?? newItems.any((i) => !i.isAvailable),
     );
   }
 }

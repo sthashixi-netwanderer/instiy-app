@@ -5,19 +5,22 @@ import { JWT } from "npm:google-auth-library";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function sanitizeError(error: unknown): string {
+  console.error("Push Notification Function error:", error);
+  return "Failed to process push notifications";
+}
+
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
     const payload = await req.json();
-    console.log("Push notification webhook triggered with payload:", JSON.stringify(payload));
 
-    // Supabase Webhook sends payload.record on INSERT. Otherwise fallback to the payload itself.
     const record = payload.record || payload;
     if (!record || !record.user_id) {
       return new Response(JSON.stringify({ error: "Missing recipient user_id in record" }), {
@@ -30,12 +33,10 @@ Deno.serve(async (req) => {
     const body = record.body || "";
     const type = record.type || "notification";
 
-    // 1. Initialize Supabase Service Role client to bypass RLS
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Fetch all registered FCM tokens for the recipient user
     const { data: tokenRecords, error: tokenError } = await supabase
       .from("user_push_tokens")
       .select("token")
@@ -47,18 +48,15 @@ Deno.serve(async (req) => {
     }
 
     if (!tokenRecords || tokenRecords.length === 0) {
-      console.log(`No active FCM tokens registered for user: ${record.user_id}`);
       return new Response(JSON.stringify({ message: "No active FCM tokens found for this user." }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 3. Load Firebase Service Account Credentials from environment variables
     const serviceAccountKeyStr = Deno.env.get("FCM_SERVICE_ACCOUNT_KEY");
     if (!serviceAccountKeyStr) {
-      console.error("FCM_SERVICE_ACCOUNT_KEY environment variable is not configured.");
-      return new Response(JSON.stringify({ error: "FCM_SERVICE_ACCOUNT_KEY not configured on Supabase" }), {
+      return new Response(JSON.stringify({ error: "FCM service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -67,9 +65,8 @@ Deno.serve(async (req) => {
     let serviceAccount;
     try {
       serviceAccount = JSON.parse(serviceAccountKeyStr);
-    } catch (e) {
-      console.error("Failed to parse FCM_SERVICE_ACCOUNT_KEY JSON:", e);
-      return new Response(JSON.stringify({ error: "Invalid FCM_SERVICE_ACCOUNT_KEY JSON format" }), {
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid FCM configuration" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -77,13 +74,12 @@ Deno.serve(async (req) => {
 
     const projectId = serviceAccount.project_id;
     if (!projectId) {
-      return new Response(JSON.stringify({ error: "Missing project_id in Service Account credentials" }), {
+      return new Response(JSON.stringify({ error: "Invalid FCM configuration" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 4. Authenticate using Google OAuth2 JWT to get access token for Firebase Messaging scope
     const jwtClient = new JWT({
       email: serviceAccount.client_email,
       key: serviceAccount.private_key,
@@ -96,7 +92,6 @@ Deno.serve(async (req) => {
       throw new Error("Failed to generate Google OAuth2 Access Token for FCM");
     }
 
-    // 5. Build Stringified Data Payload
     const stringData: Record<string, string> = {};
     if (record.data) {
       for (const [key, val] of Object.entries(record.data)) {
@@ -107,12 +102,11 @@ Deno.serve(async (req) => {
     stringData["type"] = String(type);
     stringData["click_action"] = "FLUTTER_NOTIFICATION_CLICK";
 
-    // 6. Send push notification to each registered device token
     const results = [];
     for (const { token } of tokenRecords) {
       const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
-      
-      const payload = {
+
+      const fcmPayload = {
         message: {
           token: token,
           notification: {
@@ -145,25 +139,20 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(fcmPayload),
         });
 
         const resBody = await response.json();
         if (!response.ok) {
-          console.error(`FCM send failed for token: ${token.substring(0, 10)}...`, resBody);
-          // If token is invalid or inactive (UNREGISTERED), we should delete it from our DB
           if (resBody.error && (resBody.error.status === "UNREGISTERED" || resBody.error.message?.includes("not registered"))) {
-            console.log(`Deleting invalid token from DB: ${token.substring(0, 10)}...`);
             await supabase.from("user_push_tokens").delete().eq("token", token);
           }
           results.push({ token, success: false, error: resBody });
         } else {
-          console.log(`Successfully sent FCM push to token: ${token.substring(0, 10)}...`);
           results.push({ token, success: true, messageId: resBody.name });
         }
-      } catch (err) {
-        console.error(`Network error sending FCM for token ${token}:`, err);
-        results.push({ token, success: false, error: err.message });
+      } catch {
+        results.push({ token, success: false, error: "Network error" });
       }
     }
 
@@ -180,10 +169,9 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Push Notification Function error:", error);
-    return new Response(JSON.stringify({ error: error.message || "Failed to process push notifications" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: sanitizeError(error) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });

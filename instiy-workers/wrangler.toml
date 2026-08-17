@@ -1,0 +1,31 @@
+name = "instiy-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "api.instiy.com/*", zone_name = "instiy.com" },
+  { pattern = "instiy.com/*", zone_name = "instiy.com" }
+]
+
+[vars]
+SUPABASE_URL = "https://wqasatrxqinkfaafgnli.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_NiezrBMevDMxxJR79MD-AQ_XaRrGA9O"
+R2_PUBLIC_URL = "https://media.instiy.com"
+R2_BUCKET_NAME = "instiy"
+
+# Secrets (set via `wrangler secret put <NAME>`):
+# SUPABASE_SERVICE_ROLE_KEY
+# PAYSTACK_SECRET_KEY
+# PAYSTACK_PUBLIC_KEY
+# HUBTEL_CLIENT_ID
+# HUBTEL_CLIENT_SECRET
+# HUBTEL_SENDER_ID
+# FCM_SERVICE_ACCOUNT_KEY
+# GIPHY_API_KEY
+# REDIRECT_URL
+# APP_VERSION
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "instiy"

@@ -1,225 +1,102 @@
 import 'package:flutter/material.dart';
 import '../config/app_theme.dart';
 
-class AnimatedScannerOverlay extends StatefulWidget {
+class ScannerOverlay extends StatelessWidget {
   final double cutOutSize;
   final Color borderColor;
   final double borderWidth;
   final double borderRadius;
   final Color overlayColor;
-  final Color lineColor;
-  final Rect? detectedRect; // The currently detected QR code bounds on screen
+  final Animation<double> scanLineAnimation;
 
-  const AnimatedScannerOverlay({
+  const ScannerOverlay({
     super.key,
-    this.cutOutSize = 250.0,
+    required this.cutOutSize,
+    required this.scanLineAnimation,
     this.borderColor = AppTheme.accent,
     this.borderWidth = 4.0,
     this.borderRadius = 16.0,
-    this.overlayColor = const Color(0x99000000), // semi-transparent black
-    this.lineColor = AppTheme.accent,
-    this.detectedRect,
+    this.overlayColor = const Color(0x99000000),
   });
 
   @override
-  State<AnimatedScannerOverlay> createState() => _AnimatedScannerOverlayState();
-}
-
-class _AnimatedScannerOverlayState extends State<AnimatedScannerOverlay>
-    with TickerProviderStateMixin {
-  late AnimationController _lineController;
-  late AnimationController _positionController;
-  late Animation<Rect?> _rectAnimation;
-  Rect _currentRect = Rect.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _lineController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _positionController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _rectAnimation = RectTween(
-      begin: Rect.zero,
-      end: Rect.zero,
-    ).animate(_positionController);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final size = MediaQuery.of(context).size;
-    final defaultRect = _getDefaultRect(size);
-    if (_currentRect == Rect.zero) {
-      _currentRect = defaultRect;
-      _rectAnimation = RectTween(
-        begin: defaultRect,
-        end: defaultRect,
-      ).animate(_positionController);
-    }
-  }
-
-  @override
-  void didUpdateWidget(AnimatedScannerOverlay oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.detectedRect != oldWidget.detectedRect) {
-      final size = MediaQuery.of(context).size;
-      final fromRect = _rectAnimation.value ?? _currentRect;
-      final toRect = widget.detectedRect ?? _getDefaultRect(size);
-
-      _rectAnimation = RectTween(
-        begin: fromRect,
-        end: toRect,
-      ).animate(CurvedAnimation(
-        parent: _positionController,
-        curve: Curves.easeOutCubic,
-      ));
-
-      _currentRect = toRect;
-      _positionController.reset();
-      _positionController.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _lineController.dispose();
-    _positionController.dispose();
-    super.dispose();
-  }
-
-  Rect _getDefaultRect(Size screenSize) {
-    return Rect.fromCenter(
-      center: Offset(screenSize.width / 2, screenSize.height / 2),
-      width: widget.cutOutSize,
-      height: widget.cutOutSize,
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final left = (w - cutOutSize) / 2;
+        final top = (h - cutOutSize) / 2;
 
-    return AnimatedBuilder(
-      animation: Listenable.merge([_positionController, _lineController]),
-      builder: (context, child) {
-        final currentCutout = _rectAnimation.value ?? _getDefaultRect(size);
-
+        // The static parts (dim mask + border) never change, so they live in
+        // their own RepaintBoundary and are painted ONCE. Only the thin scan
+        // line repaints each frame, isolated in its own RepaintBoundary so it
+        // never invalidates the camera texture or the mask layer. This removes
+        // the per-frame Stack rebuild that was competing with camera frames.
         return Stack(
           children: [
-            // 1. Dark overlay with custom cutout shape
-            Positioned.fill(
-              child: Container(
-                decoration: ShapeDecoration(
-                  shape: _DynamicScannerOverlayShape(
-                    borderColor: widget.borderColor,
-                    borderWidth: widget.borderWidth,
-                    borderRadius: widget.borderRadius,
-                    cutOutRect: currentCutout,
-                    overlayColor: widget.overlayColor,
+            RepaintBoundary(
+              child: Stack(
+                children: [
+                  // Dark overlay — 4 rectangles around the cutout
+                  Positioned(top: 0, left: 0, right: 0, height: top.clamp(0.0, h),
+                      child: Container(color: overlayColor)),
+                  Positioned(bottom: 0, left: 0, right: 0,
+                      height: (h - top - cutOutSize).clamp(0.0, h),
+                      child: Container(color: overlayColor)),
+                  Positioned(top: top, left: 0, width: left.clamp(0.0, w),
+                      height: cutOutSize, child: Container(color: overlayColor)),
+                  Positioned(top: top, right: 0,
+                      width: (w - left - cutOutSize).clamp(0.0, w),
+                      height: cutOutSize, child: Container(color: overlayColor)),
+                  // Cutout border
+                  Positioned(
+                    left: left, top: top,
+                    width: cutOutSize, height: cutOutSize,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: borderColor, width: borderWidth),
+                        borderRadius: BorderRadius.circular(borderRadius),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-            // 2. Animated scanning line restricted to cutout bounds
+            // Animated scan line — isolated repaint, only this 2px line redraws.
             Positioned(
-              left: currentCutout.left + 8,
-              top: currentCutout.top + 8 + _lineController.value * (currentCutout.height - 16),
-              width: currentCutout.width - 16,
-              height: 3,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: widget.lineColor,
-                  borderRadius: BorderRadius.circular(2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: widget.lineColor.withValues(alpha: 0.8),
-                      blurRadius: 8,
-                      spreadRadius: 2,
+              left: left + 12,
+              top: top + 8,
+              width: cutOutSize - 24,
+              height: cutOutSize - 16,
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: scanLineAnimation,
+                  builder: (context, child) {
+                    return Align(
+                      alignment: Alignment(0, -1 + 2 * scanLineAnimation.value),
+                      child: child,
+                    );
+                  },
+                  child: Container(
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color: borderColor,
+                      borderRadius: BorderRadius.circular(1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: borderColor.withValues(alpha: 0.6),
+                          blurRadius: 6,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ],
         );
       },
-    );
-  }
-}
-
-class _DynamicScannerOverlayShape extends ShapeBorder {
-  final Color borderColor;
-  final double borderWidth;
-  final double borderRadius;
-  final Rect cutOutRect;
-  final Color overlayColor;
-
-  const _DynamicScannerOverlayShape({
-    required this.borderColor,
-    required this.borderWidth,
-    required this.borderRadius,
-    required this.cutOutRect,
-    required this.overlayColor,
-  });
-
-  @override
-  EdgeInsetsGeometry get dimensions => const EdgeInsets.all(10);
-
-  @override
-  Path getInnerPath(Rect rect, {TextDirection? textDirection}) {
-    return Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(rect);
-  }
-
-  @override
-  Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
-    return Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(rect)
-      ..addRRect(RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)));
-  }
-
-  @override
-  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    final borderPaint = Paint()
-      ..color = overlayColor
-      ..style = PaintingStyle.fill;
-
-    final backgroundPath = Path()..addRect(rect);
-
-    final cutOutPath = Path()
-      ..addRRect(RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)));
-
-    final overlayPath = Path.combine(PathOperation.difference, backgroundPath, cutOutPath);
-    canvas.drawPath(overlayPath, borderPaint);
-
-    final strokePaint = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)),
-      strokePaint,
-    );
-  }
-
-  @override
-  ShapeBorder scale(double t) {
-    return _DynamicScannerOverlayShape(
-      borderColor: borderColor,
-      borderWidth: borderWidth * t,
-      borderRadius: borderRadius * t,
-      cutOutRect: cutOutRect,
-      overlayColor: overlayColor,
     );
   }
 }

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Search, Filter, Eye, X, ShoppingCart, Truck, Check, Loader } from 'lucide-react';
+import { useAlert, useConfirm } from '../components/use-alert';
+import { formatGhs } from "../utils/format";
 
 export const Orders: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]);
@@ -13,6 +15,8 @@ export const Orders: React.FC = () => {
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
+  const { alert, AlertComponent } = useAlert();
+  const { confirm, ConfirmComponent } = useConfirm();
   const [payReference, setPayReference] = useState('');
   const [showPayInput, setShowPayInput] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -79,32 +83,74 @@ export const Orders: React.FC = () => {
         p_order_id: selectedOrder.id, p_reference: payReference.trim() || null
       });
       if (error) throw error;
-      alert('Order marked as paid.');
+      alert('Success', { description: 'Order marked as paid.', variant: 'success' });
       setOrders(orders.map(o => o.id === selectedOrder.id ? { ...o, payment_status: 'paid', status: 'confirmed' } : o));
       setSelectedOrder({ ...selectedOrder, payment_status: 'paid', status: 'confirmed' });
       setShowPayInput(false);
     } catch (error) {
-      alert('Error: ' + (error as any).message);
+      alert('Error', { description: 'Error: ' + (error as any).message, variant: 'danger' });
     } finally {
       setProcessingAction(false);
     }
   };
 
-  const handleCancelOrder = async () => {
+  const handleCancelOrder = () => {
     if (!selectedOrder) return;
-    if (!window.confirm("Cancel this order? If paid, the buyer's wallet will be refunded.")) return;
-    setProcessingAction(true);
-    try {
-      const { error } = await supabase.rpc('cancel_order', { order_id: selectedOrder.id });
-      if (error) throw error;
-      alert('Order cancelled.');
-      setOrders(orders.map(o => o.id === selectedOrder.id ? { ...o, status: 'cancelled' } : o));
-      setSelectedOrder({ ...selectedOrder, status: 'cancelled' });
-    } catch (error) {
-      alert('Error: ' + (error as any).message);
-    } finally {
-      setProcessingAction(false);
-    }
+    confirm('Cancel Order', async () => {
+      setProcessingAction(true);
+      try {
+        const { error } = await supabase.rpc('cancel_order', { order_id: selectedOrder.id });
+        if (error) throw error;
+        alert('Success', { description: 'Order cancelled and buyer refunded.', variant: 'success' });
+        setOrders(orders.map(o => o.id === selectedOrder.id ? { ...o, status: 'cancelled' } : o));
+        setSelectedOrder({ ...selectedOrder, status: 'cancelled' });
+
+        // Send cancellation email to buyer
+        const buyerEmail = selectedOrder.users?.email;
+        if (buyerEmail) {
+          try {
+            await supabase.functions.invoke('send-email', {
+              body: {
+                to: buyerEmail,
+                subject: `Order Cancelled - Refund Processed (${selectedOrder.id.substring(0, 8)})`,
+                html: `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #fafaf8; border-radius: 12px;">
+                    <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+                    <h2 style="color: #2d2a26; margin-bottom: 8px;">Order Cancelled</h2>
+                    <p style="color: #6b6560; line-height: 1.6;">
+                      Hello ${selectedOrder.users?.full_name || 'there'},
+                    </p>
+                    <p style="color: #6b6560; line-height: 1.6;">
+                      Your order <strong>#${selectedOrder.id.substring(0, 8)}</strong> has been cancelled by our admin team.
+                    </p>
+                    <div style="background: #fff; border: 1px solid #e8e5e0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                      <p style="margin: 0; color: #2d2a26;"><strong>Order ID:</strong> ${selectedOrder.id.substring(0, 8)}</p>
+                      <p style="margin: 8px 0 0; color: #2d2a26;"><strong>Refund Amount:</strong> {formatGhs(selectedOrder.total_amount)}</p>
+                      <p style="margin: 8px 0 0; color: #2d2a26;"><strong>Refund Method:</strong> Wallet Credit</p>
+                    </div>
+                    <p style="color: #6b6560; line-height: 1.6; font-size: 14px;">
+                      The full amount has been credited back to your Instiy wallet. You can use it for future purchases or request a withdrawal.
+                    </p>
+                    <p style="color: #6b6560; line-height: 1.6; font-size: 14px;">
+                      If you have any questions, please contact our support team.
+                    </p>
+                    <p style="color: #9a9590; font-size: 12px; margin-top: 24px; border-top: 1px solid #e8e5e0; padding-top: 12px;">
+                      Instiy — Campus Marketplace
+                    </p>
+                  </div>
+                `
+              }
+            });
+          } catch (emailErr) {
+            console.error('Failed to send cancellation email:', emailErr);
+          }
+        }
+      } catch (error) {
+        alert('Error', { description: 'Error: ' + (error as any).message, variant: 'danger' });
+      } finally {
+        setProcessingAction(false);
+      }
+    }, { confirmLabel: 'Cancel Order', variant: 'danger' });
   };
 
   return (
@@ -184,7 +230,7 @@ export const Orders: React.FC = () => {
                     <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{o.users?.full_name || 'N/A'}</div>
                     <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>{o.users?.email}</div>
                   </td>
-                  <td style={{ fontWeight: 700 }}>GH¢{Number(o.total_amount).toFixed(2)}</td>
+                  <td style={{ fontWeight: 700 }}>{formatGhs(o.total_amount)}</td>
                   <td style={{ fontSize: '0.82rem' }}>{o.item_quantity_total} items</td>
                   <td style={{ textTransform: 'capitalize', fontSize: '0.82rem' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
@@ -265,8 +311,8 @@ export const Orders: React.FC = () => {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>GH¢{(item.price * item.quantity).toFixed(2)}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>{item.quantity} x GH¢{item.price}</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{formatGhs(item.price * item.quantity)}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>{item.quantity} x {formatGhs(item.price)}</div>
                       </div>
                     </div>
                   ))}
@@ -278,7 +324,7 @@ export const Orders: React.FC = () => {
             <div style={{ borderTop: '1px solid hsl(var(--border))', paddingTop: '0.875rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Total:</span>
               <span style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'var(--font-title)' }}>
-                GH¢{Number(selectedOrder.total_amount).toFixed(2)}
+                {formatGhs(selectedOrder.total_amount)}
               </span>
             </div>
 
@@ -314,6 +360,8 @@ export const Orders: React.FC = () => {
           </div>
         </div>
       )}
+      {AlertComponent}
+      {ConfirmComponent}
     </div>
   );
 };

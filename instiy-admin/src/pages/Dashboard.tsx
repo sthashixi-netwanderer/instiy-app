@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Users, ShoppingBag, CreditCard, Clock, Landmark, Loader } from 'lucide-react';
+import { formatCurrency, formatGhs } from "../utils/format";
 
 interface DashboardStats {
   totalUsers: number;
@@ -108,7 +109,7 @@ export const Dashboard: React.FC = () => {
     },
     {
       label: 'Transaction Volume',
-      value: `GH\u20B5${stats.totalSales.toFixed(2)}`,
+      value: `GH\u20B5${formatCurrency(stats.totalSales)}`,
       detail: 'Paid orders',
       detailColor: 'hsl(var(--text-tertiary))',
       icon: <CreditCard size={20} />,
@@ -202,7 +203,7 @@ export const Dashboard: React.FC = () => {
                         <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{order.users?.full_name || 'Unknown'}</div>
                         <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-tertiary))' }}>{order.users?.email}</div>
                       </td>
-                      <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>GH&#8373;{order.total_amount}</td>
+                      <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{formatGhs(order.total_amount)}</td>
                       <td>
                         <span className={`badge ${
                           order.status === 'completed' || order.status === 'confirmed' ? 'badge-success' :
@@ -255,7 +256,7 @@ export const Dashboard: React.FC = () => {
                         <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{w.users?.full_name || 'Unknown'}</div>
                         <div style={{ fontSize: '0.7rem', color: 'hsl(var(--text-tertiary))' }}>{w.users?.email}</div>
                       </td>
-                      <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>GH&#8373;{Number(w.amount_requested).toFixed(2)}</td>
+                      <td style={{ fontWeight: 600, fontSize: '0.82rem' }}>{formatGhs(w.amount_requested)}</td>
                       <td style={{ textTransform: 'capitalize', fontSize: '0.82rem' }}>{w.method_type.replace('_', ' ')}</td>
                       <td>
                         <span className={`badge ${

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../models/institution_model.dart';
 import '../services/institution_service.dart';
 import '../config/app_theme.dart';
-import 'dart:math' as math;
+import 'institution_list_tile.dart';
 
 class SearchableInstitutionPicker extends StatefulWidget {
   final String? selectedValue;
@@ -162,10 +161,11 @@ class _InstitutionSearchContentState extends State<_InstitutionSearchContent> {
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
     return SizedBox(
-      height: mediaQuery.size.height * 0.6,
-      child: Column(
+      height: 450,
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
@@ -200,69 +200,18 @@ class _InstitutionSearchContentState extends State<_InstitutionSearchContent> {
                           )
                         : Material(
                             child: ListView.builder(
-                              itemExtent: 56,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               itemCount: _filteredInstitutions.length,
                               itemBuilder: (context, index) {
                                 final inst = _filteredInstitutions[index];
                                 final isSelected = widget.selectedValue == inst.name;
-                                return ListTile(
+                                return InstitutionListTileRadio(
+                                  institution: inst,
+                                  isSelected: isSelected,
                                   onTap: () {
                                     widget.onSelected(inst.name);
                                     Navigator.of(context).pop();
                                   },
-                                  leading: inst.logoUrl != null && inst.logoUrl!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
-                                          child: CachedNetworkImage(
-                                            imageUrl: inst.logoUrl!,
-                                            width: 36,
-                                            height: 36,
-                                            fit: BoxFit.cover,
-                                            memCacheWidth: 36,
-                                            placeholder: (_, _) => Container(color: AppTheme.warmMist),
-                                            errorWidget: (_, _, _) => Container(
-                                              color: AppTheme.warmMist,
-                                              child: const Icon(LucideIcons.graduationCap, size: 20),
-                                            ),
-                                          ),
-                                        )
-                                      : Container(
-                                          width: 36,
-                                          height: 36,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              inst.code.substring(0, math.min(3, inst.code.length)),
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFF475569),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                  title: Text(
-                                    inst.name,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                      color: isSelected ? const Color(0xFF6366F1) : const Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                  subtitle: inst.location != null
-                                      ? Text(
-                                          '${inst.code} • ${inst.location}',
-                                          style: const TextStyle(fontSize: 12),
-                                        )
-                                      : Text(inst.code),
-                                  trailing: isSelected
-                                      ? const Icon(LucideIcons.check, color: Color(0xFF6366F1))
-                                      : null,
                                 );
                               },
                             ),
@@ -270,6 +219,7 @@ class _InstitutionSearchContentState extends State<_InstitutionSearchContent> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

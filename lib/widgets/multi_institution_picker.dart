@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:math' as math;
 import '../models/institution_model.dart';
 import '../services/institution_service.dart';
 import '../config/app_theme.dart';
 import '../utils/responsive.dart';
+import 'institution_list_tile.dart';
 
 class MultiInstitutionPicker extends StatefulWidget {
   final List<String> selectedValues;
@@ -210,10 +209,11 @@ class _MultiInstitutionSearchContentState
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
     return SizedBox(
-      height: mediaQuery.size.height * 0.65,
-      child: Column(
+      height: 450,
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
@@ -251,77 +251,15 @@ class _MultiInstitutionSearchContentState
                             child: Text('No universities found',
                                 style: TextStyle(color: const Color(0xFF64748B), fontSize: context.rsp(14))))
                         : ListView.builder(
-                            itemExtent: context.rh(72),
                             padding: EdgeInsets.symmetric(horizontal: context.rw(8)),
                             itemCount: _filteredInstitutions.length,
                             itemBuilder: (context, index) {
                               final inst = _filteredInstitutions[index];
                               final isSelected = _selected.contains(inst.name);
-                              return Material(
-                                type: MaterialType.transparency,
-                                child: CheckboxListTile(
-                                  value: isSelected,
-                                  onChanged: (_) => _toggleInstitution(inst.name),
-                                  secondary: inst.logoUrl != null &&
-                                          inst.logoUrl!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(context.rr(4)),
-                                          child: CachedNetworkImage(
-                                            imageUrl: inst.logoUrl!,
-                                            width: context.rw(36),
-                                            height: context.rh(36),
-                                            fit: BoxFit.cover,
-                                            memCacheWidth: 36,
-                                            placeholder: (_, _) => Container(
-                                                color: AppTheme.warmMist),
-                                            errorWidget: (_, _, _) => Container(
-                                              color: AppTheme.warmMist,
-                                              child: Icon(
-                                                  LucideIcons.graduationCap,
-                                                  size: context.ri(20)),
-                                            ),
-                                          ),
-                                        )
-                                      : Container(
-                                          width: context.rw(36),
-                                          height: context.rh(36),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(context.rr(4)),
-                                            border: Border.all(
-                                                color: const Color(0xFFE2E8F0)),
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              inst.code.substring(
-                                                  0,
-                                                  math.min(
-                                                      3, inst.code.length)),
-                                              style: TextStyle(
-                                                  fontSize: context.rsp(11),
-                                                  fontWeight: FontWeight.bold,
-                                                  color: const Color(0xFF475569)),
-                                            ),
-                                          ),
-                                        ),
-                                  title: Text(inst.name,
-                                      style: TextStyle(
-                                        fontSize: context.rsp(14),
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                        color: isSelected
-                                            ? AppTheme.accent
-                                            : const Color(0xFF1E293B),
-                                      )),
-                                  subtitle: inst.location != null
-                                      ? Text('${inst.code} \u2022 ${inst.location}',
-                                          style: TextStyle(fontSize: context.rsp(12)))
-                                      : Text(inst.code, style: TextStyle(fontSize: context.rsp(12))),
-                                  controlAffinity:
-                                      ListTileControlAffinity.trailing,
-                                  activeColor: AppTheme.accent,
-                                ),
+                              return InstitutionListTileCheckbox(
+                                institution: inst,
+                                isSelected: isSelected,
+                                onChanged: (_) => _toggleInstitution(inst.name),
                               );
                             },
                           ),
@@ -348,6 +286,7 @@ class _MultiInstitutionSearchContentState
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

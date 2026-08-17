@@ -1,46 +1,54 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
+import '../models/picked_media.dart';
 
 class ImagePickerSheet {
-  static Future<File?> pickSingle(BuildContext context) async {
+  /// Pick a single image. Returns null if cancelled.
+  static Future<PickedMedia?> pickSingle(BuildContext context) async {
     final source = await _showSourceSheet(context, multiSelect: false);
     if (source == null) return null;
 
     final picker = ImagePicker();
-    final picked = await picker.pickImage(
+    final xFile = await picker.pickImage(
       source: source,
       maxWidth: 1024,
       maxHeight: 1024,
       imageQuality: 80,
     );
 
-    return picked != null ? File(picked.path) : null;
+    if (xFile == null) return null;
+    return PickedMedia.fromXFile(xFile);
   }
 
-  static Future<List<File>> pickMultiple(BuildContext context) async {
+  /// Pick multiple images. Returns empty list if cancelled.
+  static Future<List<PickedMedia>> pickMultiple(BuildContext context) async {
     final source = await _showSourceSheet(context, multiSelect: true);
     if (source == null) return [];
 
     final picker = ImagePicker();
 
     if (source == ImageSource.camera) {
-      final picked = await picker.pickImage(
+      final xFile = await picker.pickImage(
         source: ImageSource.camera,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 80,
       );
-      return picked != null ? [File(picked.path)] : [];
+      if (xFile == null) return [];
+      return [await PickedMedia.fromXFile(xFile)];
     } else {
-      final images = await picker.pickMultiImage(
+      final xFiles = await picker.pickMultiImage(
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 80,
       );
-      return images.map((x) => File(x.path)).toList();
+      final results = <PickedMedia>[];
+      for (final xf in xFiles) {
+        results.add(await PickedMedia.fromXFile(xf));
+      }
+      return results;
     }
   }
 

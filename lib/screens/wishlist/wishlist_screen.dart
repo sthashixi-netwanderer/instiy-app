@@ -59,6 +59,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wishlist')),
         body: const Center(child: Text('Sign in to view your wishlist')),
       );
@@ -66,10 +67,11 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Wishlist')),
       body: _isLoading
-          ? const Padding(
-              padding: EdgeInsets.all(12),
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + kToolbarHeight + 12, 12, 12),
               child: ProductGridSkeleton(),
             )
           : _wishlistedProducts.isEmpty
@@ -77,7 +79,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
               : RefreshIndicator(
                   onRefresh: _loadWishlist,
                   child: GridView.builder(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + kToolbarHeight + 12, 12, 12),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,

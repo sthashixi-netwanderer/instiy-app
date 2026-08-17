@@ -7,6 +7,7 @@ import '../../providers/providers.dart';
 import '../../models/order_model.dart';
 import '../../utils/responsive.dart';
 import 'scanner_screen.dart';
+import 'package:instiy/utils/formatters.dart';
 
 class SellerVerifyScreen extends ConsumerStatefulWidget {
   const SellerVerifyScreen({super.key});
@@ -39,12 +40,12 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
       ShadToaster.of(context).show(
         ShadToast(
           backgroundColor: AppTheme.successMoss,
-          title: Text('Verified! GH\u00a2 ${(result['amount'] as num?)?.toStringAsFixed(2) ?? ''} released to wallet.'),
+          title: Text('Verified! ${formatGhs((result['amount'] as num?) ?? 0)} released to wallet.'),
         ),
       );
       final user = ref.read(authProvider).user;
       if (user != null) {
-        prov.loadSellerOrders(user.id);
+        prov.loadSellerOrders(user.id); // ignore: unawaited_futures
       }
     } else {
       ShadToaster.of(context).show(
@@ -110,23 +111,31 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Verify Deliveries')),
         body: const Center(child: Text('Sign in as a seller')),
       );
     }
 
-    final pendingItems = sellerProv.sellerOrders
-        .expand((o) => o.items)
+    final allItems = sellerProv.sellerOrders.expand((o) => o.items).toList();
+    final pendingItems = allItems
         .where((i) => i.deliveryCode != null && i.status == 'pending')
+        .toList();
+    final processingItems = allItems
+        .where((i) => i.deliveryCode != null && i.status == 'processing')
         .toList();
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Verify Deliveries')),
       body: sellerProv.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : pendingItems.isEmpty
-              ? _buildEmptyState()
+          : (pendingItems.isEmpty && processingItems.isEmpty)
+              ? Padding(
+                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight),
+                  child: _buildEmptyState(),
+                )
               : RefreshIndicator(
                   onRefresh: () async {
                     final user = authProv.user;
@@ -134,13 +143,67 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                       await sellerProv.loadSellerOrders(user.id);
                     }
                   },
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: pendingItems.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      return _buildVerifyCard(pendingItems[index]);
-                    },
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                      16,
+                      16,
+                    ),
+                    children: [
+                      if (pendingItems.isNotEmpty) ...[
+                        Container(
+                          padding: context.rAll(16),
+                          decoration: BoxDecoration(
+                            color: AppTheme.warningAmber.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(context.rr(12)),
+                            border: Border.all(color: AppTheme.warningAmber.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.clock, size: context.ri(20), color: AppTheme.warningAmber),
+                              SizedBox(width: context.rw(12)),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${pendingItems.length} pending order${pendingItems.length == 1 ? '' : 's'}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: context.rsp(14),
+                                        color: AppTheme.charcoalInk,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Mark as processing in Orders to verify',
+                                      style: TextStyle(
+                                        fontSize: context.rsp(12),
+                                        color: AppTheme.mutedSteel,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ShadButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                                child: const Text('Orders'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: context.rh(16)),
+                      ],
+                      if (processingItems.isEmpty)
+                        _buildEmptyState()
+                      else
+                        ...processingItems.map((item) => Padding(
+                          padding: EdgeInsets.only(bottom: context.rh(12)),
+                          child: _buildVerifyCard(item),
+                        )),
+                    ],
                   ),
                 ),
     );
@@ -213,7 +276,7 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                     ),
                     SizedBox(height: context.rh(2)),
                     Text(
-                      'GH\u00a2 ${item.price.toStringAsFixed(2)} x${item.quantity}',
+                      '${formatGhs(item.price)} x${item.quantity}',
                       style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13)),
                     ),
                     SizedBox(height: context.rh(2)),

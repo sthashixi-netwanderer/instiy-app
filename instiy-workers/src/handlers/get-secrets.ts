@@ -1,0 +1,34 @@
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
+export async function handleGetSecrets(request: Request, env: Env, _corsHeaders: Record<string, string>): Promise<Response> {
+  if (request.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  // No auth required — this endpoint provides client-side config values.
+  // Called at app startup before user login.
+
+  return new Response(
+    JSON.stringify({
+      r2_endpoint: env.R2_ENDPOINT || 'https://220fcabda76df0d761a0e57dd6d1552f.r2.cloudflarestorage.com',
+      r2_access_key_id: env.R2_ACCESS_KEY_ID || '',
+      r2_bucket_name: env.R2_BUCKET_NAME,
+      r2_public_url: env.R2_PUBLIC_URL,
+      hubtel_client_id: env.HUBTEL_CLIENT_ID || '',
+      hubtel_client_secret: env.HUBTEL_CLIENT_SECRET || '',
+      hubtel_sender_id: env.HUBTEL_SENDER_ID || '',
+      paystack_public_key: env.PAYSTACK_PUBLIC_KEY || '',
+      supabase_redirect_url: env.REDIRECT_URL || '',
+      giphy_api_key: env.GIPHY_API_KEY || '',
+      app_version: env.APP_VERSION || '',
+    }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    }
+  );
+}

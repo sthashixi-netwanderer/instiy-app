@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { uploadToR2 } from '../r2Client';
-import { Plus, Edit2, Trash2, FolderPlus, Loader, Folder, X, Upload, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderPlus, Loader, Folder, Upload, Search } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/dialog';
+import { useAlert, useConfirm } from '../components/use-alert';
 
 interface Category {
   id: string;
@@ -29,6 +31,8 @@ export const Categories: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const { showAlert, AlertComponent } = useAlert();
+  const { showConfirm, ConfirmComponent } = useConfirm();
 
   const fetchCategories = async () => {
     try {
@@ -81,14 +85,14 @@ export const Categories: React.FC = () => {
           toInsert.push({ id, name: catName, slug: catSlug, type: catType, icon: ic, color_index: ci, created_at: parts[4] ? new Date(parts[4].trim()).toISOString() : new Date().toISOString() });
         }
       }
-      if (toInsert.length === 0) { alert('No valid categories found.'); return; }
+      if (toInsert.length === 0) { showAlert('Alert', 'No valid categories found.', 'info'); return; }
       setLoading(true);
       try {
         const { error } = await supabase.from('categories').upsert(toInsert, { onConflict: 'name' });
         if (error) throw error;
-        alert(`Imported ${toInsert.length} categories.`);
+        showAlert('Success', `Imported ${toInsert.length} categories.`, 'success');
         fetchCategories();
-      } catch (err: any) { alert('Error: ' + err.message); } finally { setLoading(false); }
+      } catch (err: any) { showAlert('Error', err.message, 'error'); } finally { setLoading(false); }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -104,7 +108,7 @@ export const Categories: React.FC = () => {
     if (!file) return;
     setUploadingImage(true);
     try { setImageUrl(await uploadToR2(file, 'categories')); }
-    catch (err: any) { alert('Error: ' + err.message); }
+    catch (err: any) { showAlert('Error', err.message, 'error'); }
     finally { setUploadingImage(false); }
   };
 
@@ -126,16 +130,17 @@ export const Categories: React.FC = () => {
       }
       setShowModal(false);
       fetchCategories();
-    } catch (error) { alert('Error: ' + (error as any).message); } finally { setSubmitting(false); }
+    } catch (error) { showAlert('Error', (error as any).message, 'error'); } finally { setSubmitting(false); }
   };
 
-  const handleDelete = async (id: string, catName: string) => {
-    if (!window.confirm(`Delete "${catName}"? Products in this category will lose their reference.`)) return;
-    try {
-      const { error } = await supabase.from('categories').delete().eq('id', id);
-      if (error) throw error;
-      setCategories(categories.filter(c => c.id !== id));
-    } catch (error) { alert('Error: ' + (error as any).message); }
+  const handleDelete = (id: string, catName: string) => {
+    showConfirm('Confirm', `Delete "${catName}"? Products in this category will lose their reference.`, async () => {
+      try {
+        const { error } = await supabase.from('categories').delete().eq('id', id);
+        if (error) throw error;
+        setCategories(categories.filter(c => c.id !== id));
+      } catch (error) { showAlert('Error', (error as any).message, 'error'); }
+    }, { confirmLabel: 'Delete', variant: 'danger' });
   };
 
   const getGradient = (index: number) => {
@@ -220,60 +225,60 @@ export const Categories: React.FC = () => {
         </div>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '480px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.625rem' }}>
-              <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: 'var(--font-title)' }}>
-                <FolderPlus size={18} style={{ color: 'hsl(var(--accent))' }} />
-                {editingCategory ? 'Edit Category' : 'Add Category'}
-              </h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-tertiary))', padding: '4px' }}
-                onClick={() => setShowModal(false)}><X size={18} /></button>
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FolderPlus size={18} style={{ color: 'hsl(var(--accent))' }} />
+              {editingCategory ? 'Edit Category' : 'Add Category'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCategory ? 'Edit the details of this category.' : 'Add a new category to the catalog.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="form-label">Name</label>
+              <input type="text" className="form-control" placeholder="e.g. Video Editing" value={name} onChange={(e) => handleNameChange(e.target.value)} required />
             </div>
-            <form onSubmit={handleSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
               <div className="form-group">
-                <label className="form-label">Name</label>
-                <input type="text" className="form-control" placeholder="e.g. Video Editing" value={name} onChange={(e) => handleNameChange(e.target.value)} required />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Slug</label>
-                  <input type="text" className="form-control" placeholder="video-editing" value={slug} onChange={(e) => setSlug(e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Type</label>
-                  <select className="form-control" value={type} onChange={(e) => setType(e.target.value as any)}>
-                    <option value="product">Product</option>
-                    <option value="service">Service</option>
-                  </select>
-                </div>
+                <label className="form-label">Slug</label>
+                <input type="text" className="form-control" placeholder="video-editing" value={slug} onChange={(e) => setSlug(e.target.value)} required />
               </div>
               <div className="form-group">
-                <label className="form-label">Image</label>
-                <input type="file" accept="image/*" style={{ display: 'none' }} ref={fileInputRef} onChange={handleImageFileChange} />
-                {imageUrl ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', background: 'hsl(var(--bg-surface))', padding: '0.625rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
-                    <img src={imageUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
-                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', color: 'hsl(var(--text-tertiary))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageUrl}</div>
-                    <button type="button" className="btn btn-danger btn-sm" onClick={() => setImageUrl('')}>Remove</button>
-                  </div>
-                ) : (
-                  <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '0.875rem' }}
-                    onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
-                    {uploadingImage ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Image</>}
-                  </button>
-                )}
+                <label className="form-label">Type</label>
+                <select className="form-control" value={type} onChange={(e) => setType(e.target.value as any)}>
+                  <option value="product">Product</option>
+                  <option value="service">Service</option>
+                </select>
               </div>
-              <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={submitting}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting || uploadingImage}>{submitting ? 'Saving...' : 'Save'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+            <div className="form-group">
+              <label className="form-label">Image</label>
+              <input type="file" accept="image/*" style={{ display: 'none' }} ref={fileInputRef} onChange={handleImageFileChange} />
+              {imageUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', background: 'hsl(var(--bg-surface))', padding: '0.625rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
+                  <img src={imageUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', color: 'hsl(var(--text-tertiary))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageUrl}</div>
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => setImageUrl('')}>Remove</button>
+                </div>
+              ) : (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '0.875rem' }}
+                  onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
+                  {uploadingImage ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Image</>}
+                </button>
+              )}
+            </div>
+            <DialogFooter>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={submitting || uploadingImage}>{submitting ? 'Saving...' : 'Save'}</button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {AlertComponent}
+      {ConfirmComponent}
     </div>
   );
 };

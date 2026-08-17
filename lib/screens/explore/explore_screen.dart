@@ -13,8 +13,9 @@ import '../../services/institution_service.dart';
 import '../../services/product_service.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/responsive.dart';
-import '../../widgets/app_bottom_nav.dart';
+import '../../widgets/adaptive_nav.dart';
 import '../../widgets/animated_press.dart';
+import '../../widgets/user_avatar_menu.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/discount_countdown.dart';
 import '../../widgets/skeleton.dart';
@@ -55,14 +56,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   List<Product> _searchSuggestions = [];
   bool _showSuggestions = false;
+  bool _showScrollToTop = false;
   Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _selectedCategoryId = widget.initialCategoryId;
-    _loadInstitutions();
-    _loadProducts();
     _loadCategories();
     _loadBusinessName();
     _scrollController.addListener(_onScroll);
@@ -76,17 +76,20 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       ref.read(cartProvider).loadCart();
       ref.read(walletProvider).loadWallet();
       ref.read(productProvider).loadFavoriteIds();
-      // Set default institution to user's university
-      final user = ref.read(authProvider).user;
-      if (user?.university != null && user!.university!.isNotEmpty) {
-        _loadInstitutions().then((_) {
+      // Load institutions first, then set default institution and load products
+      _loadInstitutions().then((_) {
+        final user = ref.read(authProvider).user;
+        if (user?.university != null && user!.university!.isNotEmpty) {
           final match = _institutions.where((i) => i.name.toLowerCase() == user.university!.toLowerCase()).toList();
           if (match.isNotEmpty && mounted) {
             setState(() => _selectedInstitutionCode = match.first.code);
-            _loadProducts(reset: true);
           }
-        });
-      }
+        }
+        // Load products once after institutions are ready
+        if (mounted) {
+          _loadProducts();
+        }
+      });
     });
   }
 
@@ -150,6 +153,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   void _onScroll() {
     final position = _scrollController.position;
+    final show = position.pixels > 400;
+    if (show != _showScrollToTop) {
+      setState(() => _showScrollToTop = show);
+    }
     if (position.pixels >= position.maxScrollExtent * 0.8 &&
         _hasMore &&
         !_isLoading) {
@@ -187,25 +194,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       }
     } catch (e) {
       // ignore
-    }
-  }
-
-  bool _hasPushedOver = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route != null && !route.isCurrent) {
-      _hasPushedOver = true;
-    } else if (route != null && route.isCurrent && _hasPushedOver) {
-      _hasPushedOver = false;
-      // Trigger a visible refresh on the Riverpod provider
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ref.read(exploreRefreshProvider).increment();
-        }
-      });
     }
   }
 
@@ -349,9 +337,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                 selectedTileColor: AppTheme.accent.withValues(alpha: 0.05),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 onTap: () {
-                                  setState(() => _selectedInstitutionCode = null);
                                   Navigator.of(sheetCtx).pop();
-                                  _loadProducts(reset: true);
+                                  if (_selectedInstitutionCode != null) {
+                                    setState(() => _selectedInstitutionCode = null);
+                                    _loadProducts(reset: true);
+                                  }
                                 },
                               ),
                             if (query.isEmpty) const Divider(),
@@ -399,9 +389,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                 selectedTileColor: AppTheme.accent.withValues(alpha: 0.05),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 onTap: () {
-                                  setState(() => _selectedInstitutionCode = inst.code);
                                   Navigator.of(sheetCtx).pop();
-                                  _loadProducts(reset: true);
+                                  if (_selectedInstitutionCode != inst.code) {
+                                    setState(() => _selectedInstitutionCode = inst.code);
+                                    _loadProducts(reset: true);
+                                  }
                                 },
                               );
                             }),
@@ -422,7 +414,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<ExploreRefreshNotifier>(exploreRefreshProvider, (previous, next) {
+    ref.listen(exploreRefreshProvider, (previous, next) {
       _loadProducts(reset: true);
     });
 
@@ -432,132 +424,142 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.canvasWhite,
-      bottomNavigationBar: const AppBottomNav(currentIndex: 1),
-      child: Column(
+      extendBodyBehindAppBar: true,
+      bottomNavigationBar: const AdaptiveNav(currentIndex: 1),
+      child: Stack(
         children: [
-            // Floating glass header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
-                  child: Container(
-                    decoration: AppTheme.glassDecoration(radius: 20),
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Row(
-                      children: [
-                        // Institution filter dropdown
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _showInstitutionPicker(context),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.glassSurfaceLight,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppTheme.glassBorder),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_selectedInstitutionCode != null) ...[
-                                    Builder(
-                                      builder: (context) {
-                                        final inst = _institutions.where((i) => i.code == _selectedInstitutionCode).toList();
-                                        if (inst.isEmpty) return const SizedBox.shrink();
-                                        return inst.first.logoUrl != null
-                                            ? Padding(
-                                                padding: const EdgeInsets.only(right: 8),
-                                                child: CachedNetworkImage(
-                                                  imageUrl: inst.first.logoUrl!,
-                                                  width: 20,
-                                                  height: 20,
-                                                  fit: BoxFit.contain,
-                                                  memCacheWidth: 20,
-                                                  errorWidget: (_, _, _) => const Icon(LucideIcons.graduationCap, size: 16, color: AppTheme.accent),
-                                                ),
-                                              )
-                                            : const Padding(
-                                                padding: EdgeInsets.only(right: 8),
-                                                child: Icon(LucideIcons.graduationCap, size: 16, color: AppTheme.accent),
-                                              );
-                                      },
-                                    ),
-                                  ] else
-                                    const Padding(
-                                      padding: EdgeInsets.only(right: 8),
-                                      child: Icon(LucideIcons.building2, size: 16, color: AppTheme.accent),
-                                    ),
-                                  Flexible(
-                                    child: Text(
-                                      _selectedInstitutionCode != null
-                                          ? (_institutions.where((i) => i.code == _selectedInstitutionCode).map((i) => i.name).firstOrNull ?? _selectedInstitutionCode!)
-                                          : 'All Institutions',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: _selectedInstitutionCode != null ? AppTheme.charcoalInk : AppTheme.mutedSteel,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 4),
-                                    child: Icon(LucideIcons.chevronDown, size: 16, color: AppTheme.mutedSteel),
-                                  ),
-                                ],
-                              ),
-                            ),
+          // Scrollable product grid that extends behind the header/search
+          Positioned.fill(
+            child: _isLoading && _products.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.fromLTRB(12, 120, 12, 100),
+                    child: ProductGridSkeleton(count: 6),
+                  )
+                : _products.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 120),
+                        child: _buildEmptyState(),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => _loadProducts(reset: true),
+                        child: GridView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(12, 120, 12, 100),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: context.isDesktop
+                                ? 4
+                                : (context.isTablet ? 3 : 2),
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.72,
                           ),
+                          itemCount: _products.length + (_hasMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index == _products.length) {
+                              return const ProductCardSkeleton();
+                            }
+                            return _buildProductCard(_products[index]);
+                          },
                         ),
-                        const SizedBox(width: 8),
-                        Row(
+                      ),
+          ),
+          // Floating overlay: header + search bar (transparent gap between them)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Floating glass header
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + 8, 12, 0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
+                      child: Container(
+                        decoration: AppTheme.glassDecoration(radius: 20),
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        child: Row(
                           children: [
-                            ShadIconButton.ghost(
-                              icon: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Icon(
-                                    LucideIcons.shoppingCart,
-                                    color: cartCount > 0 ? AppTheme.accent : AppTheme.mutedSteel,
+                            // Institution filter dropdown
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => _showInstitutionPicker(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.glassSurfaceLight,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: AppTheme.glassBorder),
                                   ),
-                                  if (cartCount > 0)
-                                    Positioned(
-                                      top: -4,
-                                      right: -8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.destructive,
-                                          borderRadius: BorderRadius.circular(10),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_selectedInstitutionCode != null) ...[
+                                        Builder(
+                                          builder: (context) {
+                                            final inst = _institutions.where((i) => i.code == _selectedInstitutionCode).toList();
+                                            if (inst.isEmpty) return const SizedBox.shrink();
+                                            return inst.first.logoUrl != null
+                                                ? Padding(
+                                                    padding: const EdgeInsets.only(right: 8),
+                                                    child: CachedNetworkImage(
+                                                      imageUrl: inst.first.logoUrl!,
+                                                      width: 20,
+                                                      height: 20,
+                                                      fit: BoxFit.contain,
+                                                      memCacheWidth: 20,
+                                                      errorWidget: (_, _, _) => const Icon(LucideIcons.graduationCap, size: 16, color: AppTheme.accent),
+                                                    ),
+                                                  )
+                                                : const Padding(
+                                                    padding: EdgeInsets.only(right: 8),
+                                                    child: Icon(LucideIcons.graduationCap, size: 16, color: AppTheme.accent),
+                                                  );
+                                          },
                                         ),
-                                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                        alignment: Alignment.center,
+                                      ] else
+                                        const Padding(
+                                          padding: EdgeInsets.only(right: 8),
+                                          child: Icon(LucideIcons.building2, size: 16, color: AppTheme.accent),
+                                        ),
+                                      Flexible(
                                         child: Text(
-                                          '$cartCount',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
+                                          _selectedInstitutionCode != null
+                                              ? (_institutions.where((i) => i.code == _selectedInstitutionCode).map((i) => i.name).firstOrNull ?? _selectedInstitutionCode!)
+                                              : 'All Institutions',
+                                          style: TextStyle(
+                                            fontSize: 14,
                                             fontWeight: FontWeight.w600,
+                                            color: _selectedInstitutionCode != null ? AppTheme.charcoalInk : AppTheme.mutedSteel,
                                           ),
-                                          textAlign: TextAlign.center,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                    ),
-                                ],
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 4),
+                                        child: Icon(LucideIcons.chevronDown, size: 16, color: AppTheme.mutedSteel),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/cart')),
                             ),
-                            Builder(
-                              builder: (context) {
-                                final unreadNotifs = ref.watch(messageProvider).unreadNotificationsCount;
-                                return ShadIconButton.ghost(
+                            const SizedBox(width: 8),
+                            Row(
+                              children: [
+                                ShadIconButton.ghost(
                                   icon: Stack(
                                     clipBehavior: Clip.none,
                                     children: [
-                                      Icon(LucideIcons.bell, color: unreadNotifs > 0 ? AppTheme.accent : AppTheme.mutedSteel),
-                                      if (unreadNotifs > 0)
+                                      Icon(
+                                        LucideIcons.shoppingCart,
+                                        color: cartCount > 0 ? AppTheme.accent : AppTheme.mutedSteel,
+                                      ),
+                                      if (cartCount > 0)
                                         Positioned(
                                           top: -4,
                                           right: -8,
@@ -570,7 +572,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                             constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                                             alignment: Alignment.center,
                                             child: Text(
-                                              '$unreadNotifs',
+                                              '$cartCount',
                                               style: const TextStyle(
                                                 color: Colors.white,
                                                 fontSize: 10,
@@ -582,276 +584,201 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                         ),
                                     ],
                                   ),
-                                  onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/notifications')),
-                                );
-                              },
-                            ),
-                            if (!auth.isAuthenticated)
-                              GestureDetector(
-                                onTap: () => Navigator.of(context).pushNamed('/login'),
-                                child: ShadAvatar(
-                                  null,
-                                  size: const Size(36, 36),
-                                  backgroundColor: AppTheme.accent,
-                                  placeholder: Text(
-                                    'U',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                  onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/cart')),
                                 ),
-                              )
-                            else
-                            PopupMenuButton<_AvatarMenuItem>(
-                              onSelected: (item) {
-                                switch (item) {
-                                  case _AvatarMenuItem.wishlist:
-                                    Navigator.of(context).pushNamed('/wishlist');
-                                    break;
-                                  case _AvatarMenuItem.orders:
-                                    Navigator.of(context).pushNamed('/orders');
-                                    break;
-                                  case _AvatarMenuItem.wallet:
-                                    Navigator.of(context).pushNamed('/wallet');
-                                    break;
-                                  case _AvatarMenuItem.following:
-                                    Navigator.of(context).pushNamed('/following');
-                                    break;
-                                  case _AvatarMenuItem.settings:
-                                    Navigator.of(context).pushNamed('/account');
-                                    break;
-                                  case _AvatarMenuItem.signOut:
-                                    AppTheme.showGlassDialog<bool>(
-                                      context: context,
-                                      title: const Text('Sign Out'),
-                                      description: const Text('Are you sure you want to sign out?'),
-                                      actions: [
-                                        ShadButton.ghost(
-                                          onPressed: () => Navigator.of(context).pop(false),
-                                          child: const Text('Cancel'),
-                                        ),
-                                        ShadButton.destructive(
-                                          onPressed: () => Navigator.of(context).pop(true),
-                                          child: const Text('Sign Out'),
-                                        ),
-                                      ],
-                                    ).then((confirmed) async {
-                                      if (confirmed == true) {
-                                        await auth.signOut();
-                                        if (context.mounted) {
-                                          Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-                                        }
-                                      }
-                                    });
-                                    break;
-                                }
-                              },
-                              offset: const Offset(0, 40),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: const BorderSide(color: AppTheme.whisperBorder),
-                              ),
-                              color: AppTheme.pureSurface,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  ShadAvatar(
-                                    auth.user?.avatarUrl?.isNotEmpty == true ? auth.user!.avatarUrl : null,
-                                    size: const Size(36, 36),
-                                    backgroundColor: AppTheme.accent,
-                                    placeholder: Text(
-                                      (_businessName ?? auth.user?.fullName ?? 'S')[0].toUpperCase(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
+                                Builder(
+                                  builder: (context) {
+                                    final unreadNotifs = ref.watch(messageProvider).unreadNotificationsCount;
+                                    return ShadIconButton.ghost(
+                                      icon: Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          Icon(LucideIcons.bell, color: unreadNotifs > 0 ? AppTheme.accent : AppTheme.mutedSteel),
+                                          if (unreadNotifs > 0)
+                                            Positioned(
+                                              top: -4,
+                                              right: -8,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.destructive,
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  '$unreadNotifs',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
-                                    ),
-                                  ),
-                                  if (auth.user?.isVerified == true)
-                                    const Positioned(
-                                      bottom: -2,
-                                      right: -2,
-                                      child: VerificationBadge(size: 14),
-                                    ),
-                                ],
-                              ),
-                              itemBuilder: (context) => [
-                                PopupMenuItem(
-                                  value: _AvatarMenuItem.wishlist,
-                                  child: _AvatarMenuItemRow(icon: LucideIcons.heart, label: 'Wishlist'),
+                                      onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/notifications')),
+                                    );
+                                  },
                                 ),
-                                PopupMenuItem(
-                                  value: _AvatarMenuItem.orders,
-                                  child: _AvatarMenuItemRow(icon: LucideIcons.shoppingBag, label: 'My Orders'),
-                                ),
-                                PopupMenuItem(
-                                  value: _AvatarMenuItem.wallet,
-                                  child: _AvatarMenuItemRow(
-                                    icon: LucideIcons.wallet,
-                                    label: 'Wallet',
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: _AvatarMenuItem.following,
-                                  child: _AvatarMenuItemRow(icon: LucideIcons.users, label: 'Following'),
-                                ),
-                                const PopupMenuDivider(),
-                                PopupMenuItem(
-                                  value: _AvatarMenuItem.settings,
-                                  child: _AvatarMenuItemRow(icon: LucideIcons.settings, label: 'Settings'),
-                                ),
-                                PopupMenuItem(
-                                  value: _AvatarMenuItem.signOut,
-                                  child: _AvatarMenuItemRow(icon: LucideIcons.logOut, label: 'Sign Out', destructive: true),
+                                UserAvatarMenu(
+                                  avatarUrl: auth.user?.avatarUrl,
+                                  fullName: auth.user?.fullName,
+                                  businessName: _businessName,
+                                  isVerified: auth.user?.isVerified == true,
+                                  isAuthenticated: auth.isAuthenticated,
+                                  onLoginTap: () => Navigator.of(context).pushNamed('/login'),
+                                  onWishlistTap: () => Navigator.of(context).pushNamed('/wishlist'),
+                                  onOrdersTap: () => Navigator.of(context).pushNamed('/orders'),
+                                  onWalletTap: () => Navigator.of(context).pushNamed('/wallet'),
+                                  onFollowingTap: () => Navigator.of(context).pushNamed('/following'),
+                                  onSettingsTap: () => Navigator.of(context).pushNamed('/account'),
+                                  onSignOut: () async {
+                                    await auth.signOut();
+                                    if (context.mounted) {
+                                    unawaited(Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false));
+                                    }
+                                  },
                                 ),
                               ],
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            // Floating glass search bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: AppTheme.glassBlurLight, sigmaY: AppTheme.glassBlurLight),
-                  child: Container(
-                    decoration: AppTheme.glassDecoration(radius: 16),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ShadInput(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            placeholder: const Text('Search products...'),
-                            leading: const Padding(
-                              padding: EdgeInsets.only(left: 8),
-                              child: Icon(LucideIcons.search, size: 20, color: AppTheme.mutedSteel),
-                            ),
-                            trailing: _searchController.text.isNotEmpty
-                                ? ShadIconButton.ghost(
-                                    icon: const Icon(LucideIcons.x, size: 18, color: AppTheme.mutedSteel),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() {
-                                        _searchQuery = '';
-                                        _showSuggestions = false;
-                                        _searchSuggestions = [];
-                                      });
-                                      _loadProducts(reset: true);
-                                    },
-                                  )
-                                : null,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (value) {
-                              setState(() {
-                                _searchQuery = value;
-                                _showSuggestions = false;
-                              });
-                              _loadProducts(reset: true);
-                            },
-                            onChanged: (value) {
-                              setState(() => _searchQuery = value);
-                              if (value.length >= 2) {
-                                _loadSuggestions(value);
-                              } else {
-                                setState(() {
-                                  _showSuggestions = false;
-                                  _searchSuggestions = [];
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ShadIconButton.ghost(
-                          icon: const Icon(LucideIcons.slidersHorizontal, size: 20, color: AppTheme.mutedSteel),
-                          onPressed: () => _showFilterSheet(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Stack(
-                children: [
-                  _isLoading && _products.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: ProductGridSkeleton(count: 6),
-                        )
-                      : _products.isEmpty
-                          ? _buildEmptyState()
-                          : RefreshIndicator(
-                              onRefresh: () => _loadProducts(reset: true),
-                              child: GridView.builder(
-                                controller: _scrollController,
-                                padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: context.isDesktop
-                                      ? 4
-                                      : (context.isTablet ? 3 : 2),
-                                  mainAxisSpacing: 12,
-                                  crossAxisSpacing: 12,
-                                  childAspectRatio: 0.72,
+                // Floating glass search bar
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: AppTheme.glassBlurLight, sigmaY: AppTheme.glassBlurLight),
+                      child: Container(
+                        decoration: AppTheme.glassDecoration(radius: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ShadInput(
+                                controller: _searchController,
+                                focusNode: _searchFocusNode,
+                                placeholder: const Text('Search products...'),
+                                leading: const Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Icon(LucideIcons.search, size: 20, color: AppTheme.mutedSteel),
                                 ),
-                                itemCount: _products.length + (_hasMore ? 1 : 0),
-                                itemBuilder: (context, index) {
-                                  if (index == _products.length) {
-                                    return const ProductCardSkeleton();
+                                trailing: _searchController.text.isNotEmpty
+                                    ? ShadIconButton.ghost(
+                                        icon: const Icon(LucideIcons.x, size: 18, color: AppTheme.mutedSteel),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() {
+                                            _searchQuery = '';
+                                            _showSuggestions = false;
+                                            _searchSuggestions = [];
+                                          });
+                                          _loadProducts(reset: true);
+                                        },
+                                      )
+                                    : null,
+                                textInputAction: TextInputAction.search,
+                                onSubmitted: (value) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                    _showSuggestions = false;
+                                  });
+                                  _loadProducts(reset: true);
+                                },
+                                onChanged: (value) {
+                                  setState(() => _searchQuery = value);
+                                  if (value.length >= 2) {
+                                    _loadSuggestions(value);
+                                  } else {
+                                    setState(() {
+                                      _showSuggestions = false;
+                                      _searchSuggestions = [];
+                                    });
                                   }
-                                  return _buildProductCard(_products[index]);
                                 },
                               ),
                             ),
-                  if (_showSuggestions)
-                    Positioned(
-                      left: 12,
-                      right: 12,
-                      top: 0,
-                      child: Material(
-                        elevation: 4,
-                        borderRadius: BorderRadius.circular(12),
-                        color: AppTheme.pureSurface,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.of(context).size.height * 0.35,
-                          ),
-                          child: ListView.separated(
-                            padding: EdgeInsets.zero,
-                            shrinkWrap: true,
-                            itemCount: _searchSuggestions.length,
-                            separatorBuilder: (_, _) =>
-                                const Divider(height: 1, indent: 12, endIndent: 12),
-                            itemBuilder: (ctx, i) {
-                              return _buildSuggestionTile(_searchSuggestions[i]);
-                            },
-                          ),
+                            const SizedBox(width: 8),
+                            ShadIconButton.ghost(
+                              icon: const Icon(LucideIcons.slidersHorizontal, size: 20, color: AppTheme.mutedSteel),
+                              onPressed: () => _showFilterSheet(context),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Search suggestions dropdown
+          if (_showSuggestions)
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 120,
+              child: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(12),
+                color: AppTheme.pureSurface,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.35,
+                  ),
+                  child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: _searchSuggestions.length,
+                    separatorBuilder: (_, _) =>
+                        const Divider(height: 1, indent: 12, endIndent: 12),
+                    itemBuilder: (ctx, i) {
+                      return _buildSuggestionTile(_searchSuggestions[i]);
+                    },
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          // Scroll to top button
+          if (_showScrollToTop)
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: FloatingActionButton.small(
+                onPressed: () {
+                  _scrollController.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                },
+                backgroundColor: AppTheme.pureSurface,
+                foregroundColor: AppTheme.accent,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: AppTheme.whisperBorder),
+                ),
+                child: const Icon(LucideIcons.arrowUp, size: 20),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _buildProductCard(Product product) {
     final cart = ref.watch(cartProvider);
     final productProv = ref.watch(productProvider);
+    final authProv = ref.watch(authProvider);
     final inCart = cart.isInCart(product.id);
     final hasDiscount = product.isDiscountActive;
     final isFavorited = productProv.isFavorited(product.id);
@@ -1052,8 +979,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         ),
                       ),
                     ),
-                  // Add to cart button
-                  if (!inCart && product.status == ProductStatus.available)
+                  // Add to cart button (hidden for own products)
+                  if (!inCart && product.sellerId != authProv.user?.id && product.status == ProductStatus.available)
                     Positioned(
                       bottom: context.rh(8),
                       right: context.rw(8),
@@ -1595,45 +1522,6 @@ class _FilterSheetState extends State<_FilterSheet> {
           const SizedBox(height: 8),
         ],
       ),
-    );
-  }
-}
-
-enum _AvatarMenuItem {
-  wishlist,
-  orders,
-  wallet,
-  following,
-  settings,
-  signOut,
-}
-
-class _AvatarMenuItemRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool destructive;
-
-  const _AvatarMenuItemRow({
-    required this.icon,
-    required this.label,
-    this.destructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: destructive ? AppTheme.destructive : AppTheme.mutedSteel),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: destructive ? AppTheme.destructive : AppTheme.charcoalInk,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

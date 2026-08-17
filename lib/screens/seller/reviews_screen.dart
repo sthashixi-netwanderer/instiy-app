@@ -59,6 +59,7 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context,
         title: const Text('Product Reviews'),
         actions: [
@@ -75,15 +76,34 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
         ],
       ),
       body: sellerProv.isLoading
-          ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                16,
+                16,
+              ),
+              child: const ListSkeleton(count: 6),
+            )
           : reviews.isEmpty
-              ? _buildEmptyState()
+              ? Padding(
+                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight),
+                  child: _buildEmptyState(),
+                )
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: reviews.length + (sellerProv.hasMoreReviews ? 1 : 0),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+                    16,
+                    16,
+                  ),
+                  itemCount: 1 + reviews.length + (sellerProv.hasMoreReviews ? 1 : 0),
                   itemBuilder: (context, index) {
-                    if (index == reviews.length) {
+                    if (index == 0) {
+                      return _buildRatingSummary(reviews);
+                    }
+                    if (index == reviews.length + 1) {
                       return const Padding(
                         padding: EdgeInsets.all(16),
                         child: Center(
@@ -95,7 +115,7 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
                         ),
                       );
                     }
-                    final review = reviews[index];
+                    final review = reviews[index - 1];
                     final userId = ref.read(authProvider).user?.id;
                     return _SellerReviewCard(
                       review: review,
@@ -109,6 +129,103 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
                     );
                   },
                 ),
+    );
+  }
+
+  Widget _buildRatingSummary(List<ProductReview> reviews) {
+    if (reviews.isEmpty) return const SizedBox.shrink();
+    final totalRating = reviews.fold<int>(0, (sum, r) => sum + r.rating);
+    final avgRating = totalRating / reviews.length;
+
+    // Rating distribution
+    final counts = List.generate(5, (i) => reviews.where((r) => r.rating == i + 1).length);
+
+    return Container(
+      margin: EdgeInsets.only(bottom: context.rh(16)),
+      padding: context.rAll(16),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(context.rr(16)),
+        border: Border.all(color: AppTheme.whisperBorder),
+      ),
+      child: Row(
+        children: [
+          // Average score
+          Column(
+            children: [
+              Text(
+                avgRating.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: context.rsp(36),
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.charcoalInk,
+                  height: 1,
+                ),
+              ),
+              SizedBox(height: context.rh(4)),
+              Row(
+                children: List.generate(5, (i) => Icon(
+                  i < avgRating.round() ? Icons.star : Icons.star_border,
+                  size: context.ri(14),
+                  color: i < avgRating.round() ? AppTheme.warningAmber : AppTheme.mutedSteel.withValues(alpha: 0.3),
+                )),
+              ),
+              SizedBox(height: context.rh(2)),
+              Text(
+                '${reviews.length} ${reviews.length == 1 ? 'review' : 'reviews'}',
+                style: TextStyle(fontSize: context.rsp(11), color: AppTheme.mutedSteel),
+              ),
+            ],
+          ),
+          SizedBox(width: context.rw(16)),
+          // Distribution bars
+          Expanded(
+            child: Column(
+              children: List.generate(5, (i) {
+                final star = 5 - i;
+                final count = counts[star - 1];
+                final fraction = reviews.isNotEmpty ? count / reviews.length : 0.0;
+                return Padding(
+                  padding: EdgeInsets.symmetric(vertical: context.rh(1.5)),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: context.rw(16),
+                        child: Text(
+                          '$star',
+                          style: TextStyle(fontSize: context.rsp(11), color: AppTheme.mutedSteel),
+                        ),
+                      ),
+                      Icon(Icons.star, size: context.ri(10), color: AppTheme.warningAmber),
+                      SizedBox(width: context.rw(6)),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(context.rr(3)),
+                          child: LinearProgressIndicator(
+                            value: fraction,
+                            backgroundColor: AppTheme.whisperBorder,
+                            color: AppTheme.warningAmber,
+                            minHeight: context.rh(6),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: context.rw(6)),
+                      SizedBox(
+                        width: context.rw(20),
+                        child: Text(
+                          '$count',
+                          style: TextStyle(fontSize: context.rsp(11), color: AppTheme.mutedSteel),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -202,7 +319,7 @@ class _SellerReviewCard extends StatelessWidget {
                   ],
                   onSelected: (v) async {
                     if (v == 'edit') {
-                      showShadSheet(
+                      showShadSheet( // ignore: unawaited_futures
                         context: context,
                         builder: (ctx) => ShadSheet(
                           title: const Text('Edit Your Review'),

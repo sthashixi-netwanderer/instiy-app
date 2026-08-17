@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/wallet_model.dart';
+import '../models/withdrawal_fees_model.dart';
 import '../services/wallet_service.dart';
 import '../services/paystack_service.dart';
 import '../services/supabase_service.dart';
@@ -12,6 +13,7 @@ class WalletProvider extends ChangeNotifier {
   List<WalletTransaction> _transactions = [];
   List<WithdrawalRequest> _withdrawalRequests = [];
   double _pendingBalance = 0;
+  WithdrawalFees _withdrawalFees = const WithdrawalFees(mobileMoneyRate: 0.02, bankRate: 0.01);
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _hasMore = true;
@@ -130,6 +132,7 @@ class WalletProvider extends ChangeNotifier {
   List<WalletTransaction> get transactions => _transactions;
   List<WithdrawalRequest> get withdrawalRequests => _withdrawalRequests;
   double get pendingBalance => _pendingBalance;
+  WithdrawalFees get withdrawalFees => _withdrawalFees;
   double get availableBalance =>
       (_wallet?.balance ?? 0) - _pendingBalance;
   bool get isLoading => _isLoading;
@@ -163,6 +166,7 @@ class WalletProvider extends ChangeNotifier {
       _hasMore = _transactions.length >= 20;
       _pendingBalance = await WalletService.getPendingBalance();
       _withdrawalRequests = await WalletService.getWithdrawalRequests();
+      _withdrawalFees = await WalletService.getWithdrawalFees();
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -179,6 +183,7 @@ class WalletProvider extends ChangeNotifier {
       _hasMore = _transactions.length >= 20;
       _pendingBalance = await WalletService.getPendingBalance();
       _withdrawalRequests = await WalletService.getWithdrawalRequests();
+      _withdrawalFees = await WalletService.getWithdrawalFees();
       _transactionPage = 0;
       notifyListeners();
     } catch (_) {}
@@ -207,6 +212,8 @@ class WalletProvider extends ChangeNotifier {
     required String methodType,
     String? providerType,
     String? accountDetails,
+    double? feeAmount,
+    double? amountToReceive,
   }) async {
     try {
       await WalletService.requestWithdrawal(
@@ -214,6 +221,8 @@ class WalletProvider extends ChangeNotifier {
         methodType: methodType,
         providerType: providerType,
         accountDetails: accountDetails,
+        feeAmount: feeAmount,
+        amountToReceive: amountToReceive,
       );
 
       // Send email notification

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -5,6 +6,7 @@ import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
+import '../../widgets/app_button.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -21,21 +23,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
+  ProviderSubscription? _authSub;
+
   @override
   void initState() {
     super.initState();
     _emailController.addListener(_onTextChanged);
     _passwordController.addListener(_onTextChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ref.read(authProvider).isAuthenticated) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+        return;
+      }
+      if (mounted && ref.read(authProvider).isSuspended) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/suspended', (_) => false);
+        return;
+      }
+      // Listen for auth state changes (e.g. Google OAuth completing)
+      _authSub = ref.listenManual(authProvider, (previous, next) {
+        if (next.isSuspended && mounted) {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/suspended', (_) => false);
+        } else if (next.isAuthenticated && mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+        }
+      });
+    });
   }
 
   void _onTextChanged() {
     setState(() {});
   }
 
-  bool get _isFormValid => _emailController.text.trim().isNotEmpty && _passwordController.text.isNotEmpty;
+  bool get _isFormValid =>
+      _emailController.text.trim().isNotEmpty &&
+      _passwordController.text.isNotEmpty;
 
   @override
   void dispose() {
+    _authSub?.close();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -55,21 +84,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+      final auth = ref.read(authProvider);
+      if (auth.isSuspended) {
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/suspended', (_) => false),
+        );
+      } else {
+        unawaited(
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
-
-    if (auth.isAuthenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
-        }
-      });
-    }
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
@@ -80,8 +112,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: ShadIconButton.ghost(
-              icon: Icon(LucideIcons.arrowLeft, color: AppTheme.charcoalInk, size: context.ri(28)),
-              onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
+              icon: Icon(
+                LucideIcons.arrowLeft,
+                color: AppTheme.charcoalInk,
+                size: context.ri(28),
+              ),
+              onPressed: () => Navigator.of(
+                context,
+              ).pushNamedAndRemoveUntil('/home', (route) => false),
             ),
           ),
           Expanded(
@@ -119,12 +157,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(LucideIcons.circleAlert, color: AppTheme.destructive, size: context.ri(20)),
+                            Icon(
+                              LucideIcons.circleAlert,
+                              color: AppTheme.destructive,
+                              size: context.ri(20),
+                            ),
                             SizedBox(width: context.rw(8)),
                             Expanded(
                               child: Text(
                                 auth.error!,
-                                style: TextStyle(color: AppTheme.destructive, fontSize: context.rsp(13)),
+                                style: TextStyle(
+                                  color: AppTheme.destructive,
+                                  fontSize: context.rsp(13),
+                                ),
                               ),
                             ),
                           ],
@@ -143,7 +188,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textInputAction: TextInputAction.next,
                       validator: (value) {
                         if (value.isEmpty) return 'Please enter your email';
-                        if (!value.contains('@')) return 'Please enter a valid email';
+                        if (!value.contains('@')) {
+                          return 'Please enter a valid email';
+                        }
                         return null;
                       },
                     ),
@@ -159,14 +206,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textInputAction: TextInputAction.done,
                       trailing: ShadIconButton.ghost(
                         icon: Icon(
-                          _obscurePassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                          _obscurePassword
+                              ? LucideIcons.eyeOff
+                              : LucideIcons.eye,
                           size: context.ri(18),
                         ),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                       validator: (value) {
                         if (value.isEmpty) return 'Please enter your password';
-                        if (value.length < 6) return 'Password must be at least 6 characters';
+                        if (value.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
                         return null;
                       },
                     ),
@@ -176,28 +229,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: ShadButton.link(
-                        onPressed: () => Navigator.of(context).pushNamed('/forgot-password'),
+                        onPressed: () =>
+                            Navigator.of(context).pushNamed('/forgot-password'),
                         child: const Text('Forgot Password?'),
                       ),
                     ),
 
                     SizedBox(height: context.rh(16)),
 
-                    SizedBox(
-                      height: context.rh(50),
-                      child: ShadButton(
-                        onPressed: (_isLoading || !_isFormValid) ? null : _handleLogin,
-                        child: _isLoading
-                            ? SizedBox(
-                                height: context.rh(20),
-                                width: context.rw(20),
-                                child: const CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Sign In'),
-                      ),
+                    AppButton(
+                      onPressed: (_isLoading || !_isFormValid) ? null : _handleLogin,
+                      loading: _isLoading,
+                      child: const Text('Sign In'),
                     ),
 
                     SizedBox(height: context.rh(20)),
@@ -254,12 +297,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     SizedBox(height: context.rh(20)),
 
-                    ShadButton.outline(
+                    AppButton.outline(
                       onPressed: _isLoading
                           ? null
                           : () async {
                               setState(() => _isLoading = true);
-                              await auth.signInWithGoogle(isSignUp: false);
+                              await auth.signInWithGoogle();
                               if (mounted) setState(() => _isLoading = false);
                             },
                       child: Row(
@@ -269,15 +312,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             'https://developers.google.com/static/identity/images/g-logo.png',
                             height: context.rh(22),
                             width: context.rw(22),
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(LucideIcons.globe, size: context.ri(24));
-                            },
+                            errorBuilder: (context, error, stackTrace) => Icon(LucideIcons.globe, size: context.ri(24)),
                           ),
                           SizedBox(width: context.rw(12)),
-                          Text(
-                            'Continue with Google',
-                            style: TextStyle(fontSize: context.rsp(14)),
-                          ),
+                          Text('Continue with Google', style: TextStyle(fontSize: context.rsp(14))),
                         ],
                       ),
                     ),
@@ -286,11 +324,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     Center(
                       child: ShadButton.link(
-                        onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pushNamedAndRemoveUntil('/home', (route) => false),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(LucideIcons.home, size: context.ri(16), color: AppTheme.mutedSteel),
+                            Icon(
+                              LucideIcons.home,
+                              size: context.ri(16),
+                              color: AppTheme.mutedSteel,
+                            ),
                             SizedBox(width: context.rw(6)),
                             Text(
                               'Back to Home',

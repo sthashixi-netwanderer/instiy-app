@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/message_model.dart';
@@ -6,6 +7,8 @@ import '../services/sound_service.dart';
 import '../services/supabase_service.dart';
 import '../services/notification_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/local_db_service.dart';
+import '../providers/block_provider.dart';
 
 class MessageProvider extends ChangeNotifier {
   List<Conversation> _conversations = [];
@@ -13,7 +16,11 @@ class MessageProvider extends ChangeNotifier {
   List<Message> _messages = [];
   Conversation? _activeConversation;
   Map<String, dynamic>? _pendingProductReference;
+  /// Maps conversationId → the DateTime when the user deleted that chat.
+  /// Messages before this timestamp are hidden (WhatsApp-style).
+  final Map<String, DateTime> _hiddenAtMap = {};
   bool _isLoading = false;
+  bool _isLoadingMessages = false;
   bool _isLoadingArchived = false;
   bool _isLoadingMoreConversations = false;
   bool _isLoadingMoreMessages = false;
@@ -26,11 +33,21 @@ class MessageProvider extends ChangeNotifier {
   int _unreadCount = 0;
   int _unreadNotificationsCount = 0;
   String? _error;
+  bool _initialized = false;
+  bool _isOtherUserTyping = false;
+  Timer? _typingTimer;
+
+  /// Ephemeral theme-change notice shown as an inline divider (not persisted).
+  String? _themeChangeNotice;
+  DateTime? _themeChangeNoticeTime;
 
   RealtimeChannel? _conversationsChannel;
   RealtimeChannel? _notificationsChannel;
   RealtimeChannel? _messagesChannel;
   RealtimeChannel? _messagesGlobalChannel;
+  RealtimeChannel? _usersChannel;
+  Timer? _presenceTimer;
+  Timer? _statusUpdateTimer;
 
   List<Conversation> get conversations => _conversations;
   List<Conversation> get archivedConversations => _archivedConversations;
@@ -38,6 +55,10 @@ class MessageProvider extends ChangeNotifier {
   Conversation? get activeConversation => _activeConversation;
   Map<String, dynamic>? get pendingProductReference => _pendingProductReference;
   bool get isLoading => _isLoading;
+  /// True only while messages for the active conversation are loading.
+  /// Separate from [isLoading] so the conversation list and message list
+  /// never share the same loading flag.
+  bool get isLoadingMessages => _isLoadingMessages;
   bool get isLoadingArchived => _isLoadingArchived;
   bool get isLoadingMoreConversations => _isLoadingMoreConversations;
   bool get isLoadingMoreMessages => _isLoadingMoreMessages;
@@ -47,6 +68,12 @@ class MessageProvider extends ChangeNotifier {
   int get unreadCount => _unreadCount;
   int get unreadNotificationsCount => _unreadNotificationsCount;
   String? get error => _error;
+  bool get isInitialized => _initialized;
+  bool get isOtherUserTyping => _isOtherUserTyping;
+
+  /// Ephemeral theme-change notice (null when none).
+  String? get themeChangeNotice => _themeChangeNotice;
+  DateTime? get themeChangeNoticeTime => _themeChangeNoticeTime;
 
   String? _currentUserId;
 
@@ -69,10 +96,12 @@ class MessageProvider extends ChangeNotifier {
         _messages = [];
         _activeConversation = null;
         _pendingProductReference = null;
+        _hiddenAtMap.clear();
         _unreadCount = 0;
         _unreadNotificationsCount = 0;
         _error = null;
         _currentUserId = null;
+        _initialized = false;
         notifyListeners();
       }
     });
@@ -97,7 +126,7 @@ class MessageProvider extends ChangeNotifier {
           schema: 'public',
           table: 'conversations',
           callback: (payload) {
-            loadConversations();
+            loadConversations(silent: true);
             loadUnreadCount();
           },
         );
@@ -118,9 +147,11 @@ class MessageProvider extends ChangeNotifier {
             final mediaType = data['media_type'] as String?;
 
             // Always update conversations list and unread count silently in realtime for any new message!
+            // getConversations already handles resurfacing hidden chats when
+            // lastMessageAt > hiddenAt, so no extra logic needed here.
             if (conversationId != null) {
-              loadConversations(silent: true);
-              loadUnreadCount();
+              loadConversations(silent: true); // ignore: unawaited_futures
+              loadUnreadCount(); // ignore: unawaited_futures
             }
 
             // Only notify for messages from other users
@@ -170,6 +201,26 @@ class MessageProvider extends ChangeNotifier {
         );
     _notificationsChannel!.subscribe();
 
+    // Subscribe to users status updates in realtime
+    _usersChannel = SupabaseService.client
+        .channel('public:users')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'users',
+          callback: (payload) {
+            final data = payload.newRecord;
+            final userId = data['id'] as String?;
+            final lastSeenStr = data['last_seen'] as String?;
+            if (userId != null && lastSeenStr != null) {
+              _updateUserStatusInMemory(userId, DateTime.parse(lastSeenStr));
+            }
+          },
+        );
+    _usersChannel!.subscribe();
+
+    _startPresenceAndStatusTimers();
+
     loadConversations();
     loadUnreadCount();
     loadUnreadNotificationsCount();
@@ -188,10 +239,149 @@ class MessageProvider extends ChangeNotifier {
       SupabaseService.client.removeChannel(_messagesGlobalChannel!);
       _messagesGlobalChannel = null;
     }
+    if (_usersChannel != null) {
+      SupabaseService.client.removeChannel(_usersChannel!);
+      _usersChannel = null;
+    }
+    _stopPresenceAndStatusTimers();
+  }
+
+  void _startPresenceAndStatusTimers() {
+    _presenceTimer?.cancel();
+    _statusUpdateTimer?.cancel();
+
+    // Update presence immediately, then every 30 seconds
+    _updateUserPresence();
+    _presenceTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _updateUserPresence();
+    });
+
+    // Notify listeners every 10 seconds to update dynamic isOnline status and last seen formatting
+    _statusUpdateTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      notifyListeners();
+    });
+  }
+
+  void _stopPresenceAndStatusTimers() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    _statusUpdateTimer?.cancel();
+    _statusUpdateTimer = null;
+  }
+
+  Future<void> _updateUserPresence() async {
+    final userId = _currentUserId ?? SupabaseService.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await SupabaseService.client
+          .from('users')
+          .update({'last_seen': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', userId);
+    } catch (_) {}
+  }
+
+  void _updateUserStatusInMemory(String userId, DateTime lastSeen) {
+    bool updated = false;
+
+    // Update conversations list
+    for (int i = 0; i < _conversations.length; i++) {
+      if (_conversations[i].otherUserId == userId) {
+        _conversations[i] = Conversation(
+          id: _conversations[i].id,
+          otherUserId: _conversations[i].otherUserId,
+          otherUserName: _conversations[i].otherUserName,
+          otherUserAvatar: _conversations[i].otherUserAvatar,
+          otherUserVerified: _conversations[i].otherUserVerified,
+          otherBusinessName: _conversations[i].otherBusinessName,
+          lastMessage: _conversations[i].lastMessage,
+          lastMessageAt: _conversations[i].lastMessageAt,
+          unreadCount: _conversations[i].unreadCount,
+          isArchived: _conversations[i].isArchived,
+          hiddenAt: _conversations[i].hiddenAt,
+          otherUserLastSeen: lastSeen,
+          themeColor: _conversations[i].themeColor,
+        );
+        updated = true;
+      }
+    }
+
+    // Update archived conversations list
+    for (int i = 0; i < _archivedConversations.length; i++) {
+      if (_archivedConversations[i].otherUserId == userId) {
+        _archivedConversations[i] = Conversation(
+          id: _archivedConversations[i].id,
+          otherUserId: _archivedConversations[i].otherUserId,
+          otherUserName: _archivedConversations[i].otherUserName,
+          otherUserAvatar: _archivedConversations[i].otherUserAvatar,
+          otherUserVerified: _archivedConversations[i].otherUserVerified,
+          otherBusinessName: _archivedConversations[i].otherBusinessName,
+          lastMessage: _archivedConversations[i].lastMessage,
+          lastMessageAt: _archivedConversations[i].lastMessageAt,
+          unreadCount: _archivedConversations[i].unreadCount,
+          isArchived: _archivedConversations[i].isArchived,
+          hiddenAt: _archivedConversations[i].hiddenAt,
+          otherUserLastSeen: lastSeen,
+          themeColor: _archivedConversations[i].themeColor,
+        );
+        updated = true;
+      }
+    }
+
+    // Update active conversation
+    if (_activeConversation != null && _activeConversation!.otherUserId == userId) {
+      _activeConversation = Conversation(
+        id: _activeConversation!.id,
+        otherUserId: _activeConversation!.otherUserId,
+        otherUserName: _activeConversation!.otherUserName,
+        otherUserAvatar: _activeConversation!.otherUserAvatar,
+        otherUserVerified: _activeConversation!.otherUserVerified,
+        otherBusinessName: _activeConversation!.otherBusinessName,
+        lastMessage: _activeConversation!.lastMessage,
+        lastMessageAt: _activeConversation!.lastMessageAt,
+        unreadCount: _activeConversation!.unreadCount,
+        isArchived: _activeConversation!.isArchived,
+        hiddenAt: _activeConversation!.hiddenAt,
+        otherUserLastSeen: lastSeen,
+        themeColor: _activeConversation!.themeColor,
+      );
+      updated = true;
+    }
+
+    if (updated) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> ensureInitialized({bool force = false}) async {
+    if (_initialized && !force) return;
+    _initialized = true;
+    await loadConversations(silent: _conversations.isNotEmpty);
   }
 
   Future<void> loadConversations({bool silent = false}) async {
-    if (!silent) {
+    final userId = _currentUserId ?? SupabaseService.auth.currentUser?.id;
+
+    // Cache-first: show cached data immediately if available
+    if (_conversations.isEmpty && userId != null) {
+      try {
+        final cached = await LocalDbService.instance.getCachedConversations(userId);
+        if (cached.isNotEmpty) {
+          _conversations = BlockProvider.instance.filterConversations(cached.where((c) => !c.isArchived).toList());
+          _hasMoreConversations = true;
+          notifyListeners();
+        } else if (!silent) {
+          _isLoading = true;
+          _conversationPage = 0;
+          _hasMoreConversations = true;
+          notifyListeners();
+        }
+      } catch (_) {
+        if (!silent) {
+          _isLoading = true;
+          notifyListeners();
+        }
+      }
+    } else if (!silent) {
       _isLoading = true;
       _conversationPage = 0;
       _hasMoreConversations = true;
@@ -200,14 +390,49 @@ class MessageProvider extends ChangeNotifier {
 
     try {
       final all = await MessageService.getConversations(offset: 0);
-      _conversations = all.where((c) => !c.isArchived).toList();
+      _conversations = BlockProvider.instance.filterConversations(all.where((c) => !c.isArchived).toList());
       _hasMoreConversations = all.length >= 20;
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      if (!silent) {
-        _isLoading = false;
+
+      // Update active conversation in case it changed (like theme_color updates)
+      if (_activeConversation != null) {
+        try {
+          final matching = all.firstWhere((c) => c.id == _activeConversation!.id);
+          if (matching.themeColor != _activeConversation!.themeColor) {
+            // Other user changed the theme — show ephemeral notice
+            final hex = matching.themeColor;
+            String? themeName;
+            switch (hex) {
+              case '#7C3AED': themeName = 'Default Purple'; break;
+              case '#F97316': themeName = 'Orange'; break;
+              case '#10B981': themeName = 'Mint'; break;
+              case '#0D9488': themeName = 'Teal'; break;
+              case '#0EA5E9': themeName = 'Sky Blue'; break;
+              case '#2563EB': themeName = 'Royal Blue'; break;
+              case '#8B5CF6': themeName = 'Lavender'; break;
+              case '#EC4899': themeName = 'Rose Pink'; break;
+              case '#DC2626': themeName = 'Crimson'; break;
+              case '#F59E0B': themeName = 'Amber Gold'; break;
+              case '#15803D': themeName = 'Forest'; break;
+              case '#374151': themeName = 'Charcoal'; break;
+            }
+            if (themeName != null) {
+              _themeChangeNotice = 'Changed the chat theme to $themeName';
+              _themeChangeNoticeTime = DateTime.now();
+            }
+          }
+          _activeConversation = matching;
+        } catch (_) {}
       }
+
+      // Update cache silently
+      if (userId != null) {
+        LocalDbService.instance.cacheConversations(userId, all); // ignore: unawaited_futures
+      }
+    } catch (e) {
+      // If network fails and cache exists, silently absorb
+      if (_conversations.isEmpty) _error = e.toString();
+    } finally {
+      if (!silent) _isLoading = false;
       notifyListeners();
     }
   }
@@ -221,7 +446,7 @@ class MessageProvider extends ChangeNotifier {
       _conversationPage++;
       final more = await MessageService.getConversations(offset: _conversationPage * 20);
       final nonArchived = more.where((c) => !c.isArchived).toList();
-      _conversations.addAll(nonArchived);
+      _conversations.addAll(BlockProvider.instance.filterConversations(nonArchived));
       _hasMoreConversations = more.length >= 20;
     } catch (e) {
       _error = e.toString();
@@ -270,6 +495,21 @@ class MessageProvider extends ChangeNotifier {
     }
   }
 
+  /// Hide a conversation for the current user only (soft-delete from their view).
+  /// Stores hidden_at so old messages stay hidden even if the conversation
+  /// resurfaces when the other user sends a new message (WhatsApp-style).
+  Future<void> hideConversation(String conversationId) async {
+    try {
+      final hiddenAt = await MessageService.hideConversation(conversationId);
+      _hiddenAtMap[conversationId] = hiddenAt;
+      _conversations.removeWhere((c) => c.id == conversationId);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
   Future<void> archiveConversation(String conversationId) async {
     try {
       await MessageService.archiveConversation(conversationId);
@@ -289,6 +529,7 @@ class MessageProvider extends ChangeNotifier {
           unreadCount: conv.unreadCount,
           isOnline: conv.isOnline,
           isArchived: true,
+          themeColor: conv.themeColor,
         ));
         notifyListeners();
       }
@@ -317,6 +558,7 @@ class MessageProvider extends ChangeNotifier {
           unreadCount: conv.unreadCount,
           isOnline: conv.isOnline,
           isArchived: false,
+          themeColor: conv.themeColor,
         ));
         notifyListeners();
       }
@@ -327,22 +569,60 @@ class MessageProvider extends ChangeNotifier {
   }
 
   Future<void> loadMessages(String conversationId) async {
-    _isLoading = true;
+    _isLoadingMessages = true;
     _messagePage = 0;
     _hasMoreMessages = true;
+    _messages = []; // Clear stale messages immediately so the skeleton shows
     notifyListeners();
 
     if (_messagesChannel != null) {
-      SupabaseService.client.removeChannel(_messagesChannel!);
+      SupabaseService.client.removeChannel(_messagesChannel!); // ignore: unawaited_futures
       _messagesChannel = null;
     }
 
     try {
-      _messages = await MessageService.getMessages(conversationId, offset: 0);
+      // Use hiddenAt from the active conversation (set when user deleted the chat)
+      // so only messages after that timestamp are shown — WhatsApp-style.
+      final hiddenAt = _activeConversation?.hiddenAt ?? _hiddenAtMap[conversationId];
+
+      // Cache-first: show cached messages immediately
+      try {
+        final cached = await LocalDbService.instance.getCachedMessages(conversationId);
+        if (cached.isNotEmpty) {
+          _messages = cached;
+          _hasMoreMessages = true;
+          notifyListeners();
+        }
+      } catch (_) {}
+
+      // Fetch from network
+      final networkMessages = await MessageService.getMessages(conversationId, offset: 0, hiddenAt: hiddenAt);
+      _messages = networkMessages;
       _hasMoreMessages = _messages.length >= 20;
+
+      // Fetch latest conversation properties (like theme_color) from database
+      try {
+        final latestConv = await MessageService.getConversationById(conversationId);
+        if (latestConv != null) {
+          // Update local state in conversations list
+          for (int i = 0; i < _conversations.length; i++) {
+            if (_conversations[i].id == conversationId) {
+              _conversations[i] = latestConv;
+            }
+          }
+          for (int i = 0; i < _archivedConversations.length; i++) {
+            if (_archivedConversations[i].id == conversationId) {
+              _archivedConversations[i] = latestConv;
+            }
+          }
+          // Update active conversation
+          _activeConversation = latestConv;
+        }
+      } catch (_) {}
+
       // Mark all messages from other user as seen
       await MessageService.markAsSeen(conversationId);
-      loadUnreadCount();
+      loadUnreadCount(); // ignore: unawaited_futures
 
       // Clear local conversation unread count immediately
       final idx = _conversations.indexWhere((c) => c.id == conversationId);
@@ -359,7 +639,58 @@ class MessageProvider extends ChangeNotifier {
           lastMessageAt: oldConv.lastMessageAt,
           unreadCount: 0,
           isOnline: oldConv.isOnline,
+          isArchived: oldConv.isArchived,
+          hiddenAt: oldConv.hiddenAt,
+          otherUserLastSeen: oldConv.otherUserLastSeen,
+          themeColor: oldConv.themeColor,
         );
+      }
+
+      final archIdx = _archivedConversations.indexWhere((c) => c.id == conversationId);
+      if (archIdx != -1) {
+        final oldConv = _archivedConversations[archIdx];
+        _archivedConversations[archIdx] = Conversation(
+          id: oldConv.id,
+          otherUserId: oldConv.otherUserId,
+          otherUserName: oldConv.otherUserName,
+          otherUserAvatar: oldConv.otherUserAvatar,
+          otherUserVerified: oldConv.otherUserVerified,
+          otherBusinessName: oldConv.otherBusinessName,
+          lastMessage: oldConv.lastMessage,
+          lastMessageAt: oldConv.lastMessageAt,
+          unreadCount: 0,
+          isOnline: oldConv.isOnline,
+          isArchived: oldConv.isArchived,
+          hiddenAt: oldConv.hiddenAt,
+          otherUserLastSeen: oldConv.otherUserLastSeen,
+          themeColor: oldConv.themeColor,
+        );
+      }
+
+      if (_activeConversation != null && _activeConversation!.id == conversationId) {
+        _activeConversation = Conversation(
+          id: _activeConversation!.id,
+          otherUserId: _activeConversation!.otherUserId,
+          otherUserName: _activeConversation!.otherUserName,
+          otherUserAvatar: _activeConversation!.otherUserAvatar,
+          otherUserVerified: _activeConversation!.otherUserVerified,
+          otherBusinessName: _activeConversation!.otherBusinessName,
+          lastMessage: _activeConversation!.lastMessage,
+          lastMessageAt: _activeConversation!.lastMessageAt,
+          unreadCount: 0,
+          isOnline: _activeConversation!.isOnline,
+          isArchived: _activeConversation!.isArchived,
+          hiddenAt: _activeConversation!.hiddenAt,
+          otherUserLastSeen: _activeConversation!.otherUserLastSeen,
+          themeColor: _activeConversation!.themeColor,
+        );
+      }
+
+      // Sync local SQLite conversations cache
+      final userId = _currentUserId ?? SupabaseService.auth.currentUser?.id;
+      if (userId != null) {
+        final all = [..._conversations, ..._archivedConversations];
+        await LocalDbService.instance.cacheConversations(userId, all); // ignore: unawaited_futures
       }
 
       _messagesChannel = SupabaseService.client
@@ -405,12 +736,32 @@ class MessageProvider extends ChangeNotifier {
                 notifyListeners();
               }
             },
+          )
+          .onBroadcast(
+            event: 'typing',
+            callback: (payload) {
+              final senderId = payload['sender_id'] as String?;
+              final isTyping = payload['is_typing'] as bool? ?? false;
+              if (senderId != null && senderId != SupabaseService.auth.currentUser?.id) {
+                _typingTimer?.cancel();
+                if (isTyping) {
+                  _isOtherUserTyping = true;
+                  _typingTimer = Timer(const Duration(seconds: 10), () {
+                    _isOtherUserTyping = false;
+                    notifyListeners();
+                  });
+                } else {
+                  _isOtherUserTyping = false;
+                }
+                notifyListeners();
+              }
+            },
           );
       _messagesChannel!.subscribe();
     } catch (e) {
       _error = e.toString();
     } finally {
-      _isLoading = false;
+      _isLoadingMessages = false;
       notifyListeners();
     }
   }
@@ -422,9 +773,11 @@ class MessageProvider extends ChangeNotifier {
 
     try {
       _messagePage++;
+      final hiddenAt = _activeConversation?.hiddenAt ?? _hiddenAtMap[conversationId];
       final more = await MessageService.getMessages(
         conversationId,
         offset: _messagePage * 20,
+        hiddenAt: hiddenAt,
       );
       _messages.insertAll(0, more);
       _hasMoreMessages = more.length >= 20;
@@ -437,13 +790,36 @@ class MessageProvider extends ChangeNotifier {
   }
 
   void setActiveConversation(Conversation? conversation) {
-    _activeConversation = conversation;
+    if (conversation == null) {
+      _activeConversation = null;
+      notifyListeners();
+      return;
+    }
+
+    Conversation resolvedConversation = conversation;
+    final idx = _conversations.indexWhere((c) => c.id == conversation.id);
+    if (idx != -1) {
+      resolvedConversation = _conversations[idx];
+    } else {
+      final archIdx = _archivedConversations.indexWhere((c) => c.id == conversation.id);
+      if (archIdx != -1) {
+        resolvedConversation = _archivedConversations[archIdx];
+      }
+    }
+
+    if (conversation.themeColor != null && resolvedConversation.themeColor == null) {
+      resolvedConversation = conversation;
+    }
+
+    _activeConversation = resolvedConversation;
     notifyListeners();
   }
 
   void clearActiveConversation() {
     _activeConversation = null;
     _messages = [];
+    _typingTimer?.cancel();
+    _isOtherUserTyping = false;
     if (_messagesChannel != null) {
       SupabaseService.client.removeChannel(_messagesChannel!);
       _messagesChannel = null;
@@ -455,10 +831,26 @@ class MessageProvider extends ChangeNotifier {
   void disposeConversation() {
     _activeConversation = null;
     _messages = [];
+    _typingTimer?.cancel();
+    _isOtherUserTyping = false;
     if (_messagesChannel != null) {
       SupabaseService.client.removeChannel(_messagesChannel!);
       _messagesChannel = null;
     }
+  }
+
+  void sendTypingStatus(bool isTyping) {
+    if (_messagesChannel == null) return;
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _messagesChannel!.sendBroadcastMessage(
+      event: 'typing',
+      payload: {
+        'sender_id': userId,
+        'is_typing': isTyping,
+      },
+    );
   }
 
   Future<void> sendMessage(String content, {Map<String, dynamic>? productReference, String? replyToMessageId}) async {
@@ -477,7 +869,7 @@ class MessageProvider extends ChangeNotifier {
         notifyListeners();
       }
       // Instantly update local conversation list so the sent message and timestamp propagate immediately
-      loadConversations(silent: true);
+      loadConversations(silent: true); // ignore: unawaited_futures
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -506,7 +898,7 @@ class MessageProvider extends ChangeNotifier {
         notifyListeners();
       }
       // Instantly update local conversation list so the sent media message propagates immediately
-      loadConversations(silent: true);
+      loadConversations(silent: true); // ignore: unawaited_futures
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -623,6 +1015,127 @@ class MessageProvider extends ChangeNotifier {
       _unreadCount = await MessageService.getUnreadCount();
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> updateThemeColor(String conversationId, String? colorHex) async {
+    try {
+      await MessageService.updateConversationThemeColor(conversationId, colorHex);
+      
+      // Update local state in conversations list
+      for (int i = 0; i < _conversations.length; i++) {
+        if (_conversations[i].id == conversationId) {
+          _conversations[i] = Conversation(
+            id: _conversations[i].id,
+            otherUserId: _conversations[i].otherUserId,
+            otherUserName: _conversations[i].otherUserName,
+            otherUserAvatar: _conversations[i].otherUserAvatar,
+            otherUserVerified: _conversations[i].otherUserVerified,
+            otherBusinessName: _conversations[i].otherBusinessName,
+            lastMessage: _conversations[i].lastMessage,
+            lastMessageAt: _conversations[i].lastMessageAt,
+            unreadCount: _conversations[i].unreadCount,
+            isArchived: _conversations[i].isArchived,
+            hiddenAt: _conversations[i].hiddenAt,
+            otherUserLastSeen: _conversations[i].otherUserLastSeen,
+            themeColor: colorHex,
+          );
+        }
+      }
+
+      // Update local state in archived list
+      for (int i = 0; i < _archivedConversations.length; i++) {
+        if (_archivedConversations[i].id == conversationId) {
+          _archivedConversations[i] = Conversation(
+            id: _archivedConversations[i].id,
+            otherUserId: _archivedConversations[i].otherUserId,
+            otherUserName: _archivedConversations[i].otherUserName,
+            otherUserAvatar: _archivedConversations[i].otherUserAvatar,
+            otherUserVerified: _archivedConversations[i].otherUserVerified,
+            otherBusinessName: _archivedConversations[i].otherBusinessName,
+            lastMessage: _archivedConversations[i].lastMessage,
+            lastMessageAt: _archivedConversations[i].lastMessageAt,
+            unreadCount: _archivedConversations[i].unreadCount,
+            isArchived: _archivedConversations[i].isArchived,
+            hiddenAt: _archivedConversations[i].hiddenAt,
+            otherUserLastSeen: _archivedConversations[i].otherUserLastSeen,
+            themeColor: colorHex,
+          );
+        }
+      }
+
+      // Update active conversation
+      if (_activeConversation != null && _activeConversation!.id == conversationId) {
+        _activeConversation = Conversation(
+          id: _activeConversation!.id,
+          otherUserId: _activeConversation!.otherUserId,
+          otherUserName: _activeConversation!.otherUserName,
+          otherUserAvatar: _activeConversation!.otherUserAvatar,
+          otherUserVerified: _activeConversation!.otherUserVerified,
+          otherBusinessName: _activeConversation!.otherBusinessName,
+          lastMessage: _activeConversation!.lastMessage,
+          lastMessageAt: _activeConversation!.lastMessageAt,
+          unreadCount: _activeConversation!.unreadCount,
+          isArchived: _activeConversation!.isArchived,
+          hiddenAt: _activeConversation!.hiddenAt,
+          otherUserLastSeen: _activeConversation!.otherUserLastSeen,
+          themeColor: colorHex,
+        );
+      }
+
+      // Determine theme name
+      String themeName = 'Default Purple';
+      switch (colorHex) {
+        case '#F97316':
+          themeName = 'Orange';
+          break;
+        case '#10B981':
+          themeName = 'Mint';
+          break;
+        case '#0D9488':
+          themeName = 'Teal';
+          break;
+        case '#0EA5E9':
+          themeName = 'Sky Blue';
+          break;
+        case '#2563EB':
+          themeName = 'Royal Blue';
+          break;
+        case '#8B5CF6':
+          themeName = 'Lavender';
+          break;
+        case '#EC4899':
+          themeName = 'Rose Pink';
+          break;
+        case '#DC2626':
+          themeName = 'Crimson';
+          break;
+        case '#F59E0B':
+          themeName = 'Amber Gold';
+          break;
+        case '#15803D':
+          themeName = 'Forest';
+          break;
+        case '#374151':
+          themeName = 'Charcoal';
+          break;
+      }
+
+      // Show ephemeral theme-change notice in active chat (not a DB message)
+      _themeChangeNotice = 'Changed the chat theme to $themeName';
+      _themeChangeNoticeTime = DateTime.now();
+
+      // Sync local SQLite conversations cache
+      final userId = _currentUserId ?? SupabaseService.auth.currentUser?.id;
+      if (userId != null) {
+        final all = [..._conversations, ..._archivedConversations];
+        await LocalDbService.instance.cacheConversations(userId, all);
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
   }
 
   Future<void> loadUnreadNotificationsCount() async {

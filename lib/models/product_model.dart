@@ -14,7 +14,7 @@ class Product {
   final List<Map<String, String>> specifications;
   final DateTime createdAt;
   final DateTime updatedAt;
-  
+
   final int stockQuantity;
   final String deliveryOption;
   final double deliveryFee;
@@ -26,11 +26,17 @@ class Product {
   // Clips opt-in
   final bool showOnClips;
 
+  // Which video URL is shown in the Clips feed (null = use videoUrls.first)
+  final String? clipVideoUrl;
+
   // Discount fields
   final double discountPercent;
   final DateTime? discountStartDate;
   final DateTime? discountEndDate;
-  
+
+  // SEO-friendly slug
+  final String slug;
+
   // Review data
   final double? averageRating;
   final int? reviewCount;
@@ -66,9 +72,11 @@ class Product {
     this.institutionDeliveryFees = const {},
     this.isFeatured = false,
     this.showOnClips = false,
+    this.clipVideoUrl,
     this.discountPercent = 0,
     this.discountStartDate,
     this.discountEndDate,
+    String? slug,
     this.averageRating,
     this.reviewCount,
     this.sellerName,
@@ -78,7 +86,29 @@ class Product {
     this.businessName,
     this.categoryName,
     this.isSellerVerified = false,
-  });
+  }) : slug = slug ?? Product.generateSlug(title);
+
+  /// SEO-friendly slug (stored in DB, falls back to title-derived slug).
+  // slug is now a stored field with a default from generateSlug(title)
+
+  /// Generate a URL-safe slug from a title string.
+  static String generateSlug(String title) {
+    return title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s-]'), '')
+        .replaceAll(RegExp(r'\s+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+  }
+
+  /// Extract a UUID from a slug-id string (e.g. "nike-air-max-abc123...").
+  /// Falls back to returning the raw string if no UUID is found.
+  static String extractId(String slugId) {
+    final match = RegExp(
+      r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$',
+    ).firstMatch(slugId);
+    return match?.group(1) ?? slugId;
+  }
 
   /// The effective thumbnail URL: the seller-selected thumbnail, or the first image as fallback
   String? get effectiveThumbnail =>
@@ -120,6 +150,8 @@ class Product {
   Product copyWith({
     double? averageRating,
     int? reviewCount,
+    String? slug,
+    String? clipVideoUrl,
   }) {
     return Product(
       id: id,
@@ -143,9 +175,11 @@ class Product {
       institutionDeliveryFees: institutionDeliveryFees,
       isFeatured: isFeatured,
       showOnClips: showOnClips,
+      clipVideoUrl: clipVideoUrl ?? this.clipVideoUrl,
       discountPercent: discountPercent,
       discountStartDate: discountStartDate,
       discountEndDate: discountEndDate,
+      slug: slug ?? this.slug,
       averageRating: averageRating ?? this.averageRating,
       reviewCount: reviewCount ?? this.reviewCount,
       sellerName: sellerName,
@@ -210,6 +244,7 @@ class Product {
       institutionDeliveryFees: _parseInstitutionFees(json['institution_delivery_fees']),
       isFeatured: json['is_featured'] as bool? ?? false,
       showOnClips: json['show_on_clips'] as bool? ?? false,
+      clipVideoUrl: json['clip_video_url'] as String?,
       discountPercent: (json['discount_percent'] as num?)?.toDouble() ?? 0,
       discountStartDate: json['discount_start_date'] != null
           ? DateTime.parse(json['discount_start_date'] as String)
@@ -217,6 +252,7 @@ class Product {
       discountEndDate: json['discount_end_date'] != null
           ? DateTime.parse(json['discount_end_date'] as String)
           : null,
+      slug: json['slug'] as String?,
       averageRating: (json['average_rating'] as num?)?.toDouble(),
       reviewCount: (json['review_count'] as num?)?.toInt(),
       sellerName: sellerName,
@@ -251,9 +287,11 @@ class Product {
           .map((e) => {'institution_name': e.key, 'delivery_fee': e.value})
           .toList(),
       'show_on_clips': showOnClips,
+      'clip_video_url': clipVideoUrl,
       'discount_percent': discountPercent,
       'discount_start_date': discountStartDate?.toIso8601String().split('T')[0],
       'discount_end_date': discountEndDate?.toIso8601String().split('T')[0],
+      'slug': slug,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };

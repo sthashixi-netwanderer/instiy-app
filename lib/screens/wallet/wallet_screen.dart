@@ -104,6 +104,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     if (authProv.user == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
         body: const Center(child: Text('Sign in to view your wallet')),
       );
@@ -112,6 +113,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     if (_checkingLock) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
         body: Padding(
           padding: context.rAll(16),
@@ -148,6 +150,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     if (_isLocked) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
         body: Center(
           child: Column(
@@ -205,10 +208,11 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
       body: walletProv.isLoading
           ? SingleChildScrollView(
-              padding: context.rAll(16),
+              padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
               child: Column(
                 children: [
                   Skeleton(width: double.infinity, height: context.rh(160), borderRadius: BorderRadius.all(Radius.circular(context.rr(20)))),
@@ -231,7 +235,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
               onRefresh: () => walletProv.loadWallet(),
               child: ListView(
                 controller: _scrollController,
-                padding: context.rAll(16),
+                padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
                 children: [
                   _buildBalanceCard(walletProv),
                   SizedBox(height: context.rh(16)),
@@ -295,6 +299,15 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     );
   }
 
+  double _balanceFontSize(double amount) {
+    final formatted = formatGhs(amount);
+    final len = formatted.length;
+    if (len <= 10) return 36;
+    if (len <= 13) return 30;
+    if (len <= 16) return 24;
+    return 20;
+  }
+
   Widget _buildBalanceCard(WalletProvider provider) {
     return Container(
       padding: context.rAll(24),
@@ -318,10 +331,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           ),
           SizedBox(height: context.rh(8)),
           Text(
-            'GH\u00a2 ${formatCurrency(provider.availableBalance)}',
+            '${formatGhs(provider.availableBalance)}',
             style: TextStyle(
               color: Colors.white,
-              fontSize: context.rsp(36),
+              fontSize: context.rsp(_balanceFontSize(provider.availableBalance)),
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -330,12 +343,12 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             children: [
               _BalanceStat(
                 label: 'Total',
-                value: 'GH\u00a2 ${provider.wallet?.balance != null ? formatCurrency(provider.wallet!.balance) : '0.00'}',
+                value: '${formatGhs(provider.wallet?.balance ?? 0)}',
               ),
               SizedBox(width: context.rw(24)),
               _BalanceStat(
                 label: 'Pending',
-                value: 'GH\u00a2 ${formatCurrency(provider.pendingBalance)}',
+                value: '${formatGhs(provider.pendingBalance)}',
                 color: Colors.amberAccent,
               ),
             ],
@@ -1074,6 +1087,14 @@ class _BalanceStat extends StatelessWidget {
     this.color,
   });
 
+  double _valueFontSize() {
+    final len = value.length;
+    if (len <= 10) return 14;
+    if (len <= 13) return 12;
+    if (len <= 16) return 11;
+    return 10;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1086,7 +1107,7 @@ class _BalanceStat extends StatelessWidget {
           style: TextStyle(
             color: color ?? Colors.white,
             fontWeight: FontWeight.w600,
-            fontSize: context.rsp(14),
+            fontSize: context.rsp(_valueFontSize()),
           ),
         ),
       ],
@@ -1175,7 +1196,7 @@ class _TransactionTile extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            '${isCredit ? '+' : '-'}GH\u00a2 ${formatCurrency(tx.amount)}',
+            '${isCredit ? '+' : '-'}${formatGhs(tx.amount)}',
             style: TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -1188,11 +1209,11 @@ class _TransactionTile extends StatelessWidget {
           _DetailRow(label: 'Source', value: tx.source ?? '-'),
           _DetailRow(
             label: 'Balance Before',
-            value: 'GH\u00a2 ${formatCurrency(tx.balanceBefore)}',
+            value: '${formatGhs(tx.balanceBefore)}',
           ),
           _DetailRow(
             label: 'Balance After',
-            value: 'GH\u00a2 ${formatCurrency(tx.balanceAfter)}',
+            value: '${formatGhs(tx.balanceAfter)}',
           ),
           _DetailRow(
             label: 'Date',
@@ -1253,7 +1274,7 @@ class _TransactionTile extends StatelessWidget {
             ),
           ),
           Text(
-            '${isCredit ? '+' : '-'}GH\u00a2 ${formatCurrency(tx.amount)}',
+            '${isCredit ? '+' : '-'}${formatGhs(tx.amount)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: color,

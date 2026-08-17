@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/app_theme.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_button.dart';
 
-class ResetPasswordScreen extends StatefulWidget {
+class ResetPasswordScreen extends ConsumerStatefulWidget {
   const ResetPasswordScreen({super.key});
 
   @override
-  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+  ConsumerState<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -69,14 +71,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context,
         title: const Text('Set New Password'),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: context.rAll(24),
-          child: _passwordUpdated ? _buildSuccessView() : _buildFormView(),
-        ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(context.rw(24), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(24), context.rw(24), context.rh(24)),
+        child: _passwordUpdated ? _buildSuccessView() : _buildFormView(),
       ),
     );
   }
@@ -184,19 +185,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             },
           ),
           SizedBox(height: context.rh(32)),
-          SizedBox(
-            height: context.rh(50),
-            width: double.infinity,
-            child: ShadButton(
-              onPressed: (_isLoading || !_isFormValid) ? null : _handleResetPassword,
-              child: _isLoading
-                  ? SizedBox(
-                      height: context.rh(20),
-                      width: context.rw(20),
-                      child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Reset Password'),
-            ),
+          AppButton(
+            onPressed: (_isLoading || !_isFormValid) ? null : _handleResetPassword,
+            loading: _isLoading,
+            child: const Text('Reset Password'),
           ),
         ],
       ),
@@ -239,17 +231,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           ),
         ),
         SizedBox(height: context.rh(32)),
-        SizedBox(
-          height: context.rh(50),
-          width: double.infinity,
-          child: ShadButton(
-            onPressed: () {
-              // Sign out and go to login
-              SupabaseService.auth.signOut();
-              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-            },
-            child: const Text('Go to Login'),
-          ),
+        AppButton(
+          onPressed: () {
+            // Sign out and go to login
+            SupabaseService.auth.signOut();
+            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          },
+          child: const Text('Go to Login'),
         ),
       ],
     );

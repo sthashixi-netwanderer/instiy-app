@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 export 'package:flutter_riverpod/legacy.dart' show ChangeNotifierProvider;
 import 'auth_provider.dart';
@@ -14,16 +13,12 @@ import 'business_profile_provider.dart';
 import 'curated_provider.dart';
 import 'carousel_provider.dart';
 import 'block_provider.dart';
-
-class ExploreRefreshNotifier extends ChangeNotifier {
-  int _state = 0;
-  int get state => _state;
-
-  void increment() {
-    _state++;
-    notifyListeners();
-  }
-}
+import 'purchase_permission_provider.dart';
+import 'explore_provider.dart';
+import 'service_provider.dart';
+import 'verification_provider.dart';
+import 'video_provider.dart';
+import 'chat_background_provider.dart';
 
 final authProvider = ChangeNotifierProvider((ref) => AuthProvider());
 final productProvider = ChangeNotifierProvider((ref) => ProductProvider());
@@ -38,4 +33,10 @@ final businessProfileProvider = ChangeNotifierProvider((ref) => BusinessProfileP
 final curatedProvider = ChangeNotifierProvider((ref) => CuratedProvider());
 final carouselProvider = ChangeNotifierProvider((ref) => CarouselProvider());
 final blockProvider = ChangeNotifierProvider((ref) => BlockProvider());
-final exploreRefreshProvider = ChangeNotifierProvider<ExploreRefreshNotifier>((ref) => ExploreRefreshNotifier());
+final purchasePermissionProvider = ChangeNotifierProvider((ref) => PurchasePermissionProvider());
+final exploreProvider = ChangeNotifierProvider((ref) => ExploreState());
+final serviceProvider = ChangeNotifierProvider((ref) => ServiceProvider());
+final verificationProvider = ChangeNotifierProvider((ref) => VerificationProvider());
+final videoProvider = ChangeNotifierProvider((ref) => VideoProvider());
+final chatBackgroundProvider = ChangeNotifierProvider((ref) => ChatBackgroundProvider());
+final exploreRefreshProvider = StateProvider<int>((ref) => 0);

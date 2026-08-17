@@ -30,5 +30,713 @@
   "https://pub.dev/packages/mobile_scanner": {
     "hash": "6319f24de1522f49",
     "timestamp": 1780802626716
+  },
+  "https://docs.ghana-api.dev/docs/api/addresses": {
+    "hash": "1e96193fde8afeaa",
+    "timestamp": 1781015619136
+  },
+  "https://html.duckduckgo.com/html/?q=video_compressor%20flutter%20compress%20video%20upload%20size%20quality": {
+    "hash": "5ff51390a905a6ad",
+    "timestamp": 1781016871396
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20web%20video%20optimization%20best%20quality%20seamless%20playback%20no%20frame%20drop": {
+    "hash": "1a1ae7be5da1d4f4",
+    "timestamp": 1781016871891
+  },
+  "https://html.duckduckgo.com/html/?q=ffmpeg%20flutter%20compress%20video%201080p%20webm%20mp4%20bitrate": {
+    "hash": "55c9c5876b60ba94",
+    "timestamp": 1781016871908
+  },
+  "https://pub.dev/packages/video_compress": {
+    "hash": "1a4650e5d4bca278",
+    "timestamp": 1781457633890
+  },
+  "https://cloudinary.com/guides/video-effects/2-ways-to-compress-video-in-flutter": {
+    "hash": "deeb9d175e76f438",
+    "timestamp": 1781016889351
+  },
+  "https://compresto.app/blog/ffmpeg-compress-video": {
+    "hash": "7597fcbd851447f8",
+    "timestamp": 1781016890003
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20video_compress%20setQuality%20percentage%20resolution%20720p%201080p%20example%20code": {
+    "hash": "fb386c325cfcfb87",
+    "timestamp": 1781016910031
+  },
+  "https://flutter.ducafecat.com/en/pubs/video_compress-package-info": {
+    "hash": "eae5674a400b0d5c",
+    "timestamp": 1781016949332
+  },
+  "https://html.duckduckgo.com/html/?q=video_compress%20flutter%20compressmovietomoviedirectory%20quality%2050%20thumbnailquality%20100%20example": {
+    "hash": "98c7473e41100d6e",
+    "timestamp": 1781016967821
+  },
+  "https://html.duckduckgo.com/html/?q=video_compress%20dart%20API%20compressVideo%20quality%20VideoQuality%20minWidth%20keepOrigin%20example": {
+    "hash": "006c2e3d64d44273",
+    "timestamp": 1781017182922
+  },
+  "https://github.com/jonataslaw/VideoCompress/blob/master/lib/src/video_compress/video_compressor.dart": {
+    "hash": "9caee3468ee97145",
+    "timestamp": 1781017202362
+  },
+  "https://html.duckduckgo.com/html/?q=supabase%20edge%20function%20open%20graph%20redirect%20deep%20link": {
+    "hash": "d9d9b17fd8d1f63c",
+    "timestamp": 1781067095479
+  },
+  "https://html.duckduckgo.com/html/?q=where%20to%20find%20supabase%20JWT%20secret%20API%20settings%20dashboard": {
+    "hash": "e53cf3588384df8d",
+    "timestamp": 1781109961860
+  },
+  "https://supabase.com/docs/guides/auth/jwts": {
+    "hash": "af28ce619fd3b86f",
+    "timestamp": 1781109974009
+  },
+  "https://html.duckduckgo.com/html/?q=supabase%20JWT%20secret%20API%20settings%20project%20dashboard%20location": {
+    "hash": "94dff22f0ea7605d",
+    "timestamp": 1781110000198
+  },
+  "https://supabase.com/docs/guides/auth/signing-keys": {
+    "hash": "fc2f9ae0232bd250",
+    "timestamp": 1781110013477
+  },
+  "https://deepwiki.com/supabase/auth/2.2-jwt-configuration": {
+    "hash": "a5e64916dcac8fdd",
+    "timestamp": 1781110020361
+  },
+  "https://html.duckduckgo.com/html/?q=supabase%20standalone%20JWT%20signing%20keys%20ES256%20public%20key%20verification": {
+    "hash": "17d20246d9579591",
+    "timestamp": 1781110619453
+  },
+  "https://supabase.com/docs/guides/auth/sessions": {
+    "hash": "1b25cd04542d71ed",
+    "timestamp": 1781110859814
+  },
+  "https://supabase.com/docs/guides/functions": {
+    "hash": "f3246532dd189ef4",
+    "timestamp": 1781110881786
+  },
+  "https://supabase.com/docs/guides/getting-started/api-keys": {
+    "hash": "65d5b8043bad5621",
+    "timestamp": 1781110901805
+  },
+  "https://supabase.com/docs/reference/javascript/auth-signin": {
+    "hash": "2e6584405eb797be",
+    "timestamp": 1781110906482
+  },
+  "https://supabase.com/docs/guides/auth/passwords": {
+    "hash": "a2dd4637969e4f82",
+    "timestamp": 1781110911037
+  },
+  "https://supabase.com/docs/guides/auth/phone-login": {
+    "hash": "f0ef59d1b735adab",
+    "timestamp": 1781110915612
+  },
+  "https://developers.cloudflare.com/workers/": {
+    "hash": "1168eca39d9038c8",
+    "timestamp": 1781111164401
+  },
+  "https://developers.cloudflare.com/r2/": {
+    "hash": "26afc95d73eecf6e",
+    "timestamp": 1781111167895
+  },
+  "https://developers.cloudflare.com/workers/runtime-apis/bindings/": {
+    "hash": "686f63011d2b40a4",
+    "timestamp": 1781111171467
+  },
+  "https://developers.cloudflare.com/workers/configuration/secrets/": {
+    "hash": "93efa83db464ab67",
+    "timestamp": 1781111175181
+  },
+  "https://developers.cloudflare.com/r2/api/workers/workers-api-reference/": {
+    "hash": "d9da42dd4ab66bf4",
+    "timestamp": 1781111202988
+  },
+  "https://developers.cloudflare.com/workers/wrangler/configuration/": {
+    "hash": "37dd218823e9270c",
+    "timestamp": 1781111207971
+  },
+  "https://developers.cloudflare.com/r2/buckets/cors/": {
+    "hash": "148e84e6f9c518e6",
+    "timestamp": 1781111211438
+  },
+  "https://developers.cloudflare.com/workers/runtime-apis/fetch/": {
+    "hash": "70d6c49b90ca7d0a",
+    "timestamp": 1781111215388
+  },
+  "https://html.duckduckgo.com/html/?q=cloudflare%20workers%20wrangler.toml%20R2%20bucket%20binding%20configuration": {
+    "hash": "56819f1ba810b73b",
+    "timestamp": 1781111418266
+  },
+  "https://html.duckduckgo.com/html/?q=cloudflare%20workers%20R2%20put%20delete%20method%20API%20typescript": {
+    "hash": "e2505cc43e46bad6",
+    "timestamp": 1781111423800
+  },
+  "https://html.duckduckgo.com/html/?q=cloudflare%20R2%20CORS%20bucket%20policy%20upload%20workers": {
+    "hash": "109575e30fc4ac23",
+    "timestamp": 1781111429280
+  },
+  "https://html.duckduckgo.com/html/?q=cloudflare%20workers-types%20typescript%20configuration%20nodejs_compat": {
+    "hash": "9004eb0a75125fbd",
+    "timestamp": 1781111434168
+  },
+  "https://developers.cloudflare.com/r2/get-started/workers-api/": {
+    "hash": "275afedf15561de8",
+    "timestamp": 1781111446389
+  },
+  "https://developers.cloudflare.com/workers/languages/typescript/": {
+    "hash": "417608e67e3c900b",
+    "timestamp": 1781111452443
+  },
+  "https://developers.cloudflare.com/workers/runtime-apis/nodejs/": {
+    "hash": "97de3b38b974e948",
+    "timestamp": 1781111455719
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20crashes%20when%20tapping%20text%20field%20keyboard%20opens%20app%20restarts": {
+    "hash": "8ed43bf45f599604",
+    "timestamp": 1781127843677
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20quit%20when%20keyboard%20appears%20text%20input%20first%20launch": {
+    "hash": "e4b5dd1c729b09a9",
+    "timestamp": 1781127849202
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Navigator%20popUntil%20crashes%20keyboard%20opens%20text%20field": {
+    "hash": "e7a810cf1b2757a5",
+    "timestamp": 1781127854144
+  },
+  "https://stackoverflow.com/questions/73070696/tapping-flutter-textfield-crashes-the-app": {
+    "hash": "d2e36f9c2a468101",
+    "timestamp": 1781127869549
+  },
+  "https://github.com/flutter/flutter/issues/146686": {
+    "hash": "842f66ae92d7cab7",
+    "timestamp": 1781127874828
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20causes%20app%20quit%20restart%20singleTop%20launchMode": {
+    "hash": "57c6d993d1a37868",
+    "timestamp": 1781131391860
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20keyboard%20opens%20app%20restarts%20Android%20android%3AwindowSoftInputMode%20adjustResize": {
+    "hash": "9210794803f10079",
+    "timestamp": 1781131403120
+  },
+  "https://github.com/flutter/flutter/issues/91649": {
+    "hash": "2c7cb5dada2849e9",
+    "timestamp": 1781131413430
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20app%20quit%20when%20keyboard%20opens%20singleTask%20launchMode%20recreate%20activity": {
+    "hash": "845e6df50f3860e7",
+    "timestamp": 1781131424711
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20app%20restarts%20goes%20home%20screen%20activity%20recreated%20windowSoftInputMode": {
+    "hash": "c4b08b40e3f383b8",
+    "timestamp": 1781131435617
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20causes%20app%20to%20restart%20go%20back%20to%20home%20screen%20singleTop%20standard%20launchMode%20fix%202025": {
+    "hash": "1bc317ab606c8549",
+    "timestamp": 1781131465816
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20adjustResize%20keyboard%20activity%20recreation%20navigation%20stack%20reset%20fix%20configChanges": {
+    "hash": "4b84cf9252313378",
+    "timestamp": 1781131491713
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20causes%20app%20restart%20activity%20recreation%20navigation%20stack%20reset": {
+    "hash": "cc4d9556dc551bc9",
+    "timestamp": 1781131957727
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20goes%20back%20to%20home%20screen%20when%20keyboard%20opens%20Android": {
+    "hash": "1e723d889ea1c4fd",
+    "timestamp": 1781131963180
+  },
+  "https://html.duckduckgo.com/html/?q=FlutterFragmentActivity%20keyboard%20soft%20input%20mode%20activity%20destroyed%20recreated": {
+    "hash": "444f305c720c7f0d",
+    "timestamp": 1781131968460
+  },
+  "https://github.com/flutter/flutter/issues/170592": {
+    "hash": "70343dd3b2cbfb78",
+    "timestamp": 1781131987274
+  },
+  "https://stackoverflow.com/questions/59141351/state-recreates-again-when-softkeyboard-appears": {
+    "hash": "6b398dea7b3c748b",
+    "timestamp": 1781131991560
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20navigation%20stack%20reset%20keyboard%20Android%20configChanges": {
+    "hash": "1c3aac7edaccb7cf",
+    "timestamp": 1781131996612
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20resets%20to%20initial%20route%20when%20keyboard%20opens%20Android%20activity%20recreated%20configChanges": {
+    "hash": "843de5c1d23e3050",
+    "timestamp": 1781132036851
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20singleTop%20launchMode%20keyboard%20activity%20destroyed%20back%20to%20home%20screen": {
+    "hash": "d4002eb46f02b0f8",
+    "timestamp": 1781132042149
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20android%20adjustNothing%20keyboard%20not%20working%20overlay%20content%20behind%20keyboard": {
+    "hash": "850256d46437d4fa",
+    "timestamp": 1781132047478
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20crashes%20exits%20Android%20when%20keyboard%20opens%20cold%20start": {
+    "hash": "b92719ab8971aece",
+    "timestamp": 1781132074028
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app_links%20plugin%20crash%20keyboard%20Android%20configuration%20change": {
+    "hash": "53b96061f71a1619",
+    "timestamp": 1781132080577
+  },
+  "https://github.com/flutter/flutter/issues/29508": {
+    "hash": "cd12933faa5bed2f",
+    "timestamp": 1781132094906
+  },
+  "https://stackoverflow.com/questions/61528565/flutter-app-crashes-when-resuming-to-type": {
+    "hash": "d738063eea6b7494",
+    "timestamp": 1781132099185
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20plugin%20fires%20on%20configuration%20change%20Android%20keyboard%20intent": {
+    "hash": "bb41fb5d95f433b2",
+    "timestamp": 1781132129272
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app_links%20uriLinkStream%20fires%20on%20activity%20resume%20keyboard": {
+    "hash": "d6e663262a928b75",
+    "timestamp": 1781132134590
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20adjustNothing%20keyboard%20not%20working%20text%20field": {
+    "hash": "9d8bdb1278a72e02",
+    "timestamp": 1781132244901
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20crashes%20app%20adjustNothing": {
+    "hash": "37ce9d290260f8d3",
+    "timestamp": 1781132249965
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20KeyboardAvoidingView%20adjustNothing": {
+    "hash": "02cae48bf3ac41af",
+    "timestamp": 1781132254994
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Scaffold%20resizeToAvoidBottomInset%20adjustNothing%20conflict": {
+    "hash": "9c6c31a7ab8b0b76",
+    "timestamp": 1781132260494
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20shadcn_ui%20keyboard%20avoid": {
+    "hash": "7036c72e8579374c",
+    "timestamp": 1781132265529
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20uriLinkStream%20fires%20on%20resume%20activity%20recreate%20Android": {
+    "hash": "38f8e7b35e8868cd",
+    "timestamp": 1781132621547
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20getInitialLink%20fires%20again%20on%20configuration%20change%20Android": {
+    "hash": "2f17052cc3388ab4",
+    "timestamp": 1781132627367
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20crashes%20Android%20keyboard%20app_links%20flutter_local_notifications%20conflict": {
+    "hash": "e37a6bbbe4c67c8c",
+    "timestamp": 1781132631091
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20causes%20activity%20destroyed%20onResume%20reinitialize%20navigation%20stack%202024%202025": {
+    "hash": "5fc221f97717e284",
+    "timestamp": 1781132636212
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%203.29%203.28%20keyboard%20crash%20Android%20activity%20recreation%20singleTop": {
+    "hash": "f8e9fb22357950b3",
+    "timestamp": 1781132682215
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20paystack%20plugin%20keyboard%20crash%20Android%20activity": {
+    "hash": "f881ccd576ee816b",
+    "timestamp": 1781132708362
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20app%20exits%20to%20home%20screen%20text%20field%20tap%20Android%20Samsung%202025%202026": {
+    "hash": "8d5667cd9dfc7e77",
+    "timestamp": 1781132713699
+  },
+  "https://stackoverflow.com/questions/76552747/flutter-page-closes-when-i-tap-on-the-text-field": {
+    "hash": "2989b7572d13d440",
+    "timestamp": 1781132730004
+  },
+  "https://stackoverflow.com/questions/76443032/typing-in-textformfield-closes-the-screen-in-flutter": {
+    "hash": "b20dbb7c4ea2ef02",
+    "timestamp": 1781132734682
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20android%20keyboard%20tap%20text%20field%20navigates%20to%20home%20screen%20app_links%20lifecycle": {
+    "hash": "948d4d433c3b2918",
+    "timestamp": 1781132904305
+  },
+  "https://html.duckduckgo.com/html/?q=paystack-android%20paystack-ui%20activity%20lifecycle%20keyboard%20crash%20flutter": {
+    "hash": "b3baeeba9c3794e6",
+    "timestamp": 1781133137750
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20app%20navigates%20to%20home%20when%20keyboard%20opens%20text%20field%20focus%20android%20adjustResize": {
+    "hash": "8994770e55420488",
+    "timestamp": 1781133163044
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20keyboard%20opens%20navigates%20back%20home%20screen%20pushNamedAndRemoveUntil%20initState": {
+    "hash": "d8bbd148d825370f",
+    "timestamp": 1781133643392
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20riverpod%20preserve%20screen%20state%20navigate%20back%20scroll%20position": {
+    "hash": "fed50b7eb0874b91",
+    "timestamp": 1781133648873
+  },
+  "https://stackoverflow.com/questions/67212052/how-to-retain-the-state-of-the-app-when-navigating-to-another-screen-in-flutter": {
+    "hash": "dedf4f224ad3fe21",
+    "timestamp": 1781133660332
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20AutomaticKeepAliveClientMixin%20PageView%20bottom%20navigation%20preserve%20state": {
+    "hash": "714842cb6e7e32aa",
+    "timestamp": 1781133665812
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20plugin%20android%20keyboard%20opens%20navigates%20home%20flutter": {
+    "hash": "82f7fdf3be952adf",
+    "timestamp": 1781133733341
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20android%20textfield%20focus%20app%20navigates%20back%20activity%20lifecycle%20configChanges": {
+    "hash": "c40b6a345c38d42a",
+    "timestamp": 1781133739316
+  },
+  "https://pub.dev/packages/app_links": {
+    "hash": "893331c90905d2dc",
+    "timestamp": 1781134199019
+  },
+  "https://github.com/llfbandit/app_links/blob/main/doc/README_android.md": {
+    "hash": "2ddc1a4ea28afb7b",
+    "timestamp": 1781134229029
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20getInitialLink%20fires%20on%20keyboard%20android%20configuration%20change": {
+    "hash": "306c5df1acf3b8ca",
+    "timestamp": 1781134303093
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20uriLinkStream%20duplicate%20emission%20flutter%20keyboard": {
+    "hash": "9dfcc3299a9ccaa1",
+    "timestamp": 1781134309331
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20android%20keyboard%20opens%20re-emits%20initial%20link%20uriLinkStream%20fires%20again%20activity%20resume": {
+    "hash": "aede3fc181b38cc3",
+    "timestamp": 1781134725013
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20keyboard%20opens%20triggers%20Activity%20recreation%20app_links%20deep%20link%20re-emitted%20navigate%20home": {
+    "hash": "a356c0f7e717e6e6",
+    "timestamp": 1781137551009
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%20Flutter%20Activity%20recreation%20onNewIntent%20configChanges%20keyboard%20Android": {
+    "hash": "8568c3db6507526f",
+    "timestamp": 1781137568038
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20adjustResize%20Activity%20recreated%20keyboard%20app_links%20initialLink%20re-emitted": {
+    "hash": "9887347f4f412878",
+    "timestamp": 1781137575616
+  },
+  "https://github.com/flutter/flutter/issues/176080": {
+    "hash": "d25b088432f31069",
+    "timestamp": 1781137608369
+  },
+  "https://stackoverflow.com/questions/78691440/in-some-android-mobiles-the-keyboard-opens-multiple-times-when-i-open-the-app-u": {
+    "hash": "c7892202db02447b",
+    "timestamp": 1781137615094
+  },
+  "https://html.duckduckgo.com/html/?q=app_links%207.1%20Android%20onListen%20re-emit%20initialLink%20EventChannel%20resubscribe%20keyboard": {
+    "hash": "721e9afaacee15bd",
+    "timestamp": 1781137667083
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20app%20restart%20navigate%20home%20when%20keyboard%20opens%20text%20input%20tapped": {
+    "hash": "ee69415f859887a0",
+    "timestamp": 1781138349196
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Android%20adjustResize%20Activity%20recreated%20keyboard%20input%20field%20tap%20navigate%20back": {
+    "hash": "46d451d7f8e73ca3",
+    "timestamp": 1781138357307
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20text%20input%20crash%20first%20tap": {
+    "hash": "6b8663f779726067",
+    "timestamp": 1781138574275
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20keyboard%20crash%20app%20launch": {
+    "hash": "f9d7425a3db4761b",
+    "timestamp": 1781138574298
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20textfield%20android%20crash%20on%20tap": {
+    "hash": "122ff206636b7537",
+    "timestamp": 1781138574677
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20focus%20node%20crash": {
+    "hash": "1593ee641b92547a",
+    "timestamp": 1781138574977
+  },
+  "https://github.com/flutter/flutter/issues/127789": {
+    "hash": "bc025177449584b4",
+    "timestamp": 1781138602680
+  },
+  "https://github.com/flutter/flutter/issues/72517": {
+    "hash": "706b8da842d8f666",
+    "timestamp": 1781138605157
+  },
+  "https://www.wafrat.com/fixing-keyboard-related-crashes-in-flutter/": {
+    "hash": "2e33134c17b05fc6",
+    "timestamp": 1781138605255
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20android%20soft%20keyboard%20crash%20platform%20channel": {
+    "hash": "1978a1dd7f7d3601",
+    "timestamp": 1781138629293
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20dark%20screen%20before%20splash%20screen%20fix%20android%20cold%20start": {
+    "hash": "6aec31ee79caad18",
+    "timestamp": 1781139667408
+  },
+  "https://stackoverflow.com/questions/45827533/flutter-app-shows-a-black-screen-before-loading-the-app": {
+    "hash": "74245afe7fa49974",
+    "timestamp": 1781139688817
+  },
+  "https://html.duckduckgo.com/html/?q=mobile_scanner%20flutter%20slow%20camera%20initialization": {
+    "hash": "710c1f9bd7d121cd",
+    "timestamp": 1781170513780
+  },
+  "https://stackoverflow.com/questions/78607320/mobilescanner-camera-preview-freezes-on-android-12": {
+    "hash": "ec2e5c876e18056b",
+    "timestamp": 1781170550540
+  },
+  "https://html.duckduckgo.com/html/?q=mobile_scanner%20slow%20startup%20unbundled%20MLKit%20cameraResolution%20performance": {
+    "hash": "ee6c67a219ce172f",
+    "timestamp": 1781170556648
+  },
+  "https://github.com/juliansteenbakker/mobile_scanner/discussions/832": {
+    "hash": "3bb7d43dbe0a05f6",
+    "timestamp": 1781170571633
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20qr%20code%20scanner%20simple%20lightweight%20performant%20mobile_scanner%202025": {
+    "hash": "fd031551633dc6b6",
+    "timestamp": 1781172969789
+  },
+  "https://html.duckduckgo.com/html/?q=mobile_scanner%20minimal%20example%20simple%20controller%20start%20stop%202025": {
+    "hash": "f98eb92dc459c245",
+    "timestamp": 1781172989150
+  },
+  "https://developers.cloudflare.com/workers-ai/models/": {
+    "hash": "c053f92d64009a7a",
+    "timestamp": 1781327062184
+  },
+  "https://cloudflaredoc.ubitools.com/workers-ai/models/": {
+    "hash": "4111782329342754",
+    "timestamp": 1781327064857
+  },
+  "https://deepwiki.com/cloudflare/cloudflare-docs/7.1-model-catalog-and-documentation": {
+    "hash": "b2ad6e6cc27c86d4",
+    "timestamp": 1781327067922
+  },
+  "https://developers.cloudflare.com/workers-ai/get-started/rest-api/": {
+    "hash": "b6d72a485f2b6bff",
+    "timestamp": 1781327081754
+  },
+  "https://developers.cloudflare.com/workers-ai/models/llama-4-scout-17b-16e-instruct/": {
+    "hash": "0654147d6d7d7c02",
+    "timestamp": 1781327082462
+  },
+  "https://developers.cloudflare.com/workers-ai/models/llama-3.2-11b-vision-instruct/": {
+    "hash": "3271440860c7092d",
+    "timestamp": 1781327094173
+  },
+  "https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/": {
+    "hash": "82de5baa930d658f",
+    "timestamp": 1781327094538
+  },
+  "https://developers.cloudflare.com/workers-ai/models/llama-3.2-11b-vision-instruct/sync-input.json": {
+    "hash": "f67a1397dffb3d95",
+    "timestamp": 1781327104392
+  },
+  "https://developers.cloudflare.com/workers-ai/models/llama-4-scout-17b-16e-instruct/sync-input.json": {
+    "hash": "51054147883cb03c",
+    "timestamp": 1781327104516
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20KGP%20built-in%20kotlin%20video_compress%20migration%202024%202025": {
+    "hash": "2cf73fc4cf378cd1",
+    "timestamp": 1781457604880
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20KGP%20built-in%20kotlin%20migration%20audioplayers%202024%202025": {
+    "hash": "68f6ac5e1490c716",
+    "timestamp": 1781457604946
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20KGP%20built-in%20kotlin%20paystack_flutter_sdk%20migration%202024%202025": {
+    "hash": "fabe353b82d83b3f",
+    "timestamp": 1781457605165
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20KGP%20built-in%20kotlin%20mobile_scanner%20migration%202024%202025": {
+    "hash": "238c4156199d528b",
+    "timestamp": 1781457605195
+  },
+  "https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers": {
+    "hash": "dad4eed5aa6e0fec",
+    "timestamp": 1781457613342
+  },
+  "https://github.com/jonataslaw/VideoCompress/issues/323": {
+    "hash": "2476db53fb00ad92",
+    "timestamp": 1781457614220
+  },
+  "https://github.com/juliansteenbakker/mobile_scanner/issues/1708": {
+    "hash": "925c586b2aa7cb10",
+    "timestamp": 1781457614298
+  },
+  "https://github.com/bluefireteam/audioplayers/issues/1984": {
+    "hash": "226b97d8e2595967",
+    "timestamp": 1781457614514
+  },
+  "https://html.duckduckgo.com/html/?q=paystack_flutter_sdk%20changelog%20built-in%20kotlin%20kgp": {
+    "hash": "f8c9963135b99638",
+    "timestamp": 1781457625967
+  },
+  "https://html.duckduckgo.com/html/?q=video_compress%20flutter%20kgp%20built-in%20kotlin%20fix%20replacement%20alternative": {
+    "hash": "fb31c4be60636f1f",
+    "timestamp": 1781457626061
+  },
+  "https://html.duckduckgo.com/html/?q=mobile_scanner%207.3.0%20changelog%20built-in%20kotlin%20kgp": {
+    "hash": "63a05cca89940f5b",
+    "timestamp": 1781457626076
+  },
+  "https://html.duckduckgo.com/html/?q=audioplayers%206.2.0%20changelog%20built-in%20kotlin": {
+    "hash": "3b7ee3eb05ea1d7a",
+    "timestamp": 1781457626551
+  },
+  "https://pub.dev/packages/paystack_flutter_sdk/changelog": {
+    "hash": "4fb12365e09f2c86",
+    "timestamp": 1781457633859
+  },
+  "https://github.com/bluefireteam/audioplayers/blob/main/packages/audioplayers/CHANGELOG.md": {
+    "hash": "e801aa387ce499f3",
+    "timestamp": 1781457635259
+  },
+  "https://html.duckduckgo.com/html/?q=audioplayers%207.0%20built-in%20kotlin%20kgp": {
+    "hash": "c8b95476c35822e7",
+    "timestamp": 1781457646041
+  },
+  "https://html.duckduckgo.com/html/?q=paystack_flutter_sdk%20latest%20version%20kgp%20fixed": {
+    "hash": "f58d7913189b1ddf",
+    "timestamp": 1781457646105
+  },
+  "https://html.duckduckgo.com/html/?q=video_compress%20flutter%20alternative%20replacement%20kgp%20compatible": {
+    "hash": "53c84509a898e0bc",
+    "timestamp": 1781457646120
+  },
+  "https://html.duckduckgo.com/html/?q=mobile_scanner%208.0%20built-in%20kotlin%20kgp%20flutter%203.44": {
+    "hash": "6c05e731d5f185ea",
+    "timestamp": 1781457646252
+  },
+  "https://pub.dev/packages/paystack_flutter_sdk/versions": {
+    "hash": "2108a972a3809cda",
+    "timestamp": 1781457656458
+  },
+  "https://pub.dev/packages/audioplayers/versions": {
+    "hash": "eb17088feee1f045",
+    "timestamp": 1781457656559
+  },
+  "https://pub.dev/packages/mobile_scanner/versions": {
+    "hash": "cc9ce11c0610a6ee",
+    "timestamp": 1781457656588
+  },
+  "https://pub.dev/packages/audioplayers_android/versions": {
+    "hash": "f5669145881f5d69",
+    "timestamp": 1781457704463
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20video_compress%20alternative%20replacement%202024%202025%20kgp%20compatible": {
+    "hash": "b62c0fb29f909a30",
+    "timestamp": 1781457715653
+  },
+  "https://pub.dev/packages/video_compress_zero": {
+    "hash": "2a2bddb25bee43e4",
+    "timestamp": 1781457722353
+  },
+  "https://github.com/KHkikani/easy_compressor": {
+    "hash": "3ab982c59c22a17a",
+    "timestamp": 1781457722994
+  },
+  "https://html.duckduckgo.com/html/?q=Telegram%20forward%20gesture%20swipe%20video%20player%20Flutter%20implementation": {
+    "hash": "0757584b04395129",
+    "timestamp": 1781459771441
+  },
+  "https://html.duckduckgo.com/html/?q=Telegram%20video%20forward%20share%20gesture%20UI%20swipe%20up%20bottom%20sheet%20Flutter": {
+    "hash": "e241200d56046fa6",
+    "timestamp": 1781459771526
+  },
+  "https://t.me/s/TelegramTips/272": {
+    "hash": "ae0e126b3f204dd9",
+    "timestamp": 1781459783730
+  },
+  "https://www.reddit.com/r/Telegram/comments/1dozroz/fast_forwarding_a_video_on_telegram_desktop/": {
+    "hash": "507038b87a8eb6d2",
+    "timestamp": 1781459784845
+  },
+  "https://telegram.tips/blog/fast-forward-and-rewind-videos/": {
+    "hash": "1c2a33b888631169",
+    "timestamp": 1781459786775
+  },
+  "https://html.duckduckgo.com/html/?q=Telegram%20swipe%20up%20forward%20share%20video%20media%20viewer%20bottom%20sheet%20gesture%20Flutter": {
+    "hash": "514a1946c940f75d",
+    "timestamp": 1781459796744
+  },
+  "https://html.duckduckgo.com/html/?q=Telegram%20media%20viewer%20swipe%20up%20forward%20button%20share%20action%20sheet%20Flutter%20implementation": {
+    "hash": "68f1d7382c9612b5",
+    "timestamp": 1781459804153
+  },
+  "https://html.duckduckgo.com/html/?q=telegram%20forward%20media%20swipe%20up%20gesture%20iOS%20Android%20how%20it%20works%20description": {
+    "hash": "124f6e73cf29626c",
+    "timestamp": 1781459843703
+  },
+  "https://html.duckduckgo.com/html/?q=flutter%20swipe%20up%20share%20forward%20action%20media%20viewer%20bottom%20sheet%20gesture%20detector%20vertical%20drag": {
+    "hash": "8e9e1595bc2c226c",
+    "timestamp": 1781459843820
+  },
+  "https://www.androidpolice.com/2020/06/15/5-telegram-gestures-and-shortcuts-you-should-be-using/": {
+    "hash": "b19f9b74e551d2d9",
+    "timestamp": 1781459850037
+  },
+  "https://html.duckduckgo.com/html/?q=telegram%20swipe%20up%20forward%20photo%20video%20media%20viewer%20share%20sheet%20ios%20android": {
+    "hash": "f20460a73e2e2fd3",
+    "timestamp": 1781459871284
+  },
+  "https://deepwiki.com/TGX-Android/Telegram-X/6.1-media-viewer-and-editor": {
+    "hash": "d7b56d314ef3a46d",
+    "timestamp": 1781459884437
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20cache%20network%20images%20videos%20local%20storage%20sqflite%20hive%20cached_video_player": {
+    "hash": "b289105dde739a44",
+    "timestamp": 1781460359838
+  },
+  "https://html.duckduckgo.com/html/?q=withdrawal%20fee%20transaction%20fee%20tiered%20range-based%20fee%20calculation%20marketplace%20platform": {
+    "hash": "36f8ef9bddae3e93",
+    "timestamp": 1782058150341
+  },
+  "https://html.duckduckgo.com/html/?q=stripe%20paypal%20payout%20fee%20tiered%20pricing%20structure%20database%20schema%20design": {
+    "hash": "a6d521c05fb62cff",
+    "timestamp": 1782058153592
+  },
+  "https://dev.to/pipipi-dev/tiered-pricing-with-stripe-monetization-for-solo-developers-nec": {
+    "hash": "9d800e31989f7986",
+    "timestamp": 1782058214415
+  },
+  "https://html.duckduckgo.com/html/?q=Flutter%20Dart%20NumberFormat%20currency%20comma%20separator%20intl%20package": {
+    "hash": "4cfc5fcc29c6dadb",
+    "timestamp": 1782218322158
+  },
+  "https://html.duckduckgo.com/html/?q=TypeScript%20JavaScript%20Intl.NumberFormat%20currency%20comma%20separator%20toLocaleString": {
+    "hash": "d4e0ebd4b4d231a9",
+    "timestamp": 1782218325447
+  },
+  "https://html.duckduckgo.com/html/?q=google_sign_in%20Flutter%207.0%20package%20setup%20Android%20iOS%202025": {
+    "hash": "30ca22881525b097",
+    "timestamp": 1783072829116
+  },
+  "https://dev.to/_ashish_tandon_/flutter-google-sign-in-with-googlesignin-7-understanding-the-new-authentication-flow-2pbe": {
+    "hash": "ba5cfbef96c4a2e4",
+    "timestamp": 1783072840572
+  },
+  "https://pub.dev/packages/google_sign_in": {
+    "hash": "17094eb4ad3eb403",
+    "timestamp": 1783072854211
+  },
+  "https://github.com/flutter/packages/blob/main/packages/google_sign_in/google_sign_in/MIGRATION.md": {
+    "hash": "678298be27a225e2",
+    "timestamp": 1783072864651
+  },
+  "https://pub.dev/packages/google_sign_in_android": {
+    "hash": "49021f37fe30400f",
+    "timestamp": 1783072876119
+  },
+  "https://pub.dev/packages/google_sign_in_ios": {
+    "hash": "f8f1252a563e6966",
+    "timestamp": 1783072886354
   }
 }

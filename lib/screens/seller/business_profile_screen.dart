@@ -1,7 +1,8 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -19,11 +20,14 @@ import '../../providers/providers.dart';
 import '../../services/institution_service.dart';
 import '../../services/review_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/share_bottom_sheet.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/media_viewer.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/review_section.dart';
+import '../../widgets/app_button.dart';
+
 
 class BusinessProfileScreen extends ConsumerStatefulWidget {
   final String sellerId;
@@ -46,8 +50,16 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     _tabController = TabController(length: 2, vsync: this);
     _reviewsScrollController.addListener(_onReviewsScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(businessProfileProvider).loadStore(widget.sellerId);
-      _loadInstitutions();
+      if (mounted) {
+        final route = ModalRoute.of(context);
+        if (route != null && route.isFirst) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (r) => false);
+          Navigator.of(context).pushNamed('/business-profile', arguments: widget.sellerId);
+          return;
+        }
+        ref.read(businessProfileProvider).loadStore(widget.sellerId);
+        _loadInstitutions();
+      }
     });
   }
 
@@ -98,9 +110,12 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   Future<void> _callNumber(String number) async {
     final cleaned = number.replaceAll(RegExp(r'[^\d+]'), '');
     final uri = Uri.parse('tel:$cleaned');
-    if (await canLaunchUrl(uri)) {
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch tel: $e');
     }
+    if (!mounted) return;
   }
 
   Future<void> _openWhatsApp(String number, {String? sellerName}) async {
@@ -109,9 +124,12 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
       'Hi${sellerName != null ? ' $sellerName' : ''}, I saw your store on Instiy and I\'m interested.',
     );
     final uri = Uri.parse('https://wa.me/$cleaned?text=$greeting');
-    if (await canLaunchUrl(uri)) {
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch WhatsApp: $e');
     }
+    if (!mounted) return;
   }
 
   @override
@@ -133,6 +151,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     if (prov.error != null && prov.profile == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Store')),
         body: Center(
           child: Column(
@@ -158,12 +177,9 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     final products = prov.products;
     final isVerified = prov.isSellerVerified;
 
-    // Get seller info from products
+    // Get institution from user's university (set by admin or at registration)
+    final institution = _findInstitution(profile?.university);
     final firstProduct = products.isNotEmpty ? products.first : null;
-    final sellerUniversity = firstProduct?.campuses.isNotEmpty == true
-        ? firstProduct!.campuses.first
-        : null;
-    final institution = _findInstitution(sellerUniversity);
 
     final avatarUrl = firstProduct?.sellerAvatar ?? (isOwnProfile ? ref.read(authProvider).user?.avatarUrl : null);
 
@@ -258,6 +274,26 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
         ),
       ),
       actions: [
+        // Share button — visible for all profiles
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.3),
+            shape: BoxShape.circle,
+          ),
+          child: ShadIconButton.ghost(
+            icon: Icon(LucideIcons.share2, color: Colors.white, size: context.ri(18)),
+            onPressed: () {
+              final businessName = profile?.businessName ?? 'Seller';
+              ShareBottomSheet.show(
+                context,
+                shareText: 'Check out "$businessName" on Instiy\n\nLink: https://instiy.com/store/${widget.sellerId}',
+                analyticsId: widget.sellerId,
+                analyticsType: 'store',
+              );
+            },
+          ),
+        ),
         if (isOwnProfile && hasCompleteProfile) ...[
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -286,8 +322,23 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
                   arguments: profile,
                 );
                 if (updated == true && mounted) {
-                  ref.read(businessProfileProvider).loadStore(widget.sellerId);
+                  ref.read(businessProfileProvider).loadStore(widget.sellerId); // ignore: unawaited_futures
                 }
+              },
+            ),
+          ),
+        ],
+        if (!isOwnProfile && profile?.qrCodePublic == true) ...[
+          Container(
+            margin: const EdgeInsets.fromLTRB(4, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.3),
+              shape: BoxShape.circle,
+            ),
+            child: ShadIconButton.ghost(
+              icon: Icon(LucideIcons.qrCode, color: Colors.white, size: context.ri(18)),
+              onPressed: () {
+                _showQrCodeDialog(profile, avatarUrl);
               },
             ),
           ),
@@ -300,119 +351,111 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     final GlobalKey qrKey = GlobalKey();
     final sellerId = widget.sellerId;
     final businessName = profile?.businessName ?? 'Seller';
-    final qrData = 'io.supabase.instiy://store/$sellerId';
-    final storeLink = 'io.supabase.instiy://store/$sellerId';
+    final qrData = 'https://instiy.com/store/$sellerId';
 
     AppTheme.showGlassDialog(
       context: context,
       barrierDismissible: true,
       title: const Text('Store QR Code'),
-      description: const Text('Download or share your store QR code so customers can visit your store instantly.'),
+      description: const Text('Scan to visit store instantly.'),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // RepaintBoundary containing the QR code card
-          RepaintBoundary(
-            key: qrKey,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Colors.grey.withValues(alpha: 0.1),
-                  width: 1.5,
+          Center(
+            child: RepaintBoundary(
+              key: qrKey,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    width: 1.5,
+                  ),
                 ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      QrImageView(
-                        data: qrData,
-                        version: QrVersions.auto,
-                        size: 200,
-                        backgroundColor: Colors.white,
-                        eyeStyle: const QrEyeStyle(
-                          eyeShape: QrEyeShape.circle,
-                          color: Colors.black,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        QrImageView(
+                          data: qrData,
+                          version: QrVersions.auto,
+                          size: 180,
+                          backgroundColor: Colors.white,
+                          eyeStyle: const QrEyeStyle(
+                            eyeShape: QrEyeShape.circle,
+                            color: Colors.black,
+                          ),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.circle,
+                            color: Colors.black,
+                          ),
+                          embeddedImage: avatarUrl != null && avatarUrl.isNotEmpty
+                              ? CachedNetworkImageProvider(avatarUrl)
+                              : const AssetImage('assets/logo_highres.png'),
+                          embeddedImageStyle: const QrEmbeddedImageStyle(
+                            size: Size(36, 36),
+                          ),
                         ),
-                        dataModuleStyle: const QrDataModuleStyle(
-                          dataModuleShape: QrDataModuleShape.circle,
-                          color: Colors.black,
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: avatarUrl != null && avatarUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: avatarUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, _) => Image.asset('assets/logo_highres.png'),
+                                    errorWidget: (_, _, _) => Image.asset('assets/logo_highres.png'),
+                                  )
+                                : Image.asset('assets/logo_highres.png'),
+                          ),
                         ),
-                        embeddedImage: avatarUrl != null && avatarUrl.isNotEmpty
-                            ? CachedNetworkImageProvider(avatarUrl)
-                            : const AssetImage('assets/logo_highres.png'),
-                        embeddedImageStyle: const QrEmbeddedImageStyle(
-                          size: Size(40, 40),
-                        ),
-                      ),
-                      // Centered avatar container
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: avatarUrl != null && avatarUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: avatarUrl,
-                                  fit: BoxFit.cover,
-                                  placeholder: (_, _) => Image.asset('assets/logo_highres.png'),
-                                  errorWidget: (_, _, _) => Image.asset('assets/logo_highres.png'),
-                                )
-                              : Image.asset('assets/logo_highres.png'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    businessName,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.charcoalInk,
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Scan to visit store',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.mutedSteel,
+                    const SizedBox(height: 12),
+                    Text(
+                      businessName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.charcoalInk,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Scan to visit store',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.mutedSteel,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ],
       ),
       actions: [
-        ShadButton.outline(
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: storeLink));
-            ShadToaster.of(context).show(
-              const ShadToast(title: Text('Store link copied to clipboard!')),
-            );
-          },
-          child: const Text('Copy Link'),
-        ),
         ShadButton(
           onPressed: () async {
             try {
@@ -424,15 +467,27 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
               if (byteData == null) return;
               
               final bytes = byteData.buffer.asUint8List();
-              await Gal.putImageBytes(bytes);
-              
-              if (mounted) {
-                ShadToaster.of(context).show(
-                  const ShadToast(
-                    title: Text('Saved to Gallery'),
-                    description: Text('Store QR Code has been saved to your photo library.'),
-                  ),
-                );
+              if (kIsWeb) {
+                // On web, save as a downloadable file instead of gallery.
+                // The user can right-click the QR image to save it directly.
+                if (mounted) {
+                  ShadToaster.of(context).show(
+                    const ShadToast(
+                      title: Text('Tip'),
+                      description: Text('Right-click the QR code image to save it.'),
+                    ),
+                  );
+                }
+              } else {
+                await Gal.putImageBytes(bytes);
+                if (mounted) {
+                  ShadToaster.of(context).show(
+                    const ShadToast(
+                      title: Text('Saved to Gallery'),
+                      description: Text('Store QR Code saved to your photo library.'),
+                    ),
+                  );
+                }
               }
             } catch (e) {
               if (mounted) {
@@ -445,7 +500,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
               }
             }
           },
-          child: const Text('Download QR'),
+          child: const Text('Download'),
         ),
       ],
     );
@@ -647,24 +702,26 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   // ── Follow Button ───────────────────────────────────────────────────
 
   Widget _buildFollowButton(BusinessProfileProvider provider) {
-    return SizedBox(
-      width: double.infinity,
-      child: provider.isFollowing
-          ? ShadButton.outline(
-              onPressed: () => _requireAuth(() {
-                provider.toggleFollow(widget.sellerId);
-              }),
-              leading: Icon(LucideIcons.userMinus, size: context.ri(18)),
-              child: const Text('Unfollow'),
-            )
-          : ShadButton(
-              onPressed: () => _requireAuth(() {
-                provider.toggleFollow(widget.sellerId);
-              }),
-              leading: Icon(LucideIcons.userPlus, size: context.ri(18), color: Colors.white),
-              child: const Text('Follow'),
-            ),
-    );
+    final currentUserId = ref.watch(authProvider).user?.id;
+    if (currentUserId == widget.sellerId) {
+      return const SizedBox.shrink();
+    }
+
+    return provider.isFollowing
+        ? AppButton.outline(
+            onPressed: () => _requireAuth(() {
+              provider.toggleFollow(widget.sellerId);
+            }),
+            leading: Icon(LucideIcons.userMinus, size: context.ri(18)),
+            child: const Text('Unfollow'),
+          )
+        : AppButton(
+            onPressed: () => _requireAuth(() {
+              provider.toggleFollow(widget.sellerId);
+            }),
+            leading: Icon(LucideIcons.userPlus, size: context.ri(18), color: Colors.white),
+            child: const Text('Follow'),
+          );
   }
 
   // ── Description ─────────────────────────────────────────────────────
@@ -898,17 +955,33 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   }
 
   void _openMapPreview(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Only allow https/http URLs to prevent URL injection from DB-stored values.
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      debugPrint('Map preview URL blocked (invalid scheme): $url');
+      return;
     }
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch map preview: $e');
+    }
+    if (!mounted) return;
   }
 
   Future<void> _openInGoogleMaps(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Only allow https/http URLs to prevent URL injection from DB-stored values.
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      debugPrint('Google Maps URL blocked (invalid scheme): $url');
+      return;
     }
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch Google Maps: $e');
+    }
+    if (!mounted) return;
   }
 
   // ── Reviews Tab ─────────────────────────────────────────────────────
@@ -1151,7 +1224,7 @@ class _StoreReviewCard extends StatelessWidget {
                   ],
                   onSelected: (v) async {
                     if (v == 'edit') {
-                      showShadSheet(
+                      showShadSheet( // ignore: unawaited_futures
                         context: context,
                         builder: (ctx) => ShadSheet(
                           title: const Text('Edit Your Review'),

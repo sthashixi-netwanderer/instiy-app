@@ -19,16 +19,12 @@ class SmsService {
     final normalizedPhone = normalizePhoneNumber(to.trim());
 
     try {
-      final response = await SupabaseService.client.functions.invoke(
-        'send-sms',
-        body: {
-          'to': normalizedPhone,
-          'content': content,
-        },
-      );
+      final data = await SupabaseService.callFunction('send-sms', body: {
+        'to': normalizedPhone,
+        'content': content,
+      });
 
-      final data = response.data as Map<String, dynamic>?;
-      return data?['success'] == true;
+      return data['success'] == true;
     } catch (e) {
       debugPrint('SMS send failed via Edge Function: $e');
       return false;

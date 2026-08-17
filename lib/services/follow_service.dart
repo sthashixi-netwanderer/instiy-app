@@ -172,7 +172,7 @@ class FollowService {
             productPrice: productPrice,
             productThumbnail: productThumbnail,
             productId: productId,
-          ).catchError((e) {
+          ).catchError((e) { // ignore: unawaited_futures
             debugPrint('Email notification failed for $email: $e');
           });
         }

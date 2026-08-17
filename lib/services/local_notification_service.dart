@@ -9,104 +9,15 @@ import 'supabase_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
+import 'package:instiy/utils/formatters.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Background push notification entry point — show a local notification
-  // so the user sees something even when the app is terminated/background
-  final notification = message.notification;
-  if (notification == null) return;
-
-  final plugin = FlutterLocalNotificationsPlugin();
-  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const iosSettings = DarwinInitializationSettings();
-  await plugin.initialize(
-    settings: const InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    ),
-  );
-
-  final data = message.data;
-  final type = data['type'] as String?;
-
-  String largeIconName = 'ic_notification_default';
-  switch (type) {
-    case 'order':
-      largeIconName = 'ic_notification_order';
-      break;
-    case 'message':
-    case 'new_message':
-      largeIconName = 'ic_notification_message';
-      break;
-    case 'transfer_sent':
-    case 'withdrawal':
-      largeIconName = 'ic_notification_wallet_sent';
-      break;
-    case 'transfer_received':
-    case 'deposit':
-      largeIconName = 'ic_notification_wallet_received';
-      break;
-    case 'verification_approved':
-      largeIconName = 'ic_notification_verification_approved';
-      break;
-    case 'verification_rejected':
-      largeIconName = 'ic_notification_verification_rejected';
-      break;
-    case 'delivery':
-    case 'delivery_approved':
-      largeIconName = 'ic_notification_delivery';
-      break;
-    case 'review':
-      largeIconName = 'ic_notification_review';
-      break;
-  }
-
-  String? tempFilePath;
-  if (!kIsWeb) {
-    try {
-      final byteData = await rootBundle.load('assets/notification_icons/$largeIconName.png');
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$largeIconName.png');
-      if (!await file.exists()) {
-        await file.writeAsBytes(byteData.buffer.asUint8List(
-          byteData.offsetInBytes,
-          byteData.lengthInBytes,
-        ));
-      }
-      tempFilePath = file.path;
-    } catch (e) {
-      debugPrint('Error copying notification icon in background: $e');
-    }
-  }
-
-  final androidDetails = AndroidNotificationDetails(
-    'instiy_channel',
-    'Instiy Notifications',
-    channelDescription: 'Notifications from Instiy app',
-    importance: Importance.high,
-    priority: Priority.high,
-    icon: '@mipmap/ic_launcher',
-    largeIcon: tempFilePath != null
-        ? FilePathAndroidBitmap(tempFilePath)
-        : DrawableResourceAndroidBitmap(largeIconName),
-  );
-  
-  final details = NotificationDetails(
-    android: androidDetails,
-    iOS: DarwinNotificationDetails(
-      attachments: (Platform.isIOS && tempFilePath != null)
-          ? [DarwinNotificationAttachment(tempFilePath)]
-          : null,
-    ),
-  );
-
-  await plugin.show(
-    id: notification.hashCode,
-    title: notification.title ?? 'New Notification',
-    body: notification.body ?? '',
-    notificationDetails: details,
-  );
+  // Background push notification entry point.
+  // The OS already displays the notification from the FCM payload when the app
+  // is in background or killed, so we must NOT show a local notification here —
+  // doing so would cause duplicate notifications. This handler exists only for
+  // data processing if needed in the future.
 }
 
 class LocalNotificationService {
@@ -217,6 +128,8 @@ class LocalNotificationService {
     String? type,
   }) async {
     final useInAppSound = inAppSoundEnabled ?? await _isInAppSoundEnabled();
+    final formattedTitle = _formatCurrencySymbol(title);
+    final formattedBody = _formatCurrencySymbol(body);
 
     if (!kIsWeb) {
       if (!_initialized) await initialize();
@@ -299,8 +212,8 @@ class LocalNotificationService {
 
       await _plugin.show(
         id: id,
-        title: title,
-        body: body,
+        title: formattedTitle,
+        body: formattedBody,
         notificationDetails: details,
         payload: payload,
       );
@@ -381,9 +294,9 @@ class LocalNotificationService {
     required String recipientName,
   }) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Transfer Sent',
-      body: 'GH¢ ${amount.toStringAsFixed(2)} sent to $recipientName',
+      body: '${formatGhs(amount)} sent to $recipientName',
       type: 'transfer_sent',
     );
   }
@@ -394,9 +307,9 @@ class LocalNotificationService {
     required String senderName,
   }) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Transfer Received',
-      body: 'GH¢ ${amount.toStringAsFixed(2)} received from $senderName',
+      body: '${formatGhs(amount)} received from $senderName',
       type: 'transfer_received',
     );
   }
@@ -406,9 +319,9 @@ class LocalNotificationService {
     required double amount,
   }) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Deposit Successful',
-      body: 'GH¢ ${amount.toStringAsFixed(2)} has been deposited to your wallet',
+      body: '${formatGhs(amount)} has been deposited to your wallet',
       type: 'deposit',
     );
   }
@@ -416,7 +329,7 @@ class LocalNotificationService {
   /// Seller verification approved
   static Future<void> notifyVerificationApproved() async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Verification Approved',
       body:
           'Your seller profile has been verified! You now have a verified badge.',
@@ -427,7 +340,7 @@ class LocalNotificationService {
   /// Seller verification rejected
   static Future<void> notifyVerificationRejected({String? reason}) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Verification Rejected',
       body: reason ??
           'Your verification request was not approved. Please try again.',
@@ -439,12 +352,15 @@ class LocalNotificationService {
   static Future<void> notifyDeliveryApproved({
     required String productTitle,
     required double amount,
+    double deliveryFee = 0.0,
   }) async {
+    final body = deliveryFee > 0
+        ? 'Delivery confirmed for "$productTitle". ${formatGhs(amount)} released to your wallet (incl. ${formatGhs(deliveryFee)} delivery fee).'
+        : 'Delivery confirmed for "$productTitle". ${formatGhs(amount)} released to your wallet.';
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Delivery Confirmed',
-      body:
-          'Delivery confirmed for "$productTitle". GH¢ ${amount.toStringAsFixed(2)} released to your wallet.',
+      body: body,
       type: 'delivery_approved',
     );
   }
@@ -455,7 +371,7 @@ class LocalNotificationService {
     required String message,
   }) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'New Message from $senderName',
       body: message,
       type: 'new_message',
@@ -466,12 +382,15 @@ class LocalNotificationService {
   static Future<void> notifyOrderPlaced({
     required String orderId,
     required double amount,
+    double deliveryFee = 0.0,
   }) async {
+    final body = deliveryFee > 0
+        ? 'Order #${orderId.substring(0, 8).toUpperCase()} placed for ${formatGhs(amount)} (incl. ${formatGhs(deliveryFee)} delivery fee)'
+        : 'Order #${orderId.substring(0, 8).toUpperCase()} placed for ${formatGhs(amount)}';
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Order Placed',
-      body:
-          'Order #${orderId.substring(0, 8).toUpperCase()} placed for GH¢ ${amount.toStringAsFixed(2)}',
+      body: body,
       type: 'order',
     );
   }
@@ -481,10 +400,10 @@ class LocalNotificationService {
     required double amount,
   }) async {
     await showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
       title: 'Withdrawal Processed',
       body:
-          'Your withdrawal of GH¢ ${amount.toStringAsFixed(2)} has been processed.',
+          'Your withdrawal of ${formatGhs(amount)} has been processed.',
       type: 'withdrawal',
     );
   }
@@ -596,14 +515,8 @@ class LocalNotificationService {
     if (userId == null) return;
     
     try {
-      // Remove any stale tokens for this user to avoid duplicates
-      await SupabaseService.client
-          .from('user_push_tokens')
-          .delete()
-          .eq('user_id', userId);
-
-      // Insert the fresh token
-      await SupabaseService.client.from('user_push_tokens').insert({
+      // Upsert the token to associate it with the current user, updating it if it already exists
+      await SupabaseService.client.from('user_push_tokens').upsert({
         'user_id': userId,
         'token': token,
         'updated_at': DateTime.now().toIso8601String(),
@@ -622,5 +535,15 @@ class LocalNotificationService {
   /// Cancel all notifications
   static Future<void> cancelAll() async {
     await _plugin.cancelAll();
+  }
+
+  static String _formatCurrencySymbol(String text) {
+    return text
+        .replaceAll(r'GH\u00a2', 'GH₵')
+        .replaceAll(r'GH\\u00a2', 'GH₵')
+        .replaceAll(r'\u00a2', '₵')
+        .replaceAll(r'\\u00a2', '₵')
+        .replaceAll('GH¢', 'GH₵')
+        .replaceAll('¢', '₵');
   }
 }

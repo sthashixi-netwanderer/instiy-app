@@ -6,6 +6,7 @@ import '../models/product_model.dart';
 import '../services/business_profile_service.dart';
 import '../services/follow_service.dart';
 import '../services/supabase_service.dart';
+import '../providers/block_provider.dart';
 
 class BusinessProfileProvider extends ChangeNotifier {
   BusinessProfile? _profile;
@@ -39,6 +40,13 @@ class BusinessProfileProvider extends ChangeNotifier {
   String? get error => _error;
 
   Future<void> loadStore(String sellerId) async {
+    if (BlockProvider.instance.isUserBlocked(sellerId)) {
+      _isLoading = false;
+      _error = 'This profile is unavailable.';
+      notifyListeners();
+      return;
+    }
+
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -56,7 +64,8 @@ class BusinessProfileProvider extends ChangeNotifier {
       _profile = results[0] as BusinessProfile?;
       _stats = results[1] as StoreStats;
       _isFollowing = results[2] as bool;
-      _products = results[3] as List<Product>;
+      final blockProv = BlockProvider.instance;
+      _products = blockProv.filterProducts(results[3] as List<Product>);
       _isSellerVerified = results[4] as bool;
 
       // Load first page of reviews
@@ -91,7 +100,7 @@ class BusinessProfileProvider extends ChangeNotifier {
         _hasMoreReviews = false;
       }
 
-      _reviews.addAll(newReviews);
+      _reviews.addAll(BlockProvider.instance.filterReviews(newReviews));
       _reviewOffset += newReviews.length;
     } catch (_) {}
 
@@ -109,6 +118,9 @@ class BusinessProfileProvider extends ChangeNotifier {
   }
 
   Future<void> toggleFollow(String sellerId) async {
+    final currentUserId = SupabaseService.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId == sellerId) return;
+
     try {
       if (_isFollowing) {
         await FollowService.unfollow(sellerId);

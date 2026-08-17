@@ -6,20 +6,29 @@ import 'business_profile_service.dart';
 
 // Top-level function for isolate — parses raw JSON list into Products
 List<Product> _parseProductList(List<dynamic> rawList) {
-  return rawList.map((json) {
-    final seller = json['seller'] as Map<String, dynamic>?;
-    final category = json['category'] as Map<String, dynamic>?;
+  return rawList
+      .where((json) {
+        final category = json['category'] as Map<String, dynamic>?;
+        if (category != null && category['type'] == 'service') {
+          return false;
+        }
+        return true;
+      })
+      .map((json) {
+        final seller = json['seller'] as Map<String, dynamic>?;
+        final category = json['category'] as Map<String, dynamic>?;
 
-    return Product.fromJson({
-      ...json,
-      'seller_name': seller?['full_name'],
-      'seller_avatar': seller?['avatar_url'],
-      'seller_email': seller?['email'],
-      'seller_phone': seller?['phone_number'],
-      'is_seller_verified': seller?['is_verified'] ?? false,
-      'category_name': category?['name'],
-    });
-  }).toList();
+        return Product.fromJson({
+          ...json,
+          'seller_name': seller?['full_name'],
+          'seller_avatar': seller?['avatar_url'],
+          'seller_email': seller?['email'],
+          'seller_phone': seller?['phone_number'],
+          'is_seller_verified': seller?['is_verified'] ?? false,
+          'category_name': category?['name'],
+        });
+      })
+      .toList();
 }
 
 class ProductService {
@@ -43,14 +52,11 @@ class ProductService {
           seller:users!seller_id(full_name, avatar_url, email, phone_number, is_verified, business_profiles(business_name)),
           category:categories(name, type)
         ''');
-    
-    // Exclude products with service categories
-    query = query.neq('category.type', 'service');
-    
+
     if (categoryId != null) {
       query = query.eq('category_id', categoryId);
     }
-    
+
     if (sellerId != null) {
       query = query.eq('seller_id', sellerId);
       if (status != null) {
@@ -64,7 +70,7 @@ class ProductService {
       }
       query = query.gt('stock_quantity', 0);
     }
-    
+
     if (searchQuery != null && searchQuery.isNotEmpty) {
       query = query.or(
         'title.ilike.%$searchQuery%,description.ilike.%$searchQuery%',
@@ -87,7 +93,7 @@ class ProductService {
       final orConditions = campuses.map((c) => 'campus.ilike.%$c%').join(',');
       query = query.or(orConditions);
     }
-    
+
     // Apply sorting
     String sortColumn = 'created_at';
     bool ascending = false;
@@ -138,7 +144,7 @@ class ProductService {
 
     return products;
   }
-  
+
   // Get single product
   static Future<Product> getProduct(String productId) async {
     final response = await SupabaseService.table('products')
@@ -149,7 +155,7 @@ class ProductService {
         ''')
         .eq('id', productId)
         .single();
-    
+
     final seller = response['seller'] as Map<String, dynamic>?;
     final category = response['category'] as Map<String, dynamic>?;
 
@@ -168,6 +174,42 @@ class ProductService {
       'category_name': category?['name'],
       'institution_delivery_fees': (feeRows as List?)?.toList() ?? [],
     });
+  }
+
+  // Get single product by slug (for deep links)
+  static Future<Product?> getProductBySlug(String slugId) async {
+    try {
+      final response = await SupabaseService.table('products')
+          .select('''
+            *,
+            seller:users!seller_id(full_name, avatar_url, is_verified, business_profiles(business_name)),
+            category:categories(name, type)
+          ''')
+          .eq('slug', slugId)
+          .maybeSingle();
+
+      if (response == null) return null;
+
+      final seller = response['seller'] as Map<String, dynamic>?;
+      final category = response['category'] as Map<String, dynamic>?;
+
+      final feeRows = await SupabaseService.table('product_institution_deliveries')
+          .select('institution_name, delivery_fee')
+          .eq('product_id', response['id']);
+
+      return Product.fromJson({
+        ...response,
+        'seller_name': seller?['full_name'],
+        'seller_avatar': seller?['avatar_url'],
+        'is_seller_verified': seller?['is_verified'] ?? false,
+        'seller_email': seller?['email'],
+        'seller_phone': seller?['phone_number'],
+        'category_name': category?['name'],
+        'institution_delivery_fees': (feeRows as List?)?.toList() ?? [],
+      });
+    } catch (e) {
+      return null;
+    }
   }
 
   // Get single product with review data
@@ -212,6 +254,7 @@ class ProductService {
     String? thumbnailUrl,
     Map<String, double>? institutionDeliveryFees,
     bool showOnClips = false,
+    String? clipVideoUrl,
   }) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
@@ -242,22 +285,23 @@ class ProductService {
       'discount_end_date': discountEndDate,
       'thumbnail_url': thumbnailUrl,
       'show_on_clips': showOnClips,
+      'clip_video_url': clipVideoUrl,
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     };
-    
+
     final response = await SupabaseService.table('products')
         .insert(productData)
         .select()
         .single();
-    
+
     final productId = response['id'] as String;
-    
+
     // Save per-institution delivery fees
     if (institutionDeliveryFees != null && institutionDeliveryFees.isNotEmpty) {
       await _saveInstitutionFees(productId, institutionDeliveryFees);
     }
-    
+
     return Product.fromJson({
       ...response,
       'institution_delivery_fees': institutionDeliveryFees?.entries
@@ -265,7 +309,7 @@ class ProductService {
           .toList() ?? [],
     });
   }
-  
+
   // Update product
   static Future<Product> updateProduct({
     required String productId,
@@ -288,11 +332,12 @@ class ProductService {
     String? thumbnailUrl,
     Map<String, double>? institutionDeliveryFees,
     bool? showOnClips,
+    String? clipVideoUrl,
   }) async {
     final updates = <String, dynamic>{
       'updated_at': DateTime.now().toIso8601String(),
     };
-    
+
     if (title != null) {
       updates['title'] = title;
       // If title is not null, this is a full product edit form submission.
@@ -319,20 +364,21 @@ class ProductService {
     if (discountPercent != null) updates['discount_percent'] = discountPercent;
     // thumbnailUrl is always included (even if null) so it can be explicitly cleared
     updates['thumbnail_url'] = thumbnailUrl;
-    
+
     if (showOnClips != null) updates['show_on_clips'] = showOnClips;
-    
+    if (clipVideoUrl != null) updates['clip_video_url'] = clipVideoUrl;
+
     final response = await SupabaseService.table('products')
         .update(updates)
         .eq('id', productId)
         .select()
         .single();
-    
+
     // Save per-institution delivery fees
     if (institutionDeliveryFees != null) {
       await _saveInstitutionFees(productId, institutionDeliveryFees);
     }
-    
+
     return Product.fromJson({
       ...response,
       'institution_delivery_fees': institutionDeliveryFees?.entries
@@ -340,7 +386,7 @@ class ProductService {
           .toList() ?? [],
     });
   }
-  
+
   // Save per-institution delivery fees (replaces all existing entries)
   static Future<void> _saveInstitutionFees(String productId, Map<String, double> fees) async {
     // Delete existing fees
@@ -377,24 +423,23 @@ class ProductService {
         .eq('id', productId);
     return null; // success
   }
-  
+
   // Get categories
   static Future<List<Category>> getCategories({String? type}) async {
     var query = SupabaseService.table('categories')
         .select();
-    
+
     if (type != null) {
       query = query.eq('type', type);
     }
-    
+
     final response = await query.order('name');
-    
+
     return (response as List)
         .map((json) => Category.fromJson(json))
         .toList();
   }
-  
-  // Get featured products (for home carousel)
+
   static Future<List<Product>> getFeaturedProducts({int limit = 10}) async {
     final response = await SupabaseService.table('products')
         .select('''
@@ -404,7 +449,6 @@ class ProductService {
         ''')
         .eq('status', 'available')
         .eq('is_featured', true)
-        .neq('category.type', 'service')
         .order('created_at', ascending: false)
         .limit(limit);
 
@@ -432,18 +476,20 @@ class ProductService {
           category:categories(name, type)
         ''')
         .eq('status', 'available')
-        .neq('category.type', 'service')
         .order('created_at', ascending: false)
         .limit(limit);
 
     return Isolate.run(() => _parseProductList(response as List));
   }
 
-  // Get best seller products (most ordered)
-  static Future<List<Product>> getBestSellers({int limit = 10}) async {
+  // Get best seller products (hybrid scoring: sales velocity + margin + stock)
+  static Future<List<Product>> getBestSellers({String? categoryId, int limit = 10}) async {
     try {
       final response = await SupabaseService.client
-          .rpc('get_best_seller_products', params: {'p_limit': limit})
+          .rpc('get_best_seller_products', params: {
+            'p_limit': limit,
+            'p_category_id': categoryId,
+          })
           .select();
 
       if ((response as List).isNotEmpty) {
@@ -453,16 +499,19 @@ class ProductService {
     } catch (_) {}
 
     // Fallback: newest available products
-    final response = await SupabaseService.table('products')
+    var query = SupabaseService.table('products')
         .select('''
           *,
           seller:users!seller_id(full_name, avatar_url, email, phone_number, is_verified, business_profiles(business_name)),
           category:categories(name, type)
         ''')
-        .eq('status', 'available')
-        .neq('category.type', 'service')
-        .order('created_at', ascending: false)
-        .limit(limit);
+        .eq('status', 'available');
+
+    if (categoryId != null) {
+      query = query.eq('category_id', categoryId);
+    }
+
+    final response = await query.order('created_at', ascending: false).limit(limit);
 
     return Isolate.run(() => _parseProductList(response as List));
   }
@@ -475,8 +524,7 @@ class ProductService {
           seller:users!seller_id(full_name, avatar_url, email, phone_number, is_verified, business_profiles(business_name)),
           category:categories(name, type)
         ''')
-        .inFilter('id', ids)
-        .neq('category.type', 'service');
+        .inFilter('id', ids);
 
     return Isolate.run(() {
       final products = _parseProductList(response as List);
@@ -491,7 +539,7 @@ class ProductService {
   static Future<List<Product>> getUserListings(String userId) async {
     return getProducts(sellerId: userId);
   }
-  
+
   // Mark product as sold
   static Future<void> markAsSold(String productId) async {
     await SupabaseService.table('products')
@@ -501,48 +549,48 @@ class ProductService {
         })
         .eq('id', productId);
   }
-  
+
   // Favorites
   static Future<List<String>> getFavoriteIds() async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) return [];
-    
+
     final response = await SupabaseService.table('favorites')
         .select('product_id')
         .eq('user_id', userId);
-    
+
     return (response as List)
         .map((row) => row['product_id'] as String)
         .toList();
   }
-  
+
   static Future<bool> isFavorited(String productId) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) return false;
-    
+
     final response = await SupabaseService.table('favorites')
         .select('product_id')
         .eq('user_id', userId)
         .eq('product_id', productId)
         .maybeSingle();
-    
+
     return response != null;
   }
-  
+
   static Future<void> addFavorite(String productId) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
-    
+
     await SupabaseService.table('favorites').insert({
       'user_id': userId,
       'product_id': productId,
     });
   }
-  
+
   static Future<void> removeFavorite(String productId) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
-    
+
     await SupabaseService.table('favorites')
         .delete()
         .eq('user_id', userId)
@@ -571,7 +619,6 @@ class ProductService {
         .eq('category_id', categoryId)
         .eq('status', 'available')
         .gt('stock_quantity', 0)
-        .neq('category.type', 'service')
         .neq('id', productId)
         .order('created_at', ascending: false)
         .limit(limit);

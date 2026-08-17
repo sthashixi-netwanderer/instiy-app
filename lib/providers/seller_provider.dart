@@ -16,6 +16,7 @@ class SellerProvider extends ChangeNotifier {
   bool _isLoadingMoreReviews = false;
   bool _hasMoreReviews = true;
   String? _error;
+  bool _initialized = false;
 
   RealtimeChannel? _productsChannel;
   RealtimeChannel? _reviewsChannel;
@@ -54,6 +55,7 @@ class SellerProvider extends ChangeNotifier {
         _analytics = null;
         _error = null;
         _currentUserId = null;
+        _initialized = false;
         notifyListeners();
       }
     });
@@ -141,9 +143,7 @@ class SellerProvider extends ChangeNotifier {
         );
     _ordersChannel!.subscribe();
 
-    loadDashboardStats(userId);
-    loadReviews(userId);
-    loadAnalytics(userId);
+    ensureInitialized(userId);
   }
 
   void _unsubscribeFromRealtime() {
@@ -192,6 +192,41 @@ class SellerProvider extends ChangeNotifier {
       _sellerOrders = await SellerService.getSellerOrders(userId);
       notifyListeners();
     } catch (_) {}
+  }
+
+  bool get isInitialized => _initialized;
+
+  Future<void> ensureInitialized(String userId, {bool force = false}) async {
+    if (_initialized && !force) return;
+    _initialized = true;
+
+    final silent = _dashboardStats != null;
+    if (!silent) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
+
+    try {
+      final results = await Future.wait([
+        SellerService.getDashboardStats(userId),
+        SellerService.getProductReviews(userId, offset: 0, limit: 20),
+        SellerService.getAnalytics(userId),
+        SellerService.getSellerOrders(userId),
+      ]);
+      _dashboardStats = results[0] as DashboardStats?;
+      _reviews = List<ProductReview>.from(results[1] as Iterable);
+      _hasMoreReviews = _reviews.length >= 20;
+      _analytics = results[2] as Map<String, dynamic>?;
+      _sellerOrders = List<Order>.from(results[3] as Iterable);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      if (!silent) {
+        _isLoading = false;
+      }
+      notifyListeners();
+    }
   }
 
   Future<void> loadDashboardStats(String userId) async {
@@ -345,7 +380,7 @@ class SellerProvider extends ChangeNotifier {
         if (orderItem != null) {
           final order = await SupabaseService.client
               .from('orders')
-              .select('buyer_id')
+              .select('buyer_id, delivery_fee, delivery_mode')
               .eq('id', orderItem['order_id'])
               .maybeSingle();
 
@@ -367,11 +402,15 @@ class SellerProvider extends ChangeNotifier {
               final buyerName = buyer['full_name'] as String? ?? 'Buyer';
               final sellerName = seller['full_name'] as String? ?? 'Seller';
               final productTitle = orderItem['product_title'] as String? ?? 'Product';
+              final deliveryFee = order['delivery_mode'] == 'delivery'
+                  ? (order['delivery_fee'] as num?)?.toDouble() ?? 0.0
+                  : 0.0;
 
               // Send notification
               await LocalNotificationService.notifyDeliveryApproved(
                 productTitle: productTitle,
                 amount: amount?.toDouble() ?? 0,
+                deliveryFee: deliveryFee,
               );
 
               // Send email to buyer

@@ -1,31 +1,28 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import '../../config/app_theme.dart';
-import '../../services/verification_service.dart';
-import '../../models/seller_verification_model.dart';
+import '../../providers/providers.dart';
+import '../../providers/verification_provider.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/verification_badge.dart';
 
-class SellerProfileVerificationScreen extends StatefulWidget {
+class SellerProfileVerificationScreen extends ConsumerStatefulWidget {
   const SellerProfileVerificationScreen({super.key});
 
   @override
-  State<SellerProfileVerificationScreen> createState() =>
+  ConsumerState<SellerProfileVerificationScreen> createState() =>
       _SellerProfileVerificationScreenState();
 }
 
 class _SellerProfileVerificationScreenState
-    extends State<SellerProfileVerificationScreen> {
+    extends ConsumerState<SellerProfileVerificationScreen> {
   int _currentStep = 0;
-  bool _isSubmitting = false;
-  bool _isUploadingBackground = false;
-  bool _isLoading = true;
-  SellerVerification? _existingVerification;
 
   // Form keys for each step
   final _formKeyStep0 = GlobalKey<FormState>();
@@ -54,12 +51,27 @@ class _SellerProfileVerificationScreenState
   static const int _minVideoSeconds = 10;
   static const int _currentYear = 2026;
 
+  late final VerificationProvider _vProv;
+
   @override
   void initState() {
     super.initState();
+    _vProv = ref.read(verificationProvider);
     _residentialAddressController.addListener(_onTextChanged);
     _digitalAddressController.addListener(_onTextChanged);
-    _loadExistingVerification();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _vProv.loadLatestVerification();
+      // When admin approves via seller_verifications OR directly toggles
+      // is_verified on the users table, reload the auth profile so the
+      // badge appears immediately everywhere in the app.
+      _vProv.onVerificationApproved = () {
+        ref.read(authProvider).loadUserProfile();
+      };
+      // When admin revokes, reload so the badge disappears immediately.
+      _vProv.onVerificationRevoked = () {
+        ref.read(authProvider).loadUserProfile();
+      };
+    });
   }
 
   void _onTextChanged() {
@@ -71,24 +83,10 @@ class _SellerProfileVerificationScreenState
     _residentialAddressController.dispose();
     _digitalAddressController.dispose();
     _videoController?.dispose();
+    // Clear callbacks so they aren't called after the widget is gone.
+    _vProv.onVerificationApproved = null;
+    _vProv.onVerificationRevoked = null;
     super.dispose();
-  }
-
-  Future<void> _loadExistingVerification() async {
-    try {
-      final verification =
-          await VerificationService.getLatestVerification();
-      if (mounted) {
-        setState(() {
-          _existingVerification = verification;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
   // ─── Image/Video Picking ───────────────────────────────────────
@@ -158,7 +156,7 @@ class _SellerProfileVerificationScreenState
       return;
     }
 
-    _videoController?.dispose();
+    _videoController?.dispose(); // ignore: unawaited_futures
     setState(() {
       _liveVideo = file;
       _videoController = controller;
@@ -192,7 +190,7 @@ class _SellerProfileVerificationScreenState
       return;
     }
 
-    _videoController?.dispose();
+    _videoController?.dispose(); // ignore: unawaited_futures
     setState(() {
       _liveVideo = file;
       _videoController = controller;
@@ -244,21 +242,6 @@ class _SellerProfileVerificationScreenState
       return;
     }
 
-    setState(() {
-      _isSubmitting = true;
-      _isUploadingBackground = true;
-    });
-
-    // Show uploading toast
-    if (mounted) {
-      ShadToaster.of(context).show(
-        const ShadToast(
-          backgroundColor: AppTheme.accent,
-          title: Text('Uploading verification...'),
-        ),
-      );
-    }
-
     // Snapshot the data we need before navigating away
     final dob = _dateOfBirth!;
     final yoe = _yearOfEntrance!;
@@ -274,11 +257,19 @@ class _SellerProfileVerificationScreenState
     // Return user to status view immediately
     setState(() {
       _currentStep = 0;
-      _isSubmitting = false;
     });
 
-    // Fire upload in background — no await
-    _uploadInBackground(
+    // Show uploading toast
+    if (mounted) {
+      ShadToaster.of(context).show(
+        const ShadToast(
+          backgroundColor: AppTheme.accent,
+          title: Text('Uploading verification...'),
+        ),
+      );
+    }
+
+    ref.read(verificationProvider).submitVerificationInBackground(
       dateOfBirth: dob,
       yearOfEntrance: yoe,
       graduationYear: gy,
@@ -287,44 +278,17 @@ class _SellerProfileVerificationScreenState
       studentIdFront: front,
       studentIdBack: back,
       liveVideo: video,
-    );
-  }
-
-  Future<void> _uploadInBackground({
-    required DateTime dateOfBirth,
-    required int yearOfEntrance,
-    required int graduationYear,
-    required String residentialAddress,
-    String? digitalAddress,
-    required File studentIdFront,
-    required File studentIdBack,
-    required File liveVideo,
-  }) async {
-    try {
-      await VerificationService.submitVerification(
-        dateOfBirth: dateOfBirth,
-        yearOfEntrance: yearOfEntrance,
-        graduationYear: graduationYear,
-        residentialAddress: residentialAddress,
-        digitalAddress: digitalAddress,
-        studentIdFront: studentIdFront,
-        studentIdBack: studentIdBack,
-        liveVideo: liveVideo,
-      );
-
+    ).then((_) {
       if (mounted) {
-        setState(() => _isUploadingBackground = false);
         ShadToaster.of(context).show(
           const ShadToast(
             backgroundColor: AppTheme.successMoss,
             title: Text('Verification submitted! We\'ll review it shortly.'),
           ),
         );
-        await _loadExistingVerification();
       }
-    } catch (e) {
+    }).catchError((e) { // ignore: unawaited_futures
       if (mounted) {
-        setState(() => _isUploadingBackground = false);
         ShadToaster.of(context).show(
           ShadToast(
             backgroundColor: AppTheme.destructive,
@@ -332,32 +296,33 @@ class _SellerProfileVerificationScreenState
           ),
         );
       }
-    }
+    });
   }
 
   Future<void> _cancelVerification() async {
-    if (_existingVerification == null) return;
+    final latestV = ref.read(verificationProvider).latestVerification;
+    if (latestV == null) return;
 
-final confirmed = await AppTheme.showGlassDialog<bool>(
-  context: context,
-  title: const Text('Cancel Verification'),
-  description: const Text(
-      'Are you sure you want to cancel your verification request?'),
-  actions: [
-    ShadButton.ghost(
-      onPressed: () => Navigator.of(context).pop(false),
-      child: const Text('No'),
-    ),
-    ShadButton.destructive(
-      onPressed: () => Navigator.of(context).pop(true),
-      child: const Text('Yes, Cancel'),
-    ),
-  ],
-);
+    final confirmed = await AppTheme.showGlassDialog<bool>(
+      context: context,
+      title: const Text('Cancel Verification'),
+      description: const Text(
+          'Are you sure you want to cancel your verification request?'),
+      actions: [
+        ShadButton.ghost(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('No'),
+        ),
+        ShadButton.destructive(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Yes, Cancel'),
+        ),
+      ],
+    );
 
-    if (confirmed == true && _existingVerification != null) {
+    if (confirmed == true) {
       try {
-        await VerificationService.cancelVerification(_existingVerification!.id);
+        await ref.read(verificationProvider).cancelVerification(latestV.id);
         if (mounted) {
           ShadToaster.of(context).show(
             const ShadToast(
@@ -365,7 +330,6 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
               title: Text('Verification cancelled'),
             ),
           );
-          await _loadExistingVerification();
         }
       } catch (e) {
         if (mounted) {
@@ -384,55 +348,89 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    final prov = ref.watch(verificationProvider);
+
+    if (prov.isLoading) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
-        body: const Padding(
-          padding: EdgeInsets.all(24),
-          child: ListSkeleton(count: 6),
+        body: Padding(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            MediaQuery.of(context).padding.top + kToolbarHeight + 24,
+            24,
+            24,
+          ),
+          child: const ListSkeleton(count: 6),
         ),
       );
     }
 
-    // Show existing verification status if pending/approved
-    if (_isUploadingBackground ||
-        (_existingVerification != null &&
-            (_existingVerification!.isPending ||
-                _existingVerification!.isApproved))) {
+    final authUser = ref.watch(authProvider).user;
+
+    // Show status view if:
+    // 1. Upload is in progress
+    // 2. There's a pending/approved seller_verifications record
+    // 3. Admin directly toggled is_verified on the users table (no record needed)
+    if (prov.isUploadingBackground ||
+        (authUser?.isVerified == true) ||
+        (prov.latestVerification != null &&
+            (prov.latestVerification!.isPending ||
+                prov.latestVerification!.isApproved))) {
       return _buildStatusView();
     }
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
+      extendBody: true,
       appBar: AppTheme.glassAppBar(context: context,
         title: const Text('Seller Verification'),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          _buildStepIndicator(),
-          Expanded(
+          Positioned.fill(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                MediaQuery.of(context).padding.top + kToolbarHeight + 70,
+                16,
+                MediaQuery.of(context).padding.bottom + 90,
+              ),
               child: _buildCurrentStep(),
             ),
           ),
-          _buildNavigationButtons(),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + kToolbarHeight + 8,
+            left: 10,
+            right: 10,
+            child: _buildStepIndicator(),
+          ),
         ],
       ),
+      bottomNavigationBar: _buildNavigationButtons(),
     );
   }
 
   // ─── Status View (for pending/approved) ────────────────────────
 
   Widget _buildStatusView() {
+    final prov = ref.watch(verificationProvider);
+
     // While background upload is running and no DB record exists yet
-    if (_isUploadingBackground && _existingVerification == null) {
+    if (prov.isUploadingBackground && prov.latestVerification == null) {
       return Scaffold(
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
         body: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+            16,
+            16,
+          ),
           children: [
             Container(
               padding: const EdgeInsets.all(24),
@@ -467,17 +465,80 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
       );
     }
 
-    final v = _existingVerification!;
+    // Admin has verified the user — always show "Verified" regardless of
+    // the seller_verifications record status (which may be revoked).
+    final authUser = ref.watch(authProvider).user;
+    if (authUser?.isVerified == true) {
+      return Scaffold(
+        backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
+        appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
+        body: ListView(
+          padding: EdgeInsets.fromLTRB(
+            context.rw(16),
+            MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(16),
+            context.rw(16),
+            context.rh(16),
+          ),
+          children: [
+            Container(
+              padding: context.rAll(24),
+              decoration: BoxDecoration(
+                color: AppTheme.pureSurface,
+                borderRadius: BorderRadius.circular(context.rr(20)),
+                border: Border.all(color: AppTheme.whisperBorder),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: context.rw(80),
+                    height: context.rh(80),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successMoss.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: VerificationBadge(size: context.ri(48)),
+                  ),
+                  SizedBox(height: context.rh(16)),
+                  Text(
+                    'Verified',
+                    style: TextStyle(
+                      fontSize: context.rsp(22),
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.successMoss,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Your seller profile is verified. Buyers can see your verified badge.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.mutedSteel, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final v = prov.latestVerification!;
     final isPending = v.isPending;
     final isApproved = v.isApproved;
 
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
       body: ListView(
-        padding: context.rAll(16),
+        padding: EdgeInsets.fromLTRB(
+          context.rw(16),
+          MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(16),
+          context.rw(16),
+          context.rh(16),
+        ),
         children: [
-          if (_isUploadingBackground) ...[
+          if (prov.isUploadingBackground) ...[
             Container(
               padding: context.rAll(14),
               decoration: BoxDecoration(
@@ -664,62 +725,64 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
 
   Widget _buildStepIndicator() {
     final steps = ['Personal Info', 'Student ID', 'Video', 'Review'];
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(12)),
-      decoration: BoxDecoration(
-        color: AppTheme.pureSurface,
-        border: Border(bottom: BorderSide(color: AppTheme.whisperBorder)),
-      ),
-      child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(steps.length, (index) {
-            final isActive = index == _currentStep;
-            final isDone = index < _currentStep;
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: context.rw(28),
-                  height: context.rh(28),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isDone
-                        ? AppTheme.successMoss
-                        : isActive
-                            ? AppTheme.accent
-                            : AppTheme.warmMist,
-                    border: Border.all(
+    return AppTheme.frosted(
+      radius: 14,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.rw(16),
+          vertical: context.rh(12),
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(steps.length, (index) {
+              final isActive = index == _currentStep;
+              final isDone = index < _currentStep;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: context.rw(28),
+                    height: context.rh(28),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
                       color: isDone
                           ? AppTheme.successMoss
                           : isActive
                               ? AppTheme.accent
-                              : AppTheme.whisperBorder,
+                              : AppTheme.warmMist,
+                      border: Border.all(
+                        color: isDone
+                            ? AppTheme.successMoss
+                            : isActive
+                                ? AppTheme.accent
+                                : AppTheme.whisperBorder,
+                      ),
+                    ),
+                    child: Center(
+                      child: isDone
+                          ? Icon(LucideIcons.check, size: context.ri(14), color: Colors.white)
+                          : Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                fontSize: context.rsp(12),
+                                fontWeight: FontWeight.w600,
+                                color: isActive ? Colors.white : AppTheme.mutedSteel,
+                              ),
+                            ),
                     ),
                   ),
-                  child: Center(
-                    child: isDone
-                        ? Icon(LucideIcons.check, size: context.ri(14), color: Colors.white)
-                        : Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontSize: context.rsp(12),
-                              fontWeight: FontWeight.w600,
-                              color: isActive ? Colors.white : AppTheme.mutedSteel,
-                            ),
-                          ),
-                  ),
-                ),
-                if (index < steps.length - 1)
-                  Container(
-                    width: context.rw(32),
-                    height: context.rh(2),
-                    margin: EdgeInsets.symmetric(horizontal: context.rw(4)),
-                    color: isDone ? AppTheme.successMoss : AppTheme.whisperBorder,
-                  ),
-              ],
-            );
-          }),
+                  if (index < steps.length - 1)
+                    Container(
+                      width: context.rw(32),
+                      height: context.rh(2),
+                      margin: EdgeInsets.symmetric(horizontal: context.rw(4)),
+                      color: isDone ? AppTheme.successMoss : AppTheme.whisperBorder,
+                    ),
+                ],
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -813,6 +876,12 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
             initialValue: _yearOfEntrance,
+            borderRadius: BorderRadius.circular(18),
+            dropdownColor: AppTheme.pureSurface,
+            menuMaxHeight: 320,
+            itemHeight: AppTheme.minTapTarget,
+            icon: const Icon(LucideIcons.chevronDown, size: 18, color: AppTheme.mutedSteel),
+            style: const TextStyle(fontSize: 15, color: AppTheme.charcoalInk),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
@@ -822,6 +891,10 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: AppTheme.whisperBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppTheme.accent, width: 1.5),
               ),
               filled: true,
               fillColor: AppTheme.pureSurface,
@@ -856,6 +929,12 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
             initialValue: _graduationYear,
+            borderRadius: BorderRadius.circular(18),
+            dropdownColor: AppTheme.pureSurface,
+            menuMaxHeight: 320,
+            itemHeight: AppTheme.minTapTarget,
+            icon: const Icon(LucideIcons.chevronDown, size: 18, color: AppTheme.mutedSteel),
+            style: const TextStyle(fontSize: 15, color: AppTheme.charcoalInk),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
@@ -865,6 +944,10 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: AppTheme.whisperBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppTheme.accent, width: 1.5),
               ),
               filled: true,
               fillColor: AppTheme.pureSurface,
@@ -1082,36 +1165,36 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
   }
 
   void _showImageSourceDialog(VoidCallback onCamera, VoidCallback onGallery) {
-AppTheme.showGlassDialog(
-  context: context,
-  title: const Text('Choose Source'),
-  child: Material(
-    type: MaterialType.transparency,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          leading: const Icon(LucideIcons.camera),
-          title: const Text('Camera'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          onTap: () {
-            Navigator.of(context).pop();
-            onCamera();
-          },
+    AppTheme.showGlassDialog(
+      context: context,
+      title: const Text('Choose Source'),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(LucideIcons.camera),
+              title: const Text('Camera'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              onTap: () {
+                Navigator.of(context).pop();
+                onCamera();
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.image),
+              title: const Text('Gallery'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              onTap: () {
+                Navigator.of(context).pop();
+                onGallery();
+              },
+            ),
+          ],
         ),
-        ListTile(
-          leading: const Icon(LucideIcons.image),
-          title: const Text('Gallery'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          onTap: () {
-            Navigator.of(context).pop();
-            onGallery();
-          },
-        ),
-      ],
-    ),
-  ),
-);
+      ),
+    );
   }
 
   // Step 2: Video Verification
@@ -1450,47 +1533,53 @@ AppTheme.showGlassDialog(
   // ─── Navigation Buttons ────────────────────────────────────────
 
   Widget _buildNavigationButtons() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.pureSurface,
-        border: Border(top: BorderSide(color: AppTheme.whisperBorder)),
+    final prov = ref.watch(verificationProvider);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        10,
+        0,
+        10,
+        MediaQuery.paddingOf(context).bottom + 16,
       ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            if (_currentStep > 0)
-              Expanded(
-                child: ShadButton.outline(
-                  onPressed: () => setState(() => _currentStep--),
-                  child: const Text('Back'),
+      child: AppTheme.frosted(
+        radius: 20,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              if (_currentStep > 0)
+                Expanded(
+                  child: ShadButton.outline(
+                    onPressed: () => setState(() => _currentStep--),
+                    child: const Text('Back'),
+                  ),
                 ),
+              if (_currentStep > 0) const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: _currentStep == 3
+                    ? ShadButton(
+                        onPressed: (_agreedToTerms && !prov.isUploadingBackground)
+                            ? _submitVerification
+                            : null,
+                        child: prov.isUploadingBackground
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Submit Verification'),
+                      )
+                    : ShadButton(
+                        onPressed: _canProceed() ? () => setState(() => _currentStep++) : null,
+                        child: const Text('Continue'),
+                      ),
               ),
-            if (_currentStep > 0) const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: _currentStep == 3
-                  ? ShadButton(
-                      onPressed: (_agreedToTerms && !_isSubmitting)
-                          ? _submitVerification
-                          : null,
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Submit Verification'),
-                    )
-                  : ShadButton(
-                      onPressed: _canProceed() ? () => setState(() => _currentStep++) : null,
-                      child: const Text('Continue'),
-                    ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

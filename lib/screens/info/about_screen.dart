@@ -10,6 +10,7 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, 
         title: const Text('About Instiy'),
         leading: ShadIconButton.ghost(
@@ -18,7 +19,7 @@ class AboutScreen extends StatelessWidget {
         ),
       ),
       body: ListView(
-        padding: context.rAll(20),
+        padding: EdgeInsets.fromLTRB(context.rw(20), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(20), context.rw(20), context.rh(20)),
         children: [
           // App info
           Center(

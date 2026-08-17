@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import '../models/product_model.dart';
 import 'supabase_service.dart';
+import 'package:instiy/utils/formatters.dart';
 
 class EmailService {
   /// Send an email via Supabase Edge Function
@@ -21,6 +23,99 @@ class EmailService {
       // Silently fail — email is non-critical
       debugPrint('Email send failed: $e');
     }
+  }
+
+  // ─── Product Out of Stock ──────────────────────────────────────
+
+  static Future<void> sendProductOutOfStock({
+    required String sellerEmail,
+    required String productTitle,
+  }) async {
+    final subject = 'Action Required: "$productTitle" is out of stock!';
+    await _sendEmail(
+      to: sellerEmail,
+      subject: subject,
+      htmlBody: '''
+<!DOCTYPE html>
+<html>
+<head>
+  <title>$subject</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f4; margin: 0; padding: 20px; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #ef4444, #dc2626); padding: 32px 24px; text-align: center; }
+    .header h1 { color: white; margin: 0; font-size: 20px; }
+    .body { padding: 24px; }
+    .value { color: #1c1917; font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+    .footer { padding: 16px 24px; background: #f5f5f4; text-align: center; color: #78716c; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Out of Stock Notice</h1>
+    </div>
+    <div class="body">
+      <p class="value">Your product "<strong>$productTitle</strong>" has run out of stock.</p>
+      <p>Please update your inventory or restock the item so buyers can continue purchasing it.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; ${DateTime.now().year} Instiy. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+''',
+    );
+  }
+
+  // ─── Product Low Stock ────────────────────────────────────────
+
+  static Future<void> sendProductLowStock({
+    required String sellerEmail,
+    required String productTitle,
+    required int remainingStock,
+  }) async {
+    final subject = 'Low Stock Alert: "$productTitle" has only $remainingStock left';
+    await _sendEmail(
+      to: sellerEmail,
+      subject: subject,
+      htmlBody: '''
+<!DOCTYPE html>
+<html>
+<head>
+  <title>$subject</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f4; margin: 0; padding: 20px; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #f59e0b, #d97706); padding: 32px 24px; text-align: center; }
+    .header h1 { color: white; margin: 0; font-size: 20px; }
+    .body { padding: 24px; }
+    .value { color: #1c1917; font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+    .stock-badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 18px; margin: 12px 0; }
+    .footer { padding: 16px 24px; background: #f5f5f4; text-align: center; color: #78716c; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Low Stock Alert</h1>
+    </div>
+    <div class="body">
+      <p class="value">Your product "<strong>$productTitle</strong>" is running low on stock.</p>
+      <p style="text-align:center"><span class="stock-badge">$remainingStock remaining</span></p>
+      <p>Consider restocking soon to avoid missing out on sales.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; ${DateTime.now().year} Instiy. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+''',
+    );
   }
 
   // ─── Product Purchased ─────────────────────────────────────────
@@ -73,7 +168,7 @@ class EmailService {
       <div class="label">Order ID</div>
       <div class="value">#${orderId.substring(0, 8).toUpperCase()}</div>
       <div class="divider"></div>
-      <div class="amount">GH\u00a2 ${price.toStringAsFixed(2)}</div>
+      <div class="amount">${formatGhs(price)}</div>
       <p style="color: #78716c; font-size: 13px; text-align: center;">
         Please prepare the item for delivery. You can mark it as delivered once the buyer receives it.
       </p>
@@ -138,7 +233,7 @@ class EmailService {
       <div class="label">Order ID</div>
       <div class="value">#${orderId.substring(0, 8).toUpperCase()}</div>
       <div class="divider"></div>
-      <div class="amount">GH\u00a2 ${price.toStringAsFixed(2)}</div>
+      <div class="amount">${formatGhs(price)}</div>
       <div class="info-box">
         <p style="margin: 0; font-size: 13px; color: #78716c;">
           <strong>Next steps:</strong> Wait for the seller to confirm delivery. You'll receive a delivery code to share with the seller upon receiving your item.
@@ -162,7 +257,7 @@ class EmailService {
     required String recipientName,
     required double amount,
   }) async {
-    final subject = 'Transfer of GH\u00a2 ${amount.toStringAsFixed(2)} sent';
+    final subject = 'Transfer of ${formatGhs(amount)} sent';
     await _sendEmail(
       to: senderEmail,
       subject: subject,
@@ -190,7 +285,7 @@ class EmailService {
     <div class="body">
       <p>Hi $senderName,</p>
       <p>You have successfully transferred funds to <strong>$recipientName</strong>.</p>
-      <div class="amount">-GH\u00a2 ${amount.toStringAsFixed(2)}</div>
+      <div class="amount">-${formatGhs(amount)}</div>
       <p style="color: #78716c; font-size: 13px; text-align: center;">The amount has been deducted from your wallet balance.</p>
     </div>
     <div class="footer">
@@ -208,7 +303,7 @@ class EmailService {
     required String senderName,
     required double amount,
   }) async {
-    final subject = 'You received GH\u00a2 ${amount.toStringAsFixed(2)}';
+    final subject = 'You received ${formatGhs(amount)}';
     await _sendEmail(
       to: recipientEmail,
       subject: subject,
@@ -236,7 +331,7 @@ class EmailService {
     <div class="body">
       <p>Hi $recipientName,</p>
       <p>You have received funds from <strong>$senderName</strong>.</p>
-      <div class="amount">+GH\u00a2 ${amount.toStringAsFixed(2)}</div>
+      <div class="amount">+${formatGhs(amount)}</div>
       <p style="color: #78716c; font-size: 13px; text-align: center;">The amount has been added to your wallet balance.</p>
     </div>
     <div class="footer">
@@ -256,7 +351,7 @@ class EmailService {
     required double amount,
     required String method,
   }) async {
-    final subject = 'Withdrawal request of GH\u00a2 ${amount.toStringAsFixed(2)}';
+    final subject = 'Withdrawal request of ${formatGhs(amount)}';
     await _sendEmail(
       to: userEmail,
       subject: subject,
@@ -285,7 +380,7 @@ class EmailService {
     <div class="body">
       <p>Hi $userName,</p>
       <p>Your withdrawal request has been submitted.</p>
-      <div class="amount">GH\u00a2 ${amount.toStringAsFixed(2)}</div>
+      <div class="amount">${formatGhs(amount)}</div>
       <div class="info-box">
         <p style="margin: 0; font-size: 13px; color: #78716c;"><strong>Method:</strong> $method</p>
       </div>
@@ -305,7 +400,7 @@ class EmailService {
     required String userName,
     required double amount,
   }) async {
-    final subject = 'Withdrawal of GH\u00a2 ${amount.toStringAsFixed(2)} processed';
+    final subject = 'Withdrawal of ${formatGhs(amount)} processed';
     await _sendEmail(
       to: userEmail,
       subject: subject,
@@ -333,7 +428,7 @@ class EmailService {
     <div class="body">
       <p>Hi $userName,</p>
       <p>Your withdrawal has been processed successfully.</p>
-      <div class="amount">GH\u00a2 ${amount.toStringAsFixed(2)}</div>
+      <div class="amount">${formatGhs(amount)}</div>
       <p style="color: #78716c; font-size: 13px; text-align: center;">The funds have been sent to your account.</p>
     </div>
     <div class="footer">
@@ -384,7 +479,7 @@ class EmailService {
       <p>Your delivery for <strong>$productTitle</strong> has been confirmed by <strong>$sellerName</strong>.</p>
       <div class="info-box">
         <p style="margin: 0; font-size: 13px; color: #78716c;">
-          Payment of <strong>GH\u00a2 ${amount.toStringAsFixed(2)}</strong> has been released to the seller.
+          Payment of <strong>${formatGhs(amount)}</strong> has been released to the seller.
         </p>
       </div>
       <p style="color: #78716c; font-size: 13px;">Thank you for using Instiy! We hope you enjoy your purchase.</p>
@@ -600,7 +695,8 @@ class EmailService {
     required String? productThumbnail,
     required String productId,
   }) async {
-    final deepLink = 'instiy://product/$productId';
+    final slug = Product.generateSlug(productTitle);
+    final deepLink = 'https://instiy.com/products/$slug-$productId';
     final thumbnailHtml = productThumbnail != null
         ? '<img src="$productThumbnail" alt="$productTitle" style="width: 100%; max-width: 400px; border-radius: 12px; margin: 16px 0;" />'
         : '';
@@ -639,7 +735,7 @@ class EmailService {
       <div class="product-card">
         $thumbnailHtml
         <div class="product-title">$productTitle</div>
-        <div class="product-price">GH\u00a2 ${productPrice.toStringAsFixed(2)}</div>
+        <div class="product-price">${formatGhs(productPrice)}</div>
       </div>
       <div style="text-align: center;">
         <a href="$deepLink" class="btn">View Product</a>
@@ -779,6 +875,65 @@ class EmailService {
   </div>
 </body>
 </html>''',
+    );
+  }
+
+  // ─── Purchase Permission ─────────────────────────────────────────
+
+  static Future<void> sendPurchasePermissionGranted({
+    required String buyerEmail,
+    required String buyerName,
+    required String sellerName,
+    required String productTitle,
+    required String code,
+  }) async {
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #6c47ff, #8B5CF6); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .code-box { background: #f5f5f4; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; border: 1px dashed #6c47ff; }
+    .code-label { font-size: 12px; text-transform: uppercase; color: #78716c; letter-spacing: 0.5px; display: block; margin-bottom: 6px; font-weight: 600; }
+    .code-value { font-size: 28px; color: #6c47ff; letter-spacing: 3.0px; font-family: monospace; font-weight: 700; }
+    .warning { color: #dc2626; font-size: 13px; font-weight: 600; text-align: center; margin-top: 16px; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Permission Granted!</h1>
+    </div>
+    <div class="content">
+      <p>Hi <strong>$buyerName</strong>,</p>
+      <p>Good news! The seller <strong>$sellerName</strong> has granted you permission to buy <strong>"$productTitle"</strong> from their institution.</p>
+      
+      <div class="code-box">
+        <span class="code-label">Access Code</span>
+        <span class="code-value">$code</span>
+      </div>
+
+      <p class="warning">⚠️ This permission is valid for 24 hours only. Please complete your purchase before it expires!</p>
+    </div>
+    <div class="footer">
+      <p>Instiy — Automated Access Notification</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: buyerEmail,
+      subject: 'Permission Granted: Buy "$productTitle"',
+      htmlBody: htmlBody,
     );
   }
 }

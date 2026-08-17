@@ -5,6 +5,9 @@ import {
   Plus, Edit2, Trash2, Loader, X, Upload, GripVertical,
   Eye, EyeOff, Search, Check, LayoutGrid, Rows3, Package, Folder
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '../components/dialog';
+import { useAlert, useConfirm } from '../components/use-alert';
+import { formatGhs } from "../utils/format";
 
 interface CuratedCollection {
   id: string;
@@ -83,6 +86,9 @@ export const CuratedCollections: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingPicker, setLoadingPicker] = useState(false);
+
+  const { showAlert, AlertComponent } = useAlert();
+  const { showConfirm, ConfirmComponent } = useConfirm();
 
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -187,7 +193,7 @@ export const CuratedCollections: React.FC = () => {
     if (!file) return;
     setUploadingImage(true);
     try { setImageUrl(await uploadToR2(file, 'curated')); }
-    catch (err: any) { alert('Error: ' + err.message); }
+    catch (err: any) { showAlert('Error', err.message, 'error'); }
     finally { setUploadingImage(false); }
   };
 
@@ -232,17 +238,18 @@ export const CuratedCollections: React.FC = () => {
       setShowModal(false);
       resetForm();
       fetchCollections();
-    } catch (err: any) { alert('Error: ' + err.message); }
+    } catch (err: any) { showAlert('Error', err.message, 'error'); }
     finally { setSubmitting(false); }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this collection?')) return;
-    try {
-      const { error } = await supabase.from('curated_collections').delete().eq('id', id);
-      if (error) throw error;
-      fetchCollections();
-    } catch (err: any) { alert('Error: ' + err.message); }
+  const handleDelete = (id: string) => {
+    showConfirm('Confirm', 'Delete this collection?', async () => {
+      try {
+        const { error } = await supabase.from('curated_collections').delete().eq('id', id);
+        if (error) throw error;
+        fetchCollections();
+      } catch (err: any) { showAlert('Error', err.message, 'error'); }
+    }, { confirmLabel: 'Delete', variant: 'danger' });
   };
 
   const toggleVisibility = async (collection: CuratedCollection) => {
@@ -250,7 +257,7 @@ export const CuratedCollections: React.FC = () => {
       const { error } = await supabase.from('curated_collections').update({ is_visible: !collection.is_visible }).eq('id', collection.id);
       if (error) throw error;
       fetchCollections();
-    } catch (err: any) { alert('Error: ' + err.message); }
+    } catch (err: any) { showAlert('Error', err.message, 'error'); }
   };
 
   const toggleItem = (id: string, type: 'product' | 'category') => {
@@ -381,243 +388,244 @@ export const CuratedCollections: React.FC = () => {
       )}
 
       {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid hsl(var(--border))', paddingBottom: '0.625rem', flexShrink: 0 }}>
-              <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: 'var(--font-title)' }}>
-                <LayoutGrid size={18} style={{ color: 'hsl(var(--accent))' }} />
-                {editingCollection ? 'Edit Collection' : 'New Collection'}
-              </h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-tertiary))', padding: '4px' }}
-                onClick={() => { setShowModal(false); resetForm(); }}><X size={18} /></button>
-            </div>
+      <Dialog open={showModal} onOpenChange={(open) => { if (!open) { setShowModal(false); resetForm(); } }}>
+        <DialogContent style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <LayoutGrid size={18} style={{ color: 'hsl(var(--accent))' }} />
+              {editingCollection ? 'Edit Collection' : 'New Collection'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCollection ? 'Update the details of this curated collection.' : 'Create a new curated collection for the home screen.'}
+            </DialogDescription>
+          </DialogHeader>
 
-            <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Title *</label>
-                  <input type="text" className="form-control" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Trending" required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Subtitle</label>
-                  <input type="text" className="form-control" value={subtitle} onChange={e => setSubtitle(e.target.value)} placeholder="e.g., Hot right now" />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.875rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Icon</label>
-                  <select className="form-control" value={icon} onChange={e => setIcon(e.target.value)}>
-                    <option value="">None</option>
-                    {iconOptions.map(i => <option key={i} value={i}>{i}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Content Type</label>
-                  <select className="form-control" value={contentType} onChange={e => { setContentType(e.target.value as any); setSelectedItems([]); }}>
-                    <option value="products">Products</option>
-                    <option value="categories">Categories</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Display Mode</label>
-                  <select className="form-control" value={displayMode} onChange={e => setDisplayMode(e.target.value as any)}>
-                    <option value="horizontal">Horizontal Scroll</option>
-                    <option value="grid">Grid</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.875rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Max Items</label>
-                  <input type="number" className="form-control" min={1} max={50} value={maxItems} onChange={e => setMaxItems(parseInt(e.target.value) || 10)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Sort Order</label>
-                  <input type="number" className="form-control" min={0} value={sortOrder} onChange={e => setSortOrder(parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-                    <input type="checkbox" checked={isVisible} onChange={e => setIsVisible(e.target.checked)} style={{ accentColor: 'hsl(var(--accent))' }} />
-                    Visible on home
-                  </label>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem', marginBottom: '1rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Expiry Date & Time (Optional)</label>
-                  <input
-                    type="datetime-local"
-                    className="form-control"
-                    value={expiresAt}
-                    onChange={e => setExpiresAt(e.target.value)}
-                  />
-                  <small style={{ color: 'hsl(var(--text-tertiary))', fontSize: '0.7rem', marginTop: '0.25rem', display: 'block' }}>
-                    Once expired, this collection will be automatically hidden from the mobile application.
-                  </small>
-                </div>
-              </div>
-
-              {/* Image upload */}
+          <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
               <div className="form-group">
-                <label className="form-label">Header Image</label>
-                <input type="file" accept="image/*" style={{ display: 'none' }} ref={fileInputRef} onChange={handleImageUpload} />
-                {imageUrl ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', background: 'hsl(var(--bg-surface))', padding: '0.625rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
-                    <img src={imageUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
-                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', color: 'hsl(var(--text-tertiary))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageUrl}</div>
-                    <button type="button" className="btn btn-danger btn-sm" onClick={() => setImageUrl('')}>Remove</button>
-                  </div>
-                ) : (
-                  <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '0.875rem' }}
-                    onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
-                    {uploadingImage ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Image</>}
-                  </button>
-                )}
+                <label className="form-label">Title *</label>
+                <input type="text" className="form-control" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Trending" required />
               </div>
-
-              {/* Items */}
               <div className="form-group">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>Items ({selectedItems.length})</label>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={openPicker}>
-                    <Plus size={12} /> Add {contentType === 'products' ? 'Products' : 'Categories'}
-                  </button>
-                </div>
-
-                {selectedItems.length === 0 ? (
-                  <div style={{ border: '2px dashed hsl(var(--border))', borderRadius: 'var(--radius-md)', padding: '1.5rem', textAlign: 'center', color: 'hsl(var(--text-tertiary))', fontSize: '0.85rem' }}>
-                    No items selected. Click "Add" to select {contentType}.
-                  </div>
-                ) : (
-                  <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius-sm)', maxHeight: '180px', overflowY: 'auto' }}>
-                    {selectedItems.map((item, index) => (
-                      <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderBottom: index < selectedItems.length - 1 ? '1px solid hsl(var(--border-subtle))' : 'none', fontSize: '0.8rem' }}>
-                        <GripVertical size={12} style={{ color: 'hsl(var(--text-tertiary))', flexShrink: 0 }} />
-                        <span style={{ color: 'hsl(var(--text-tertiary))', width: '20px', textAlign: 'center', flexShrink: 0 }}>{index + 1}</span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.product_id ? `Product: ${item.product_id.slice(0, 8)}...` : `Category: ${item.category_id?.slice(0, 8)}...`}
-                        </span>
-                        <button type="button" onClick={() => moveItem(index, 'up')} disabled={index === 0}
-                          style={{ background: 'none', border: 'none', cursor: index === 0 ? 'default' : 'pointer', color: 'hsl(var(--text-tertiary))', padding: '2px', opacity: index === 0 ? 0.3 : 1 }}>↑</button>
-                        <button type="button" onClick={() => moveItem(index, 'down')} disabled={index === selectedItems.length - 1}
-                          style={{ background: 'none', border: 'none', cursor: index === selectedItems.length - 1 ? 'default' : 'pointer', color: 'hsl(var(--text-tertiary))', padding: '2px', opacity: index === selectedItems.length - 1 ? 0.3 : 1 }}>↓</button>
-                        <button type="button" onClick={() => removeItem(index)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--danger))', padding: '2px' }}><X size={12} /></button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <label className="form-label">Subtitle</label>
+                <input type="text" className="form-control" value={subtitle} onChange={e => setSubtitle(e.target.value)} placeholder="e.g., Hot right now" />
               </div>
-
-              <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid hsl(var(--border))', flexShrink: 0 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); resetForm(); }} disabled={submitting}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Saving...' : (editingCollection ? 'Update' : 'Create')}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Product/Category Picker Modal */}
-      {showPicker && (
-        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column', maxHeight: '80vh', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem 0.75rem', borderBottom: '1px solid hsl(var(--border))', flexShrink: 0 }}>
-              <h2 style={{ fontSize: '1.1rem', fontFamily: 'var(--font-title)' }}>
-                Select {contentType === 'products' ? 'Products' : 'Categories'}
-              </h2>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--text-tertiary))', padding: '4px' }}
-                onClick={() => setShowPicker(false)}><X size={18} /></button>
             </div>
 
-            <div style={{ padding: '0.75rem 1.5rem', flexShrink: 0 }}>
-              {contentType === 'products' && (
-                <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
-                  <Search size={14} style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--text-tertiary))' }} />
-                  <input type="text" className="form-control" value={pickerSearch}
-                    onChange={e => { setPickerSearch(e.target.value); fetchProducts(e.target.value); }}
-                    placeholder="Search products..." style={{ paddingLeft: '2rem' }} />
-                </div>
-              )}
-              <div style={{ fontSize: '0.8rem', color: 'hsl(var(--text-tertiary))' }}>{selectedItems.length} selected</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.875rem' }}>
+              <div className="form-group">
+                <label className="form-label">Icon</label>
+                <select className="form-control" value={icon} onChange={e => setIcon(e.target.value)}>
+                  <option value="">None</option>
+                  {iconOptions.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Content Type</label>
+                <select className="form-control" value={contentType} onChange={e => { setContentType(e.target.value as any); setSelectedItems([]); }}>
+                  <option value="products">Products</option>
+                  <option value="categories">Categories</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Display Mode</label>
+                <select className="form-control" value={displayMode} onChange={e => setDisplayMode(e.target.value as any)}>
+                  <option value="horizontal">Horizontal Scroll</option>
+                  <option value="grid">Grid</option>
+                </select>
+              </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem', minHeight: 0 }}>
-              {loadingPicker ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-                  <Loader className="spin" size={24} style={{ color: 'hsl(var(--accent))' }} />
-                </div>
-              ) : contentType === 'products' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  {products.map(product => {
-                    const isSelected = selectedItems.some(i => i.product_id === product.id);
-                    const thumb = getProductThumbnail(product);
-                    return (
-                      <button key={product.id} type="button" onClick={() => toggleItem(product.id, 'product')}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
-                          background: isSelected ? 'hsl(var(--accent-dim))' : 'hsl(var(--bg-surface))',
-                          border: `1.5px solid ${isSelected ? 'hsl(var(--accent))' : 'hsl(var(--border))'}`,
-                          borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
-                          transition: 'border-color 150ms, background 150ms',
-                        }}>
-                        {thumb ? (
-                          <img src={thumb} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'hsl(var(--bg-card))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <Package size={14} style={{ color: 'hsl(var(--text-tertiary))' }} />
-                          </div>
-                        )}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.title}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>GH₵{product.price.toFixed(2)}</div>
-                        </div>
-                        {isSelected && <Check size={14} style={{ color: 'hsl(var(--accent))', flexShrink: 0 }} />}
-                      </button>
-                    );
-                  })}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.875rem' }}>
+              <div className="form-group">
+                <label className="form-label">Max Items</label>
+                <input type="number" className="form-control" min={1} max={50} value={maxItems} onChange={e => setMaxItems(parseInt(e.target.value) || 10)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Sort Order</label>
+                <input type="number" className="form-control" min={0} value={sortOrder} onChange={e => setSortOrder(parseInt(e.target.value) || 0)} />
+              </div>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={isVisible} onChange={e => setIsVisible(e.target.checked)} style={{ accentColor: 'hsl(var(--accent))' }} />
+                  Visible on home
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem', marginBottom: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">Expiry Date & Time (Optional)</label>
+                <input
+                  type="datetime-local"
+                  className="form-control"
+                  value={expiresAt}
+                  onChange={e => setExpiresAt(e.target.value)}
+                />
+                <small style={{ color: 'hsl(var(--text-tertiary))', fontSize: '0.7rem', marginTop: '0.25rem', display: 'block' }}>
+                  Once expired, this collection will be automatically hidden from the mobile application.
+                </small>
+              </div>
+            </div>
+
+            {/* Image upload */}
+            <div className="form-group">
+              <label className="form-label">Header Image</label>
+              <input type="file" accept="image/*" style={{ display: 'none' }} ref={fileInputRef} onChange={handleImageUpload} />
+              {imageUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', background: 'hsl(var(--bg-surface))', padding: '0.625rem', borderRadius: 'var(--radius-sm)', border: '1px solid hsl(var(--border))' }}>
+                  <img src={imageUrl} alt="Preview" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '0.75rem', color: 'hsl(var(--text-tertiary))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageUrl}</div>
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => setImageUrl('')}>Remove</button>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  {categories.map(category => {
-                    const isSelected = selectedItems.some(i => i.category_id === category.id);
-                    return (
-                      <button key={category.id} type="button" onClick={() => toggleItem(category.id, 'category')}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
-                          background: isSelected ? 'hsl(var(--accent-dim))' : 'hsl(var(--bg-surface))',
-                          border: `1.5px solid ${isSelected ? 'hsl(var(--accent))' : 'hsl(var(--border))'}`,
-                          borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
-                          transition: 'border-color 150ms, background 150ms',
-                        }}>
-                        {category.image_url ? (
-                          <img src={category.image_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: getGradient(category.color_index), display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', flexShrink: 0 }}>
-                            {category.name.substring(0, 2)}
-                          </div>
-                        )}
-                        <div style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category.name}</div>
-                        {isSelected && <Check size={14} style={{ color: 'hsl(var(--accent))', flexShrink: 0 }} />}
-                      </button>
-                    );
-                  })}
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', borderStyle: 'dashed', borderWidth: '2px', padding: '0.875rem' }}
+                  onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
+                  {uploadingImage ? <><Loader size={16} className="spin" /> Uploading...</> : <><Upload size={16} /> Upload Image</>}
+                </button>
+              )}
+            </div>
+
+            {/* Items */}
+            <div className="form-group">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>Items ({selectedItems.length})</label>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={openPicker}>
+                  <Plus size={12} /> Add {contentType === 'products' ? 'Products' : 'Categories'}
+                </button>
+              </div>
+
+              {selectedItems.length === 0 ? (
+                <div style={{ border: '2px dashed hsl(var(--border))', borderRadius: 'var(--radius-md)', padding: '1.5rem', textAlign: 'center', color: 'hsl(var(--text-tertiary))', fontSize: '0.85rem' }}>
+                  No items selected. Click "Add" to select {contentType}.
+                </div>
+              ) : (
+                <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius-sm)', maxHeight: '180px', overflowY: 'auto' }}>
+                  {selectedItems.map((item, index) => (
+                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderBottom: index < selectedItems.length - 1 ? '1px solid hsl(var(--border-subtle))' : 'none', fontSize: '0.8rem' }}>
+                      <GripVertical size={12} style={{ color: 'hsl(var(--text-tertiary))', flexShrink: 0 }} />
+                      <span style={{ color: 'hsl(var(--text-tertiary))', width: '20px', textAlign: 'center', flexShrink: 0 }}>{index + 1}</span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.product_id ? `Product: ${item.product_id.slice(0, 8)}...` : `Category: ${item.category_id?.slice(0, 8)}...`}
+                      </span>
+                      <button type="button" onClick={() => moveItem(index, 'up')} disabled={index === 0}
+                        style={{ background: 'none', border: 'none', cursor: index === 0 ? 'default' : 'pointer', color: 'hsl(var(--text-tertiary))', padding: '2px', opacity: index === 0 ? 0.3 : 1 }}>&#8593;</button>
+                      <button type="button" onClick={() => moveItem(index, 'down')} disabled={index === selectedItems.length - 1}
+                        style={{ background: 'none', border: 'none', cursor: index === selectedItems.length - 1 ? 'default' : 'pointer', color: 'hsl(var(--text-tertiary))', padding: '2px', opacity: index === selectedItems.length - 1 ? 0.3 : 1 }}>&#8595;</button>
+                      <button type="button" onClick={() => removeItem(index)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--danger))', padding: '2px' }}><X size={12} /></button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            <div style={{ padding: '0.75rem 1.5rem 1.25rem', borderTop: '1px solid hsl(var(--border))', flexShrink: 0 }}>
-              <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowPicker(false)}>
-                Done ({selectedItems.length} selected)
-              </button>
-            </div>
+            <DialogFooter>
+              <button type="button" className="btn btn-secondary" onClick={() => { setShowModal(false); resetForm(); }} disabled={submitting}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Saving...' : (editingCollection ? 'Update' : 'Create')}</button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Product/Category Picker Modal */}
+      <Dialog open={showPicker} onOpenChange={setShowPicker}>
+        <DialogContent style={{ maxWidth: '700px', display: 'flex', flexDirection: 'column', maxHeight: '80vh', padding: 0 }}>
+          <DialogHeader style={{ padding: '1.25rem 1.5rem 0.75rem' }}>
+            <DialogTitle>
+              Select {contentType === 'products' ? 'Products' : 'Categories'}
+            </DialogTitle>
+            <DialogDescription>
+              Browse and select {contentType === 'products' ? 'products' : 'categories'} to include in this collection.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div style={{ padding: '0.75rem 1.5rem', flexShrink: 0 }}>
+            {contentType === 'products' && (
+              <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
+                <Search size={14} style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--text-tertiary))' }} />
+                <input type="text" className="form-control" value={pickerSearch}
+                  onChange={e => { setPickerSearch(e.target.value); fetchProducts(e.target.value); }}
+                  placeholder="Search products..." style={{ paddingLeft: '2rem' }} />
+              </div>
+            )}
+            <div style={{ fontSize: '0.8rem', color: 'hsl(var(--text-tertiary))' }}>{selectedItems.length} selected</div>
           </div>
-        </div>
-      )}
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem', minHeight: 0 }}>
+            {loadingPicker ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                <Loader className="spin" size={24} style={{ color: 'hsl(var(--accent))' }} />
+              </div>
+            ) : contentType === 'products' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                {products.map(product => {
+                  const isSelected = selectedItems.some(i => i.product_id === product.id);
+                  const thumb = getProductThumbnail(product);
+                  return (
+                    <button key={product.id} type="button" onClick={() => toggleItem(product.id, 'product')}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
+                        background: isSelected ? 'hsl(var(--accent-dim))' : 'hsl(var(--bg-surface))',
+                        border: `1.5px solid ${isSelected ? 'hsl(var(--accent))' : 'hsl(var(--border))'}`,
+                        borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
+                        transition: 'border-color 150ms, background 150ms',
+                      }}>
+                      {thumb ? (
+                        <img src={thumb} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'hsl(var(--bg-card))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Package size={14} style={{ color: 'hsl(var(--text-tertiary))' }} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.title}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'hsl(var(--text-tertiary))' }}>{formatGhs(product.price)}</div>
+                      </div>
+                      {isSelected && <Check size={14} style={{ color: 'hsl(var(--accent))', flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                {categories.map(category => {
+                  const isSelected = selectedItems.some(i => i.category_id === category.id);
+                  return (
+                    <button key={category.id} type="button" onClick={() => toggleItem(category.id, 'category')}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.625rem',
+                        background: isSelected ? 'hsl(var(--accent-dim))' : 'hsl(var(--bg-surface))',
+                        border: `1.5px solid ${isSelected ? 'hsl(var(--accent))' : 'hsl(var(--border))'}`,
+                        borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
+                        transition: 'border-color 150ms, background 150ms',
+                      }}>
+                      {category.image_url ? (
+                        <img src={category.image_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: getGradient(category.color_index), display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', flexShrink: 0 }}>
+                          {category.name.substring(0, 2)}
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category.name}</div>
+                      {isSelected && <Check size={14} style={{ color: 'hsl(var(--accent))', flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter style={{ padding: '0.75rem 1.5rem 1.25rem' }}>
+            <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowPicker(false)}>
+              Done ({selectedItems.length} selected)
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {AlertComponent}
+      {ConfirmComponent}
     </div>
   );
 };

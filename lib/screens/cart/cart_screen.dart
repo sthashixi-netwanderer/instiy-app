@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/cart_provider.dart';
@@ -5,7 +6,7 @@ import '../../providers/providers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
-import '../../widgets/app_bottom_nav.dart';
+import '../../widgets/adaptive_nav.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/skeleton.dart';
 import '../../utils/responsive.dart';
@@ -36,6 +37,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.general,
         backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Cart')),
         child: Center(
           child: Column(
@@ -59,8 +61,17 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Cart')),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 1),
+      bottomNavigationBar: cartProv.isLoading || cartProv.cart.items.isEmpty
+          ? const AdaptiveNav(currentIndex: 1)
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildBottomBar(cartProv),
+                const AdaptiveNav(currentIndex: 1),
+              ],
+            ),
       child: cartProv.isLoading
           ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
           : cartProv.cart.items.isEmpty
@@ -100,26 +111,24 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   }
 
   Widget _buildCartContent(CartProvider provider) {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.separated(
-            padding: context.rAll(16),
-            itemCount: provider.cart.items.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final item = provider.cart.items[index];
-              return _CartItemCard(
-                item: item,
-                onIncrement: () => provider.updateQuantity(item.id, item.quantity + 1),
-                onDecrement: () => provider.updateQuantity(item.id, item.quantity - 1),
-                onRemove: () => provider.removeItem(item.id),
-              );
-            },
-          ),
-        ),
-        _buildBottomBar(provider),
-      ],
+    return ListView.separated(
+      padding: EdgeInsets.fromLTRB(
+        context.rw(16),
+        MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16),
+        context.rw(16),
+        context.rh(120), // space for checkout bar + bottom nav
+      ),
+      itemCount: provider.cart.items.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final item = provider.cart.items[index];
+        return _CartItemCard(
+          item: item,
+          onIncrement: () => provider.updateQuantity(item.id, item.quantity + 1),
+          onDecrement: () => provider.updateQuantity(item.id, item.quantity - 1),
+          onRemove: () => provider.removeItem(item.id),
+        );
+      },
     );
   }
 
@@ -130,36 +139,34 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         color: AppTheme.pureSurface,
         border: Border(top: BorderSide(color: AppTheme.whisperBorder)),
       ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Total', style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13))),
-                  Text(
-                    'GH\u00a2 ${provider.cart.totalAmount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: context.rsp(22),
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.charcoalInk,
-                    ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Total', style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13))),
+                Text(
+                  'GH\u00a2 ${provider.cart.totalAmount.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontSize: context.rsp(22),
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.charcoalInk,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            SizedBox(
-              width: context.rw(160),
-              height: context.rh(50),
-              child: ShadButton(
-                onPressed: () => _checkSellersAndCheckout(context, provider),
-                child: const Text('Checkout', style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
+          ),
+          SizedBox(
+            width: context.rw(160),
+            height: context.rh(50),
+            child: ShadButton(
+              onPressed: () => _checkSellersAndCheckout(context, provider),
+              child: const Text('Checkout', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -172,24 +179,25 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         .toList();
 
     if (sellerIds.isEmpty) {
-      Navigator.of(context).pushNamed('/checkout');
+      await Navigator.of(context).pushNamed('/checkout');
       return;
     }
 
     try {
-      // Show loading indicator
-      showDialog(
+      // Show loading indicator (don't await — it blocks until dismissed)
+      unawaited(showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(child: CircularProgressIndicator(color: AppTheme.accent)),
-      );
+      ));
 
       final response = await SupabaseService.client
           .from('users')
           .select('id, full_name, is_verified')
           .inFilter('id', sellerIds);
 
-      if (context.mounted) Navigator.of(context).pop(); // Dismiss loading
+      // Dismiss loading dialog
+      if (context.mounted) Navigator.of(context).pop();
 
       final unverifiedSellers = <String>[];
       for (final row in response) {
@@ -223,18 +231,18 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
         if (proceed == true) {
           if (context.mounted) {
-            Navigator.of(context).pushNamed('/checkout');
+            await Navigator.of(context).pushNamed('/checkout');
           }
         }
       } else {
         if (context.mounted) {
-          Navigator.of(context).pushNamed('/checkout');
+          await Navigator.of(context).pushNamed('/checkout');
         }
       }
     } catch (e) {
       if (context.mounted) {
         // Fallback
-        Navigator.of(context).pushNamed('/checkout');
+        await Navigator.of(context).pushNamed('/checkout');
       }
     }
   }

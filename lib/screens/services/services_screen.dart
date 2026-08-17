@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,32 +52,27 @@ class _ServicesScreenState extends State<ServicesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Services')),
-      body: Column(
+      body: Stack(
         children: [
-          Container(
-            padding: context.rPadding(horizontal: 16, vertical: 8),
-            color: AppTheme.pureSurface,
-            child: ShadInput(
-              controller: _searchCtrl,
-              placeholder: const Text('Search services...'),
-              leading: Icon(LucideIcons.search, size: context.ri(20)),
-              textInputAction: TextInputAction.search,
-              onSubmitted: (value) {
-                setState(() => _searchQuery = value);
-                _loadServices();
-              },
-            ),
-          ),
-          Expanded(
+          // Content extends behind the search bar
+          Positioned.fill(
             child: _isLoading
-                ? Padding(padding: context.rAll(16), child: const ListSkeleton(count: 6))
+                ? Padding(
+                    padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 72, 16, 16),
+                    child: const ListSkeleton(count: 6),
+                  )
                 : _services.isEmpty
-                    ? _buildEmptyState()
+                    ? Padding(
+                        padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight + 72),
+                        child: _buildEmptyState(),
+                      )
                     : RefreshIndicator(
+                        edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight + 56,
                         onRefresh: _loadServices,
                         child: ListView.separated(
-                          padding: context.rAll(16),
+                          padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 72, 16, 16),
                           itemCount: _services.length,
                           separatorBuilder: (_, _) =>
                               SizedBox(height: context.rh(12)),
@@ -93,6 +89,25 @@ class _ServicesScreenState extends State<ServicesScreen> {
                           },
                         ),
                       ),
+          ),
+          // Floating search bar (transparent to content behind)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(8),
+            left: context.rw(16),
+            right: context.rw(16),
+            child: Material(
+              color: Colors.transparent,
+              child: ShadInput(
+                controller: _searchCtrl,
+                placeholder: const Text('Search services...'),
+                leading: Icon(LucideIcons.search, size: context.ri(20)),
+                textInputAction: TextInputAction.search,
+                onSubmitted: (value) {
+                  setState(() => _searchQuery = value);
+                  _loadServices();
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -232,9 +247,10 @@ class _ServiceDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppTheme.canvasWhite,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: Text(service.title)),
       body: ListView(
-        padding: context.rAll(16),
+        padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
         children: [
           if (service.imageUrls.isNotEmpty)
             ClipRRect(
