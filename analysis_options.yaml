@@ -19,6 +19,7 @@ analyzer:
     # Demote to info so they don't block CI; still visible in IDE.
     use_build_context_synchronously: info
     unawaited_futures: info
+    unawaited_return_in_try_block: info
 
 linter:
   rules:
