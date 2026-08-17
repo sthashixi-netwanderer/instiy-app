@@ -422,7 +422,9 @@ class MessageService {
       // Cache the raw JSON data offline
       await LocalDbService.instance.cacheMessages(response);
 
-      return Isolate.run(() => _parseMessagesList(response));
+      // Await inside the try so an isolate parse failure falls back to the
+      // SQLite cache instead of propagating to the caller.
+      return await Isolate.run(() => _parseMessagesList(response));
     } catch (e) {
       // Fallback to SQLite cache if offline or slow network
       final cached = await LocalDbService.instance.getCachedMessages(

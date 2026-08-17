@@ -87,7 +87,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         _isLocked = false;
         _checkingLock = false;
       });
-      ref.read(walletProvider).loadWallet();
+      unawaited(ref.read(walletProvider).loadWallet());
     } else {
       setState(() {
         _isLocked = true;
@@ -189,7 +189,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                   );
                   if (authed && mounted) {
                     setState(() => _isLocked = false);
-                    provider.loadWallet();
+                    unawaited(provider.loadWallet());
                   }
                 },
                 leading: Icon(LucideIcons.fingerprint, size: context.ri(20)),
@@ -331,7 +331,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           ),
           SizedBox(height: context.rh(8)),
           Text(
-            '${formatGhs(provider.availableBalance)}',
+            formatGhs(provider.availableBalance),
             style: TextStyle(
               color: Colors.white,
               fontSize: context.rsp(_balanceFontSize(provider.availableBalance)),
@@ -343,12 +343,12 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             children: [
               _BalanceStat(
                 label: 'Total',
-                value: '${formatGhs(provider.wallet?.balance ?? 0)}',
+                value: formatGhs(provider.wallet?.balance ?? 0),
               ),
               SizedBox(width: context.rw(24)),
               _BalanceStat(
                 label: 'Pending',
-                value: '${formatGhs(provider.pendingBalance)}',
+                value: formatGhs(provider.pendingBalance),
                 color: Colors.amberAccent,
               ),
             ],
@@ -1209,11 +1209,11 @@ class _TransactionTile extends StatelessWidget {
           _DetailRow(label: 'Source', value: tx.source ?? '-'),
           _DetailRow(
             label: 'Balance Before',
-            value: '${formatGhs(tx.balanceBefore)}',
+            value: formatGhs(tx.balanceBefore),
           ),
           _DetailRow(
             label: 'Balance After',
-            value: '${formatGhs(tx.balanceAfter)}',
+            value: formatGhs(tx.balanceAfter),
           ),
           _DetailRow(
             label: 'Date',

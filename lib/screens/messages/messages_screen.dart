@@ -456,7 +456,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       bgWidget = Image.file(
         File(bg.localImagePath!),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
       );
     } else {
       return const SizedBox.shrink();
@@ -2727,9 +2727,9 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
           await _player!.dispose();
           _player = null;
           _audioSource = null;
-          _stateSub?.cancel();
-          _posSub?.cancel();
-          _durSub?.cancel();
+          await _stateSub?.cancel();
+          await _posSub?.cancel();
+          await _durSub?.cancel();
           await _initPlayer();
         }
         if (_audioSource != null) {

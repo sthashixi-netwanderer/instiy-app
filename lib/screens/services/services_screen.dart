@@ -401,11 +401,11 @@ class _ServiceDetailScreen extends ConsumerWidget {
     }
 
     // Show a loading indicator
-    showDialog(
+    unawaited(showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+    ));
 
     try {
       final msgProv = ref.read(messageProvider);

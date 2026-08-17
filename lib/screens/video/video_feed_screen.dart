@@ -788,7 +788,7 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '${formatGhs(widget.product.effectivePrice)}',
+                          formatGhs(widget.product.effectivePrice),
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,

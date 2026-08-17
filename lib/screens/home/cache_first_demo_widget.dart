@@ -31,7 +31,7 @@ class CacheFirstDemoWidget extends ConsumerWidget {
             return ListTile(
               leading: _buildThumbnail(product.effectiveThumbnail),
               title: Text(product.title),
-              subtitle: Text('${formatCurrency(product.effectivePrice)}'),
+              subtitle: Text(formatCurrency(product.effectivePrice)),
               onTap: () {
                 // Navigate to detail
               },

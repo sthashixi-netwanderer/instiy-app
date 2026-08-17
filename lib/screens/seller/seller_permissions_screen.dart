@@ -519,7 +519,7 @@ class _PermissionResultCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${formatGhs(productPrice)}',
+                      formatGhs(productPrice),
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

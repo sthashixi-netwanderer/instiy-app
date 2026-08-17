@@ -263,7 +263,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               children: [
                 const Text('Subtotal: ', style: TextStyle(color: AppTheme.mutedSteel)),
                 Text(
-                  '${formatGhs(_order!.totalAmount - _order!.deliveryFee)}',
+                  formatGhs(_order!.totalAmount - _order!.deliveryFee),
                   style: const TextStyle(color: AppTheme.charcoalInk),
                 ),
               ],
@@ -272,7 +272,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               children: [
                 const Text('Delivery Fee: ', style: TextStyle(color: AppTheme.mutedSteel)),
                 Text(
-                  '${formatGhs(_order!.deliveryFee)}',
+                  formatGhs(_order!.deliveryFee),
                   style: const TextStyle(color: AppTheme.charcoalInk),
                 ),
               ],
@@ -282,7 +282,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             children: [
               const Text('Total: ', style: TextStyle(color: AppTheme.mutedSteel)),
               Text(
-                '${formatGhs(_order!.totalAmount)}',
+                formatGhs(_order!.totalAmount),
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: context.rsp(16)),
               ),
             ],

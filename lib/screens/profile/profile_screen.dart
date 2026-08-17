@@ -478,7 +478,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${formatGhs(product.effectivePrice)}',
+                                        formatGhs(product.effectivePrice),
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: context.rsp(13),

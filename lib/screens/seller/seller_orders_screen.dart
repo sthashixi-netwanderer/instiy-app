@@ -47,7 +47,7 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
         _isLocked = false;
         _checkingLock = false;
       });
-      _loadOrders();
+      unawaited(_loadOrders());
       _subscribeToRealtime();
     } else {
       setState(() {
@@ -227,7 +227,7 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
       ShadToaster.of(context).show(
         ShadToast(backgroundColor: AppTheme.successMoss, title: Text('${item.productTitle} marked as delivered')),
       );
-      _loadOrders();
+      unawaited(_loadOrders());
     } catch (e) {
       if (!mounted) return;
       ShadToaster.of(context).show(
@@ -288,7 +288,7 @@ return AppTheme.showGlassDialog<String>(
             title: Text('Verified! GH\u00a2 ${(result['amount'] as num?)?.toStringAsFixed(2) ?? ''} released to wallet.'),
           ),
         );
-        _loadOrders();
+        unawaited(_loadOrders());
       } else {
         ShadToaster.of(context).show(
           ShadToast(backgroundColor: AppTheme.destructive, title: Text(result['error'] as String? ?? 'Verification failed')),
@@ -360,7 +360,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
       ShadToaster.of(context).show(
         ShadToast(backgroundColor: AppTheme.warningAmber, title: Text('${item.productTitle} cancelled. Buyer refunded.')),
       );
-      _loadOrders();
+      unawaited(_loadOrders());
     } catch (e) {
       if (!mounted) return;
       ShadToaster.of(context).show(
@@ -424,7 +424,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
                   );
                   if (authed && mounted) {
                     setState(() => _isLocked = false);
-                    _loadOrders();
+                    unawaited(_loadOrders());
                     _subscribeToRealtime();
                   }
                 },

@@ -102,11 +102,11 @@ class _HomeCarouselState extends State<HomeCarousel> with WidgetsBindingObserver
       final controller = VideoPlayerController.networkUrl(Uri.parse(slide.mediaUrl));
       _videoControllers[index] = controller;
       await controller.initialize();
-      controller.setVolume(0); // muted by default
-      controller.setLooping(false); // no loop — we advance on completion
+      unawaited(controller.setVolume(0)); // muted by default
+      unawaited(controller.setLooping(false)); // no loop — we advance on completion
       controller.addListener(() => _onVideoProgress(index, controller));
       if (index == _currentPage && mounted) {
-        controller.play();
+        unawaited(controller.play());
         setState(() {});
       }
     } catch (_) {}

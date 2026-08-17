@@ -369,7 +369,7 @@ class _OrderCardState extends State<_OrderCard> {
                                   color: AppTheme.mutedSteel,
                                   fontSize: context.rsp(13))),
                           Text(
-                            '${formatGhs(widget.order.totalAmount)}',
+                            formatGhs(widget.order.totalAmount),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: AppTheme.charcoalInk,

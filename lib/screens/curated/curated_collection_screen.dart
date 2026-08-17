@@ -487,7 +487,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${formatGhs(product.effectivePrice)}',
+                            formatGhs(product.effectivePrice),
                             style: TextStyle(
                               fontSize: context.rsp(14),
                               fontWeight: FontWeight.bold,
@@ -495,7 +495,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                             ),
                           ),
                           Text(
-                            '${formatGhs(product.effectivePrice)}',
+                            formatGhs(product.effectivePrice),
                             style: TextStyle(
                               fontSize: context.rsp(10),
                               color: AppTheme.mutedSteel,
@@ -506,7 +506,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                       )
                     else
                       Text(
-                        '${formatGhs(product.effectivePrice)}',
+                        formatGhs(product.effectivePrice),
                         style: TextStyle(
                           fontSize: context.rsp(14),
                           fontWeight: FontWeight.bold,

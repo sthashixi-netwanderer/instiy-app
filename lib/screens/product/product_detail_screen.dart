@@ -1695,7 +1695,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             status: ProductStatus.sold,
                             stockQuantity: 0,
                           );
-                          _loadProduct();
+                          unawaited(_loadProduct());
                         }
                       } else {
                         final qty = await _showMarkAsSoldDialog(stock);
@@ -1706,7 +1706,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             stockQuantity: newStock,
                             status: newStock <= 0 ? ProductStatus.sold : null,
                           );
-                          _loadProduct();
+                          unawaited(_loadProduct());
                         }
                       }
                     },

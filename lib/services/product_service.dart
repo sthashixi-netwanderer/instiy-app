@@ -464,7 +464,8 @@ class ProductService {
 
       if ((response as List).isNotEmpty) {
         final ids = response.map((p) => p['id'] as String).toList();
-        return _fetchProductDetails(ids);
+        // Awaited so a fetch failure falls through to the fallback below.
+        return await _fetchProductDetails(ids);
       }
     } catch (_) {}
 
@@ -494,7 +495,8 @@ class ProductService {
 
       if ((response as List).isNotEmpty) {
         final ids = response.map((p) => p['id'] as String).toList();
-        return _fetchProductDetails(ids);
+        // Awaited so a fetch failure falls through to the fallback below.
+        return await _fetchProductDetails(ids);
       }
     } catch (_) {}
 

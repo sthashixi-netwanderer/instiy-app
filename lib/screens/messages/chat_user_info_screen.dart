@@ -55,7 +55,7 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
     if (mounted &&
         _otherUser?.university != null &&
         _otherUser!.university!.isNotEmpty) {
-      _loadInstitutionLogo(_otherUser!.university!);
+      unawaited(_loadInstitutionLogo(_otherUser!.university!));
     }
   }
 

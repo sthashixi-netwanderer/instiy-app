@@ -252,7 +252,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${formatGhs(lineTotal)}',
+                                  formatGhs(lineTotal),
                                   style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
                               ],
@@ -351,7 +351,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                       ),
                                     ),
                                     Text(
-                                      '${formatGhs(itemDeliveryFee)}',
+                                      formatGhs(itemDeliveryFee),
                                       style: TextStyle(
                                         fontSize: context.rsp(12),
                                         color: AppTheme.mutedSteel,
@@ -388,7 +388,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 ),
                               ),
                               Text(
-                                '${formatGhs(item.totalPrice)}',
+                                formatGhs(item.totalPrice),
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -580,7 +580,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     Text('Wallet Balance',
                         style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13))),
                     Text(
-                      '${formatGhs(walletBalance)}',
+                      formatGhs(walletBalance),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: hasWalletBalance ? AppTheme.successMoss : AppTheme.destructive,

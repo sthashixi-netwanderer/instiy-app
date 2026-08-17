@@ -304,7 +304,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${formatGhs(product.effectivePrice)}',
+                            formatGhs(product.effectivePrice),
                             style: TextStyle(
                               fontSize: context.rsp(16),
                               fontWeight: FontWeight.bold,
@@ -312,7 +312,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                             ),
                           ),
                           Text(
-                            '${formatGhs(product.effectivePrice)}',
+                            formatGhs(product.effectivePrice),
                             style: TextStyle(
                               fontSize: context.rsp(12),
                               color: AppTheme.mutedSteel,
@@ -323,7 +323,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       )
                     else
                       Text(
-                        '${formatGhs(product.effectivePrice)}',
+                        formatGhs(product.effectivePrice),
                         style: TextStyle(
                           fontSize: context.rsp(16),
                           fontWeight: FontWeight.bold,

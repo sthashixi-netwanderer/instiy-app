@@ -151,11 +151,11 @@ class _MediaViewerState extends State<MediaViewer>
             _hasAudioMap[index] = hasAudio;
           });
         }
-        vc.setLooping(true); // ignore: unawaited_futures
-        vc.setVolume(
+        unawaited(vc.setLooping(true));
+        unawaited(vc.setVolume(
           (_isMuted || !hasAudio) ? 0.0 : 1.0,
-        ); // ignore: unawaited_futures
-        vc.play(); // ignore: unawaited_futures
+        ));
+        unawaited(vc.play());
       }
     });
   }
