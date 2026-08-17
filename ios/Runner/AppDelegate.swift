@@ -4,7 +4,7 @@ import Firebase
 import FirebaseMessaging
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, MessagingDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -21,5 +21,9 @@ import FirebaseMessaging
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+  }
+
+  func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+    debugPrint("FCM token: \(fcmToken ?? "nil")")
   }
 }
