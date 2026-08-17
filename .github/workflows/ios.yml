@@ -3,7 +3,7 @@ name: iOS Build & TestFlight
 on:
   workflow_dispatch:
   push:
-    branches: [main, develop]
+    branches: [instiy]
     paths:
       - 'ios/**'
       - 'lib/**'
@@ -11,7 +11,7 @@ on:
       - 'pubspec.lock'
       - '.github/workflows/ios.yml'
   pull_request:
-    branches: [main]
+    branches: [instiy]
 
 concurrency:
   group: ios-${{ github.workflow }}-${{ github.ref }}
@@ -86,7 +86,7 @@ jobs:
   beta:
     name: Build, sign & upload to TestFlight
     needs: test
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/instiy'
     runs-on: macos-latest
     steps:
       - name: Checkout
