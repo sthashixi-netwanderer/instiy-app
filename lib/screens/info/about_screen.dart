@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../utils/responsive.dart';
 import '../../config/app_theme.dart';
 
@@ -102,10 +104,51 @@ class AboutScreen extends StatelessWidget {
           ),
           SizedBox(height: context.rh(24)),
 
-          Center(
-            child: Text('Version 1.0.0', style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
-          ),
+          // Hidden 7-tap trigger on the version label: forces a test crash
+          // to activate the Crashlytics dashboard (dev/diagnostics only).
+          _CrashTestVersionText(),
         ],
+      ),
+    );
+  }
+}
+
+class _CrashTestVersionText extends StatefulWidget {
+  @override
+  State<_CrashTestVersionText> createState() => _CrashTestVersionTextState();
+}
+
+class _CrashTestVersionTextState extends State<_CrashTestVersionText> {
+  static const _tapsNeeded = 7;
+  int _taps = 0;
+
+  void _onTap() {
+    _taps++;
+    if (_taps < 3) return;
+    if (_taps < _tapsNeeded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_tapsNeeded - _taps} more taps to trigger test crash')),
+      );
+      return;
+    }
+    _taps = 0;
+    if (Firebase.apps.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Firebase not initialized — crash test unavailable')),
+      );
+      return;
+    }
+    // Official Crashlytics test-crash API: throws a fatal error that the
+    // SDK records and reports on the next app launch.
+    FirebaseCrashlytics.instance.crash();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: _onTap,
+        child: Text('Version 1.0.0', style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
       ),
     );
   }
