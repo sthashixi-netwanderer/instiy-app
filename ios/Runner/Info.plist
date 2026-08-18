@@ -45,6 +45,13 @@
 	<!-- Location — business profile maps -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Instiy needs your location to show nearby campus stores.</string>
+	<!-- ITMS-90683: permission_handler_apple's binary references the
+	     "Always" location APIs even though the app only requests
+	     when-in-use; Apple's scanner requires these strings regardless. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Instiy uses your location to show nearby campus stores. Location is only used while the app is open.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Instiy uses your location to show nearby campus stores. Location is only used while the app is open.</string>
 	<!-- Deep Links — URL schemes -->
 	<key>CFBundleURLTypes</key>
 	<array>
