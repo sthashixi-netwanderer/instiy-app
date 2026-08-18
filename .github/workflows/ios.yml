@@ -220,6 +220,26 @@ jobs:
             --export-options-plist=ios/ExportOptions.plist \
             --build-number=${{ github.run_number }}
 
+      - name: Upload dSYMs to Firebase Crashlytics
+        working-directory: ios
+        run: |
+          ARCHIVE_DSYMS="$GITHUB_WORKSPACE/build/ios/archive/Runner.xcarchive/dSYMs"
+          if [ ! -d "$ARCHIVE_DSYMS" ]; then
+            echo "No dSYMs found at $ARCHIVE_DSYMS; skipping upload"
+            exit 0
+          fi
+          UPLOAD_SCRIPT="$(find . -path "*FirebaseCrashlytics/upload-symbols" -type f 2>/dev/null | head -n1)"
+          if [ -z "$UPLOAD_SCRIPT" ]; then
+            UPLOAD_SCRIPT="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*firebase-ios-sdk/Crashlytics/upload-symbols" -type f 2>/dev/null | head -n1)"
+          fi
+          if [ -n "$UPLOAD_SCRIPT" ]; then
+            echo "Using upload-symbols at: $UPLOAD_SCRIPT"
+            "$UPLOAD_SCRIPT" -gsp Runner/GoogleService-Info.plist -p ios "$ARCHIVE_DSYMS" \
+              || echo "dSYM upload failed (non-fatal; Xcode Organizer reports stay symbolicated)"
+          else
+            echo "upload-symbols binary not found; skipping (crashes in Crashlytics may be unsymbolicated)"
+          fi
+
       - name: Locate IPA
         id: ipa
         run: echo "path=$GITHUB_WORKSPACE/$(find build/ios/ipa -name '*.ipa' | head -n1)" >> "$GITHUB_OUTPUT"

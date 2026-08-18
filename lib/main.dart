@@ -13,6 +13,7 @@ import 'providers/providers.dart';
 import 'services/secrets_service.dart';
 import 'services/local_notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'models/product_model.dart';
 import 'models/business_profile_model.dart';
@@ -122,6 +123,15 @@ Future<void> _initializeDeferred() async {
         debugPrint('LocalNotificationService init failed (deferred): $e');
       }),
     ]);
+
+    // Crashlytics: forward uncaught Dart errors once Firebase is ready.
+    // Native crashes are captured by the Crashlytics SDK itself.
+    FlutterError.onError =
+        FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
 
     // FCM listeners depend on Firebase being initialized.
     try {
