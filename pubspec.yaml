@@ -117,6 +117,9 @@ dependency_overrides:
   matcher: 0.12.20
   meta: 1.18.2
   test_api: 0.7.12
+  # test_core 0.6.19 requires test_api 0.7.13 (Declarer/Invoker); the
+  # test_api override above pins 0.7.12, so keep the matching 0.6.18.
+  test_core: 0.6.18
   vector_math: 2.3.0
   xml: 7.0.1
 
