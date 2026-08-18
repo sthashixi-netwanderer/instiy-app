@@ -15,6 +15,7 @@ import 'services/local_notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
 import 'models/product_model.dart';
 import 'models/business_profile_model.dart';
 
@@ -114,8 +115,14 @@ Future<void> _initializeApp() async {
 Future<void> _initializeDeferred() async {
   if (!kIsWeb) {
     // Firebase + local notifications can initialize together.
+    // Explicit DefaultFirebaseOptions (from flutterfire configure) match
+    // the native GoogleService-Info.plist; on iOS the native
+    // FirebaseApp.configure() in AppDelegate has already run, so this
+    // returns the existing default app.
     await Future.wait([
-      Firebase.initializeApp().catchError((e) {
+      Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).catchError((e) {
         debugPrint('Firebase init failed (deferred): $e');
         return Firebase.app();
       }),
