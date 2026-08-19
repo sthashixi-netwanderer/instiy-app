@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,13 +18,30 @@ class AuthService {
 
   static final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
+  /// Raw nonce for this app launch. Its SHA-256 hash goes to Google at
+  /// initialize() and is embedded in every ID token; Supabase receives the
+  /// raw value at signInWithIdToken() and hash-compares it server-side.
+  /// Required because Google's iOS SDK always includes a nonce claim in
+  /// ID tokens — without a matching nonce Supabase rejects the exchange
+  /// with "Passed nonce and nonce in id_token should either both exist or not".
+  static String? _googleSignInNonce;
+
   /// Initialize Google Sign-In. Call once at app startup.
   static Future<void> initializeGoogleSignIn() async {
+    // Generate a fresh nonce per launch (Random.secure, 32 bytes).
+    final random = Random.secure();
+    final rawNonce = base64Url
+        .encode(List<int>.generate(32, (_) => random.nextInt(256)))
+        .replaceAll('=', '');
+    _googleSignInNonce = rawNonce;
+    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+
     await _googleSignIn.initialize(
       // On Android, the web client ID is read from google-services.json.
       // On iOS, the client ID is read from Info.plist (GIDClientID).
       // We pass serverClientId as fallback for Android.
       serverClientId: kIsWeb ? null : '658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com',
+      nonce: kIsWeb ? null : hashedNonce,
     );
   }
   
@@ -101,10 +120,12 @@ class AuthService {
     final idToken = auth.idToken;
     if (idToken == null) return false;
 
-    // Exchange Google ID token with Supabase
+    // Exchange Google ID token with Supabase. The nonce must be the raw
+    // value whose SHA-256 hash was passed to Google at initialize().
     final response = await SupabaseService.auth.signInWithIdToken(
       provider: OAuthProvider.google,
       idToken: idToken,
+      nonce: _googleSignInNonce,
     );
 
     return response.session != null;
