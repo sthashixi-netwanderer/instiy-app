@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:giphy_get/giphy_get.dart';
 import '../../config/app_theme.dart';
 import '../../services/secrets_service.dart';
+import '../../services/wallet_lock_service.dart';
 import 'recording_helper.dart';
 import '../../utils/responsive.dart';
 import '../../models/message_model.dart';
@@ -44,13 +45,37 @@ class MessagesScreen extends ConsumerStatefulWidget {
 }
 
 class _MessagesScreenState extends ConsumerState<MessagesScreen> {
+  bool _isLocked = true;
+  bool _checkingLock = true;
+
   @override
   void initState() {
     super.initState();
+    _checkLock();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(messageProvider).loadConversations();
       ref.read(blockProvider).ensureInitialized();
     });
+  }
+
+  Future<void> _checkLock() async {
+    final shouldAuth = await WalletLockService.unlockIfNeeded(
+      screenKey: 'messages',
+      reason: 'Authenticate to view your messages',
+    );
+    if (!mounted) return;
+    if (shouldAuth) {
+      setState(() {
+        _isLocked = false;
+        _checkingLock = false;
+      });
+      ref.read(messageProvider).loadConversations(); // ignore: unawaited_futures
+    } else {
+      setState(() {
+        _isLocked = true;
+        _checkingLock = false;
+      });
+    }
   }
 
   @override
@@ -69,6 +94,76 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           automaticallyImplyLeading: false,
         ),
         body: const Center(child: Text('Sign in to view your messages')),
+      );
+    }
+
+    if (_checkingLock) {
+      return Scaffold(
+        backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
+        appBar: AppTheme.glassAppBar(context: context, title: const Text('Messages')),
+        body: const Padding(
+          padding: EdgeInsets.all(16),
+          child: ListSkeleton(count: 8),
+        ),
+      );
+    }
+
+    if (_isLocked) {
+      return Scaffold(
+        backgroundColor: AppTheme.canvasWhite,
+        extendBodyBehindAppBar: true,
+        appBar: AppTheme.glassAppBar(context: context, title: const Text('Messages')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: context.rw(80),
+                height: context.rh(80),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(LucideIcons.lock, size: context.ri(40), color: AppTheme.accent),
+              ),
+              SizedBox(height: context.rh(16)),
+              Text(
+                'Messages Locked',
+                style: TextStyle(
+                  fontSize: context.rsp(20),
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.charcoalInk,
+                ),
+              ),
+              SizedBox(height: context.rh(8)),
+              Text(
+                'Use your fingerprint or screen lock\nto view your messages.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.mutedSteel),
+              ),
+              SizedBox(height: context.rh(24)),
+              ShadButton(
+                onPressed: () async {
+                  final authed = await WalletLockService.authenticate(
+                    reason: 'Authenticate to view your messages',
+                  );
+                  if (authed && mounted) {
+                    setState(() => _isLocked = false);
+                    ref.read(messageProvider).loadConversations(); // ignore: unawaited_futures
+                  }
+                },
+                leading: Icon(LucideIcons.fingerprint, size: context.ri(20)),
+                child: const Text('Unlock Messages'),
+              ),
+              SizedBox(height: context.rh(12)),
+              ShadButton.ghost(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
