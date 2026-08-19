@@ -86,7 +86,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(
           context: context,
@@ -99,7 +99,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
     if (_checkingLock) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Messages')),
         body: const Padding(
@@ -111,7 +111,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
     if (_isLocked) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Messages')),
         body: Center(
@@ -173,7 +173,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
         .toList();
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
@@ -1266,7 +1266,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     final isBlocked = blockProv.isUserBlocked(otherUserId);
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: _isSelectionMode
           ? AppTheme.glassAppBar(

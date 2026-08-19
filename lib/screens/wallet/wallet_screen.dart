@@ -103,7 +103,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
         body: const Center(child: Text('Sign in to view your wallet')),
@@ -112,7 +112,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
     if (_checkingLock) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
         body: Padding(
@@ -149,7 +149,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
     if (_isLocked) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
         body: Center(
@@ -207,7 +207,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Wallet')),
       body: walletProv.isLoading

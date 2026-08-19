@@ -107,7 +107,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
     final user = ap.user;
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,

@@ -105,7 +105,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

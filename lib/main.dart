@@ -197,8 +197,8 @@ class _DeferredLoader extends StatelessWidget {
       future: loadLibrary(),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            backgroundColor: Color(0xFFFAFAF9),
+          return Scaffold(
+            backgroundColor: AppTheme.cleanBackground,
             body: Center(
               child: SizedBox(
                 width: 24,
@@ -213,7 +213,7 @@ class _DeferredLoader extends StatelessWidget {
         }
         if (snapshot.hasError) {
           return Scaffold(
-            backgroundColor: const Color(0xFFFAFAF9),
+            backgroundColor: AppTheme.cleanBackground,
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,

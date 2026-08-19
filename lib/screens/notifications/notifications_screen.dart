@@ -224,7 +224,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Notifications')),
         body: const Center(child: Text('Sign in to view notifications')),
@@ -255,7 +255,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         : const Text('Notifications');
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,

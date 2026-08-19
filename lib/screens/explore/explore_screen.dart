@@ -424,6 +424,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.canvasWhite,
+      ambientBackground: true,
       extendBodyBehindAppBar: true,
       bottomNavigationBar: const AdaptiveNav(currentIndex: 1),
       child: Stack(

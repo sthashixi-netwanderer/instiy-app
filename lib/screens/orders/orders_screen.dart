@@ -59,7 +59,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: const Center(child: Text('Sign in to view your orders')),
@@ -68,7 +68,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     if (_checkingLock) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: const Padding(
@@ -80,7 +80,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     if (_isLocked) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: Center(
@@ -139,7 +139,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     if (orderProv.error != null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
         body: Center(
@@ -156,7 +156,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
       body: orderProv.isLoading

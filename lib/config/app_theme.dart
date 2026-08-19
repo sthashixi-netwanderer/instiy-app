@@ -31,6 +31,15 @@ class AppTheme {
   static const canvasWhite = Color(0xFFFAF5FF); // pale lilac
   static const pureSurface = Color(0xFFFFFFFF);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Generic Clean Background — for screens that don't need glassmorphism.
+  // Pure white / off-white surfaces with subtle borders ensure maximum
+  // readability for all content (text, cards, forms) without visual noise.
+  // ─────────────────────────────────────────────────────────────────────────
+  static const cleanBackground = Color(0xFFFFFFFF); // pure white
+  static const cleanBackgroundAlt = Color(0xFFFAFAFA); // off-white for subtle sections
+  static const subtleBorder = Color(0xFFE5E5E5); // light grey border/divider
+
   // Ink / text — deep violet, never the same hue/lightness as the canvas.
   static const charcoalInk = Color(0xFF3B0764); // deep violet ink (primary text)
   static const mutedSteel = Color(0xFF6D5B8A); // muted violet-grey (secondary)
@@ -112,6 +121,15 @@ class AppTheme {
         ),
         child,
       ],
+    );
+  }
+
+  /// Simple, clean background — solid color with no gradient, blobs, or glass.
+  /// Use for screens that prioritize readability over glassmorphism aesthetics.
+  static Widget cleanBackgroundWidget({required Widget child, Color? color}) {
+    return ColoredBox(
+      color: color ?? cleanBackground,
+      child: child,
     );
   }
 

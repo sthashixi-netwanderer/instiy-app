@@ -24,6 +24,10 @@ class ResponsiveLayout extends StatelessWidget {
   final bool ambientBackground;
   final bool extendBodyBehindAppBar;
 
+  /// When true (default), tapping on empty space dismisses the keyboard.
+  /// Set to false for screens where this behavior is not desired.
+  final bool dismissKeyboardOnTap;
+
   /// Optional top navigation bar for desktop (≥ 1024px). When provided,
   /// replaces the [bottomNavigationBar] on desktop screens.
   final Widget? topNav;
@@ -35,12 +39,13 @@ class ResponsiveLayout extends StatelessWidget {
     this.appBar,
     this.bottomNavigationBar,
     this.floatingActionButton,
-    this.backgroundColor = AppTheme.canvasWhite,
+    this.backgroundColor = AppTheme.cleanBackground,
     this.scrollController,
     this.drawer,
     this.resizeToAvoidBottomInset = true,
-    this.ambientBackground = true,
+    this.ambientBackground = false,
     this.extendBodyBehindAppBar = false,
+    this.dismissKeyboardOnTap = true,
     this.topNav,
   });
 
@@ -66,6 +71,21 @@ class ResponsiveLayout extends StatelessWidget {
     final maxWidth = _getMaxWidth(context);
     final isDesktop = _isDesktop(context);
 
+    // Helper to wrap body with keyboard dismissal gesture detector
+    Widget wrapWithKeyboardDismissal(Widget bodyWidget) {
+      if (!dismissKeyboardOnTap) return bodyWidget;
+      return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          final currentFocus = FocusScope.of(context);
+          if (!currentFocus.hasPrimaryFocus && currentFocus.focusedChild != null) {
+            FocusManager.instance.primaryFocus?.unfocus();
+          }
+        },
+        child: bodyWidget,
+      );
+    }
+
     // On desktop with topNav, use a row layout: [topNav] + [constrained body].
     // On mobile/tablet, use the traditional Scaffold with optional bottom nav.
     if (isDesktop && topNav != null) {
@@ -75,9 +95,11 @@ class ResponsiveLayout extends StatelessWidget {
           children: [
             topNav!,
             Expanded(
-              child: ambientBackground
-                  ? AppTheme.ambientBackground(child: _buildBody(context, maxWidth))
-                  : _buildBody(context, maxWidth),
+              child: wrapWithKeyboardDismissal(
+                ambientBackground
+                    ? AppTheme.ambientBackground(child: _buildBody(context, maxWidth))
+                    : _buildBody(context, maxWidth),
+              ),
             ),
           ],
         ),
@@ -95,6 +117,8 @@ class ResponsiveLayout extends StatelessWidget {
       maxWidth: maxWidth,
     );
 
+    final scaffoldBody = ambientBackground ? AppTheme.ambientBackground(child: body) : body;
+
     return Scaffold(
       resizeToAvoidBottomInset: resizeToAvoidBottomInset,
       backgroundColor: ambientBackground ? Colors.transparent : backgroundColor,
@@ -102,7 +126,7 @@ class ResponsiveLayout extends StatelessWidget {
       extendBodyBehindAppBar: extendBodyBehindAppBar,
       drawer: drawer,
       appBar: appBar,
-      body: ambientBackground ? AppTheme.ambientBackground(child: body) : body,
+      body: wrapWithKeyboardDismissal(scaffoldBody),
       bottomNavigationBar: bottomNavigationBar != null
           ? _ConstrainedBottomNav(
               maxWidth: maxWidth,

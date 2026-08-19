@@ -465,6 +465,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
         backgroundColor: AppTheme.canvasWhite,
+        ambientBackground: true,
         child: Column(
           children: [
             // Image skeleton
@@ -533,6 +534,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
         backgroundColor: AppTheme.canvasWhite,
+        ambientBackground: true,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -556,6 +558,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       child: ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
         backgroundColor: AppTheme.canvasWhite,
+        ambientBackground: true,
         bottomNavigationBar: !isOwner && _product!.status == ProductStatus.available
             ? _buildBuyerBottomBar(authProv, cartProv, isFavorited, inCart)
             : isOwner && _product!.status == ProductStatus.available

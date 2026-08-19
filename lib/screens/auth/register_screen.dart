@@ -557,7 +557,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

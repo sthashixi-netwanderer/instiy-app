@@ -186,6 +186,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
       backgroundColor: AppTheme.canvasWhite,
+      ambientBackground: true,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Checkout')),
       bottomNavigationBar: Container(

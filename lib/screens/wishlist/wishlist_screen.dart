@@ -58,7 +58,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Wishlist')),
         body: const Center(child: Text('Sign in to view your wishlist')),
@@ -66,7 +66,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Wishlist')),
       body: _isLoading

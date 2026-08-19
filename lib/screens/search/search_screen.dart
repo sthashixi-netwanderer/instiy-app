@@ -10,6 +10,7 @@ import '../../models/product_model.dart';
 import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/responsive_layout.dart';
 import '../../widgets/product_card.dart';
 import '../../providers/block_provider.dart';
 import '../../widgets/skeleton.dart';
@@ -160,9 +161,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ResponsiveLayout(
+      type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.canvasWhite,
-      body: SafeArea(
+      ambientBackground: true,
+      child: SafeArea(
         child: Column(
           children: [
             _buildGlassSearchHeader(),
