@@ -37,6 +37,13 @@
             {
               "client_id": "658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "658847293429-sl27t5lj2ds0ckh77suu6dkrms54ter3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.instiy"
+              }
             }
           ]
         }
