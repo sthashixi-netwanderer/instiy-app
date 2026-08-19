@@ -26,6 +26,7 @@ import '../../widgets/multi_institution_picker.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../utils/formatters.dart';
+import '../../utils/media_image.dart';
 
 class CreateListingScreen extends ConsumerStatefulWidget {
   final Product? existingProduct;
@@ -1426,8 +1427,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                                         ),
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(context.rr(10)),
-                                          child: Image.file(
-                                            entry.value,
+                                          child: Image(
+                                            image: mediaImageProvider(entry.value),
                                             width: context.rw(120),
                                             height: context.rh(120),
                                             fit: BoxFit.cover,
