@@ -464,8 +464,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (_isLoading) {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
-        backgroundColor: AppTheme.canvasWhite,
-        ambientBackground: true,
+        backgroundColor: AppTheme.cleanBackground,
         child: Column(
           children: [
             // Image skeleton
@@ -533,8 +532,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (_product == null) {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
-        backgroundColor: AppTheme.canvasWhite,
-        ambientBackground: true,
+        backgroundColor: AppTheme.cleanBackground,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -557,8 +555,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       length: 3,
       child: ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
-        backgroundColor: AppTheme.canvasWhite,
-        ambientBackground: true,
+        backgroundColor: AppTheme.cleanBackground,
         bottomNavigationBar: !isOwner && _product!.status == ProductStatus.available
             ? _buildBuyerBottomBar(authProv, cartProv, isFavorited, inCart)
             : isOwner && _product!.status == ProductStatus.available
@@ -569,7 +566,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             SliverAppBar(
               expandedHeight: 300,
               pinned: true,
-              backgroundColor: AppTheme.pureSurface,
+              backgroundColor: AppTheme.headerBarSolid,
               flexibleSpace: FlexibleSpaceBar(
                 background: Stack(
                   fit: StackFit.expand,

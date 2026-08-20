@@ -40,6 +40,14 @@ class AppTheme {
   static const cleanBackgroundAlt = Color(0xFFFAFAFA); // off-white for subtle sections
   static const subtleBorder = Color(0xFFE5E5E5); // light grey border/divider
 
+  // Frosted surfaces that float ABOVE the clean white background. A touch
+  // darker and cooler than pure white so bars and cards separate from the
+  // page while the backdrop blur keeps the glass feel (iOS light style).
+  static const glassHeaderTop = Color(0xF7FAFBFC); // 97% near-white (gradient top)
+  static const glassHeaderBottom = Color(0xE9F2F3F5); // 91% cool light grey (gradient bottom)
+  static const glassHeaderShadow = Color(0x14202A43); // slate-tinted 8% (soft lift)
+  static const headerBarSolid = Color(0xFFF4F5F7); // opaque bar for collapsed sliver headers
+
   // Ink / text — deep violet, never the same hue/lightness as the canvas.
   static const charcoalInk = Color(0xFF3B0764); // deep violet ink (primary text)
   static const mutedSteel = Color(0xFF6D5B8A); // muted violet-grey (secondary)
@@ -159,17 +167,17 @@ class AppTheme {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          (color ?? glassSurface).withValues(
-            alpha: ((color ?? glassSurface).a + 0.10).clamp(0.0, 1.0),
+          (color ?? glassHeaderBottom).withValues(
+            alpha: ((color ?? glassHeaderBottom).a + 0.10).clamp(0.0, 1.0),
           ),
-          color ?? glassSurface,
+          color ?? glassHeaderBottom,
         ],
       ),
       borderRadius: BorderRadius.circular(radius),
-      border: border ?? Border.all(color: glassBorder, width: 1.0),
+      border: border ?? Border.all(color: subtleBorder, width: 1.0),
       boxShadow: const [
         BoxShadow(
-          color: glassShadow,
+          color: glassHeaderShadow,
           blurRadius: 24,
           offset: Offset(0, 10),
         ),
@@ -246,10 +254,13 @@ class AppTheme {
                 gradient: const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [glassHighlight, glassSurfaceHeavy],
+                  colors: [glassHeaderTop, glassHeaderBottom],
                 ),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: glassBorder),
+                border: Border.all(color: subtleBorder),
+                boxShadow: const [
+                  BoxShadow(color: glassHeaderShadow, blurRadius: 18, offset: Offset(0, 8)),
+                ],
               ),
               child: child,
             ),
@@ -307,10 +318,13 @@ class AppTheme {
                     gradient: const LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [glassHighlight, glassSurfaceHeavy],
+                      colors: [glassHeaderTop, glassHeaderBottom],
                     ),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: glassBorder),
+                    border: Border.all(color: subtleBorder),
+                    boxShadow: const [
+                      BoxShadow(color: glassHeaderShadow, blurRadius: 18, offset: Offset(0, 8)),
+                    ],
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,

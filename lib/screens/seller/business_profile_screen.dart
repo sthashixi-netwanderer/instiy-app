@@ -140,7 +140,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
 
     if (prov.isLoading) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         body: const Padding(
           padding: EdgeInsets.all(16),
           child: ListSkeleton(count: 6),
@@ -150,7 +150,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
 
     if (prov.error != null && prov.profile == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Store')),
         body: Center(
@@ -184,7 +184,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     final avatarUrl = firstProduct?.sellerAvatar ?? (isOwnProfile ? ref.read(authProvider).user?.avatarUrl : null);
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       body: RefreshIndicator(
         onRefresh: () => prov.loadStore(widget.sellerId),
         child: NestedScrollView(
@@ -256,7 +256,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     return SliverAppBar(
       expandedHeight: context.rh(200),
       pinned: true,
-      backgroundColor: AppTheme.pureSurface,
+      backgroundColor: AppTheme.headerBarSolid,
       flexibleSpace: FlexibleSpaceBar(
         background: profile?.bannerUrl != null
             ? _BannerImage(bannerUrl: profile!.bannerUrl!)

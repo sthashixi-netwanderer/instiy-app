@@ -640,6 +640,21 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     return padding;
   }
 
+  // WhatsApp-style presence label under the user's name in the chat header.
+  String _presenceLabel() {
+    if (widget.conversation.isOnline) return 'online';
+    final lastSeen = widget.conversation.otherUserLastSeen?.toLocal();
+    if (lastSeen == null) return '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(lastSeen.year, lastSeen.month, lastSeen.day);
+    final time = DateFormat('h:mm a').format(lastSeen);
+    final days = today.difference(day).inDays;
+    if (days == 0) return 'last seen today at $time';
+    if (days == 1) return 'last seen yesterday at $time';
+    return 'last seen ${DateFormat('d/M/yyyy').format(lastSeen)} at $time';
+  }
+
   void _removeReference() {
     setState(() {
       _productReference = null;
@@ -1273,6 +1288,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     final blockProv = ref.watch(blockProvider);
     final otherUserId = widget.conversation.otherUserId;
     final isBlocked = blockProv.isUserBlocked(otherUserId);
+    final presenceLabel = _presenceLabel();
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
@@ -1342,6 +1358,17 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                               ],
                             ],
                           ),
+                          if (presenceLabel.isNotEmpty)
+                            Text(
+                              presenceLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w400,
+                                color: AppTheme.mutedSteel,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -1668,8 +1695,11 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
               child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.glassSurface,
-              border: const Border(top: BorderSide(color: AppTheme.glassBorder)),
+              color: AppTheme.glassHeaderBottom,
+              border: const Border(top: BorderSide(color: AppTheme.subtleBorder)),
+              boxShadow: const [
+                BoxShadow(color: AppTheme.glassHeaderShadow, blurRadius: 12, offset: Offset(0, -4)),
+              ],
             ),
             child: SafeArea(
               child: _isRecording

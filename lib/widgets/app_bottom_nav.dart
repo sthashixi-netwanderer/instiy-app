@@ -94,18 +94,13 @@ class AppBottomNav extends ConsumerWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [AppTheme.glassHighlight, AppTheme.glassSurfaceHeavy],
+                colors: [AppTheme.glassHeaderTop, AppTheme.glassHeaderBottom],
               ),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppTheme.glassBorder, width: 1.0),
-              boxShadow: [
+              border: Border.all(color: AppTheme.subtleBorder, width: 1.0),
+              boxShadow: const [
                 BoxShadow(
-                  color: AppTheme.accent.withValues(alpha: 0.12),
-                  blurRadius: 24,
-                  offset: const Offset(0, -2),
-                ),
-                const BoxShadow(
-                  color: Color(0x1F4C1D95),
+                  color: AppTheme.glassHeaderShadow,
                   blurRadius: 20,
                   offset: Offset(0, 8),
                 ),

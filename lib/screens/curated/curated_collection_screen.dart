@@ -83,7 +83,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       bottomNavigationBar: const AdaptiveNav(currentIndex: 0),
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -108,7 +108,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
     return SliverAppBar(
       expandedHeight: context.rh(200),
       pinned: true,
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.headerBarSolid,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: AppTheme.charcoalInk),
