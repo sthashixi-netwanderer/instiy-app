@@ -631,6 +631,15 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   Future<Uint8List?> _readFileBytes(String path) => RecordingHelper.readFileBytes(path);
 
+  // Helper to calculate dynamic bottom padding for ListView based on visible conditional widgets
+  double _listBottomPadding() {
+    double padding = 16; // base
+    if (_replyToMessage != null) padding += 60; // Reply preview card
+    if (_productReference != null) padding += 70; // Product reference card
+    if (_pendingMediaList.isNotEmpty) padding += 90; // Media preview
+    return padding;
+  }
+
   void _removeReference() {
     setState(() {
       _productReference = null;
@@ -1395,18 +1404,23 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                   child: _buildChatBackground(),
                 ),
                 msgProv.isLoading && msgProv.messages.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          children: [
-                            MessageBubbleSkeleton(isMe: false),
-                            SizedBox(height: 8),
-                            MessageBubbleSkeleton(isMe: true),
-                            SizedBox(height: 8),
-                            MessageBubbleSkeleton(isMe: false),
-                            SizedBox(height: 8),
-                            MessageBubbleSkeleton(isMe: true),
-                          ],
+                    ? Positioned.fill(
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                MessageBubbleSkeleton(isMe: false),
+                                const SizedBox(height: 8),
+                                MessageBubbleSkeleton(isMe: true),
+                                const SizedBox(height: 8),
+                                MessageBubbleSkeleton(isMe: false),
+                                const SizedBox(height: 8),
+                                MessageBubbleSkeleton(isMe: true),
+                              ],
+                            ),
+                          ),
                         ),
                       )
                     : msgProv.messages.isEmpty
@@ -1452,7 +1466,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                               Expanded(
                                 child: ListView.builder(
                             controller: _scrollCtrl,
-                            padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              MediaQuery.paddingOf(context).top + kToolbarHeight + 16,
+                              16,
+                              _listBottomPadding(),
+                            ),
                             itemCount: msgProv.messages.length + (msgProv.hasMoreMessages ? 1 : 0),
                             itemBuilder: (context, index) {
                               if (index == 0 && msgProv.hasMoreMessages) {
