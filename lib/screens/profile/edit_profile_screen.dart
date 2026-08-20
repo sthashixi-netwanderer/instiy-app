@@ -412,7 +412,7 @@ AppTheme.showGlassDialog(
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       child: Form(
         key: _formKey,
         child: Column(

@@ -108,7 +108,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight;
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Order Details')),
       body: _isLoading

@@ -246,7 +246,7 @@ class _ServiceDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: Text(service.title)),
       body: ListView(

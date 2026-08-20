@@ -133,7 +133,7 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
     final auth = ref.watch(authProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       body: Center(
         child: SingleChildScrollView(
           padding: context.rAll(24),

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/navigation_service.dart';
 import '../../main.dart' show appInitialization;
@@ -95,7 +96,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAF9),
+      backgroundColor: AppTheme.cleanBackground,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

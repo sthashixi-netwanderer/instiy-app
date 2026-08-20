@@ -110,7 +110,7 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Verify Deliveries')),
         body: const Center(child: Text('Sign in as a seller')),
@@ -126,7 +126,7 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
         .toList();
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Verify Deliveries')),
       body: sellerProv.isLoading

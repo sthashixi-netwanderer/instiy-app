@@ -36,8 +36,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     if (authProv.user == null) {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.general,
-        backgroundColor: AppTheme.canvasWhite,
-        ambientBackground: true,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Cart')),
         child: Center(
@@ -61,8 +60,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
-      backgroundColor: AppTheme.canvasWhite,
-      ambientBackground: true,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Cart')),
       bottomNavigationBar: cartProv.isLoading || cartProv.cart.items.isEmpty

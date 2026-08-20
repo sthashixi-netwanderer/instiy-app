@@ -58,7 +58,7 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
     final reviews = sellerProv.reviews;
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context,
         title: const Text('Product Reviews'),

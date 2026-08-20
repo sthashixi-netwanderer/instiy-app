@@ -269,7 +269,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     if (user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('My Listings')),
         body: Center(
@@ -296,7 +296,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final soldCount = stats != null ? stats.totalSold : prod.userListings.where((p) => p.status == ProductStatus.sold).length;
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('My Listings')),
       body: ListView(

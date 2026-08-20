@@ -30,7 +30,7 @@ class _ArchivedChatsScreenState extends ConsumerState<ArchivedChatsScreen> {
     final msgProv = ref.watch(messageProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Archived')),
       body: msgProv.isLoadingArchived && msgProv.archivedConversations.isEmpty

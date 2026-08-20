@@ -33,7 +33,7 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
     final stats = sellerProv.dashboardStats;
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Analytics')),
       body: sellerProv.isLoading && analytics == null

@@ -373,7 +373,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
   Widget build(BuildContext context) {
     if (_checkingLock) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Orders')),
         body: const Padding(
@@ -385,7 +385,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
 
     if (_isLocked) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Orders')),
         body: Center(
@@ -443,7 +443,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, 
         title: const Text('Orders'),

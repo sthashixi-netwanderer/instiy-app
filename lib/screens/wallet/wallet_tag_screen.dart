@@ -204,11 +204,11 @@ class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.pureSurface,
+      backgroundColor: AppTheme.cleanBackground,
       appBar: AppBar(
         title: const Text('Wallet Tag', style: TextStyle(fontWeight: FontWeight.w600)),
         centerTitle: true,
-        backgroundColor: AppTheme.pureSurface,
+        backgroundColor: AppTheme.cleanBackground,
         elevation: 0,
         bottom: TabBar(
           controller: _tabController,

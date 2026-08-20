@@ -54,7 +54,7 @@ class _VideoAnalyticsScreenState extends ConsumerState<VideoAnalyticsScreen> {
     final totalShares = _analytics.fold<int>(0, (sum, p) => sum + ((p['total_shares'] as num?)?.toInt() ?? 0));
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Video Analytics')),
       body: _isLoading

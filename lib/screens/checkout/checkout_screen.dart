@@ -112,7 +112,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     if (authProv.user == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Checkout')),
         body: const Center(child: Text('Please sign in to checkout')),
@@ -121,7 +121,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     if (_isProcessing) {
       return const Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         body: Center(
           child: CircularProgressIndicator(
             color: AppTheme.accent,
@@ -185,8 +185,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.form,
-      backgroundColor: AppTheme.canvasWhite,
-      ambientBackground: true,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Checkout')),
       bottomNavigationBar: Container(

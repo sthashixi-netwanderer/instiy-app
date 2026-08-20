@@ -352,7 +352,7 @@ class _SellerProfileVerificationScreenState
 
     if (prov.isLoading) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
         body: Padding(
@@ -382,7 +382,7 @@ class _SellerProfileVerificationScreenState
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       extendBody: true,
       appBar: AppTheme.glassAppBar(context: context,
@@ -421,7 +421,7 @@ class _SellerProfileVerificationScreenState
     // While background upload is running and no DB record exists yet
     if (prov.isUploadingBackground && prov.latestVerification == null) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
         body: ListView(
@@ -470,7 +470,7 @@ class _SellerProfileVerificationScreenState
     final authUser = ref.watch(authProvider).user;
     if (authUser?.isVerified == true) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
         body: ListView(
@@ -527,7 +527,7 @@ class _SellerProfileVerificationScreenState
     final isApproved = v.isApproved;
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Verification')),
       body: ListView(

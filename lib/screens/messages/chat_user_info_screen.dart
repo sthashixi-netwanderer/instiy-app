@@ -193,7 +193,7 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
     final isBlocked = ref.watch(blockProvider).isUserBlocked(conv.otherUserId);
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -1013,7 +1013,7 @@ class _AllMediaScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

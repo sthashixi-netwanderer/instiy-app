@@ -423,8 +423,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final cartCount = cart.itemCount;
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
-      backgroundColor: AppTheme.canvasWhite,
-      ambientBackground: true,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       bottomNavigationBar: const AdaptiveNav(currentIndex: 1),
       child: Stack(

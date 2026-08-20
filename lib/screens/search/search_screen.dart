@@ -163,8 +163,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
-      backgroundColor: AppTheme.canvasWhite,
-      ambientBackground: true,
+      backgroundColor: AppTheme.cleanBackground,
       child: SafeArea(
         child: Column(
           children: [

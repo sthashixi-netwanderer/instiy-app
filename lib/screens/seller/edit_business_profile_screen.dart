@@ -625,7 +625,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
     if (_isLoading) {
       final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight;
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(context: context, title: const Text('Business Profile')),
         body: Padding(
@@ -637,7 +637,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, 
         title: const Text('Business Profile'),

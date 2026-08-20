@@ -106,7 +106,7 @@ class _SellScreenState extends ConsumerState<SellScreen> {
   Widget build(BuildContext context) {
     if (_checking) {
       return Scaffold(
-        backgroundColor: AppTheme.canvasWhite,
+        backgroundColor: AppTheme.cleanBackground,
         body: Padding(
           padding: context.rAll(24),
           child: Column(
@@ -126,7 +126,7 @@ class _SellScreenState extends ConsumerState<SellScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Start Selling')),
       body: ListView(

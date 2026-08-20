@@ -146,7 +146,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     final totalStock = userListings.fold<int>(0, (sum, p) => sum + p.stockQuantity);
 
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
       body: sellerP.isLoading && stats == null

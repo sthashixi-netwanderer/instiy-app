@@ -97,7 +97,7 @@ class _SuspendedScreenState extends ConsumerState<SuspendedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: context.rAll(24),

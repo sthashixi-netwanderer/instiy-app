@@ -112,8 +112,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
-      backgroundColor: AppTheme.canvasWhite,
-      ambientBackground: true,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       bottomNavigationBar: const AdaptiveNav(currentIndex: 0),
       child: Stack(

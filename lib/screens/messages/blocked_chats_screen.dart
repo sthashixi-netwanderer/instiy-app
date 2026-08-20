@@ -41,7 +41,7 @@ class _BlockedChatsScreenState extends ConsumerState<BlockedChatsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.canvasWhite,
+      backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Blocked')),
       body: _isLoading
