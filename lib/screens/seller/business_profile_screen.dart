@@ -954,13 +954,27 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     );
   }
 
-  void _openMapPreview(String url) async {
-    // Only allow https/http URLs to prevent URL injection from DB-stored values.
+  /// Normalizes stored map URLs for external launch. The in-app location
+  /// picker stores `output=embed` iframe links that don't open properly in
+  /// browsers/Maps — convert any http(s) link carrying a `q` param (coords
+  /// or address) into the universal Google Maps URL format.
+  Uri _normalizedMapsUri(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
-      debugPrint('Map preview URL blocked (invalid scheme): $url');
-      return;
+      return Uri.https('www.google.com', '/maps');
     }
+    final query = uri.queryParameters['q']?.trim();
+    if (query != null && query.isNotEmpty) {
+      return Uri.https('www.google.com', '/maps/search/', {
+        'api': '1',
+        'query': query,
+      });
+    }
+    return uri;
+  }
+
+  void _openMapPreview(String url) async {
+    final uri = _normalizedMapsUri(url);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
@@ -970,12 +984,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   }
 
   Future<void> _openInGoogleMaps(String url) async {
-    // Only allow https/http URLs to prevent URL injection from DB-stored values.
-    final uri = Uri.tryParse(url);
-    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
-      debugPrint('Google Maps URL blocked (invalid scheme): $url');
-      return;
-    }
+    final uri = _normalizedMapsUri(url);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {

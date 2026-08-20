@@ -118,7 +118,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       child: Stack(
         children: [
           RefreshIndicator(
-            edgeOffset: context.rh(84),
+            edgeOffset: MediaQuery.paddingOf(context).top + context.rh(84),
             onRefresh: () async {
               await Future.wait([
                 home.loadAll(),
@@ -130,7 +130,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               controller: _scrollController,
               slivers: [
                 SliverToBoxAdapter(
-                  child: SizedBox(height: context.rh(84)),
+                  child: SizedBox(
+                    height: MediaQuery.paddingOf(context).top + context.rh(84),
+                  ),
                 ),
                 if (carouselState.slides.isNotEmpty)
                   SliverToBoxAdapter(

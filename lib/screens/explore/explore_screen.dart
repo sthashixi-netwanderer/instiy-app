@@ -747,11 +747,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 ),
               ),
             ),
-          // Scroll to top button
+          // Scroll to top button (raised above the floating bottom nav pill)
           if (_showScrollToTop)
             Positioned(
               right: 16,
-              bottom: 16,
+              bottom: 100,
               child: FloatingActionButton.small(
                 onPressed: () {
                   _scrollController.animateTo(

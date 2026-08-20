@@ -206,35 +206,43 @@ class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTi
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
-      appBar: AppBar(
-        title: const Text('Wallet Tag', style: TextStyle(fontWeight: FontWeight.w600)),
-        centerTitle: true,
-        backgroundColor: AppTheme.cleanBackground,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.accent,
-          unselectedLabelColor: AppTheme.mutedSteel,
-          indicatorColor: AppTheme.accent,
-          tabs: const [
-            Tab(icon: Icon(LucideIcons.qrCode), text: 'Receive'),
-            Tab(icon: Icon(LucideIcons.scan), text: 'Send'),
-          ],
-        ),
+      extendBodyBehindAppBar: true,
+      appBar: AppTheme.glassAppBar(
+        context: context,
+        title: const Text('Wallet Tag'),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        // Disable swipe so the camera isn't half-initialised during a drag;
-        // tab taps still work and give a clean mount/unmount of the scanner.
-        physics: const NeverScrollableScrollPhysics(),
+      body: Column(
         children: [
-          _buildReceiveTab(),
-          // Only mount the live scanner when the Send tab is selected. When the
-          // user is on Receive, this returns a lightweight placeholder so the
-          // camera is fully released instead of running off-screen.
-          _tabController.index == 1
-              ? _buildSendTab()
-              : const _ScannerPlaceholder(),
+          SizedBox(
+            height: MediaQuery.paddingOf(context).top + kToolbarHeight + 10,
+          ),
+          TabBar(
+            controller: _tabController,
+            labelColor: AppTheme.accent,
+            unselectedLabelColor: AppTheme.mutedSteel,
+            indicatorColor: AppTheme.accent,
+            tabs: const [
+              Tab(icon: Icon(LucideIcons.qrCode), text: 'Receive'),
+              Tab(icon: Icon(LucideIcons.scan), text: 'Send'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              // Disable swipe so the camera isn't half-initialised during a drag;
+              // tab taps still work and give a clean mount/unmount of the scanner.
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildReceiveTab(),
+                // Only mount the live scanner when the Send tab is selected. When the
+                // user is on Receive, this returns a lightweight placeholder so the
+                // camera is fully released instead of running off-screen.
+                _tabController.index == 1
+                    ? _buildSendTab()
+                    : const _ScannerPlaceholder(),
+              ],
+            ),
+          ),
         ],
       ),
     );

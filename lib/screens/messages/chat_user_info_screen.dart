@@ -194,13 +194,15 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      extendBodyBehindAppBar: true,
+      appBar: AppTheme.glassAppBar(
+        context: context,
         title: Text(conv.displayName),
       ),
       body: ListView(
-        padding: EdgeInsets.zero,
+        padding: EdgeInsets.only(
+          top: MediaQuery.paddingOf(context).top + kToolbarHeight + 12,
+        ),
         children: [
           // Header section
           _buildHeader(conv),
@@ -1014,13 +1016,18 @@ class _AllMediaScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      extendBodyBehindAppBar: true,
+      appBar: AppTheme.glassAppBar(
+        context: context,
         title: Text('Media (${mediaMessages.length})'),
       ),
       body: GridView.builder(
-        padding: EdgeInsets.all(context.rw(4)),
+        padding: EdgeInsets.fromLTRB(
+          context.rw(4),
+          MediaQuery.paddingOf(context).top + kToolbarHeight + 14,
+          context.rw(4),
+          context.rw(4),
+        ),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: context.rw(4),

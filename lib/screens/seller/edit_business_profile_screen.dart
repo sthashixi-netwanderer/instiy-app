@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -208,7 +209,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
       _businessNameController.text = profile.businessName ?? user.fullName;
       _descriptionController.text = profile.description ?? '';
       _locationUrlController.text = profile.locationUrl ?? '';
-      _digitalAddressController.text = profile.digitalAddress ?? '';
+      _digitalAddressController.text = (profile.digitalAddress ?? '').toUpperCase();
       _existingBannerUrl = profile.bannerUrl;
       _phoneNumbers = List.from(profile.phoneNumbers);
       _qrCodePublic = profile.qrCodePublic;
@@ -1102,6 +1103,13 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
                 controller: _digitalAddressController,
                 placeholder: const Text('e.g. GA-123-4567'),
                 leading: const Icon(LucideIcons.map, size: 16),
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [
+                  TextInputFormatter.withFunction(
+                    (oldValue, newValue) =>
+                        newValue.copyWith(text: newValue.text.toUpperCase()),
+                  ),
+                ],
                 trailing: _digitalAddressController.text.isNotEmpty
                     ? GestureDetector(
                         onTap: () {

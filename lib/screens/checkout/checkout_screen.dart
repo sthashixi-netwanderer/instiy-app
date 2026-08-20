@@ -16,6 +16,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_button.dart';
+import 'order_confirmation_screen.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   final Product? buyNowProduct;
@@ -202,7 +203,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     _deliveryMode == null ||
                     (_deliveryMode == 'delivery' && _selectedDeliveryInstitution == null))
                 ? null
-                : _placeOrder,
+                : _openOrderConfirmation,
             loading: _isProcessing,
             child: Text('Place Order',
                 style: TextStyle(fontSize: context.rsp(16), fontWeight: FontWeight.w600)),
@@ -757,6 +758,63 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
           SizedBox(height: context.rh(100)),
         ],
+      ),
+    );
+  }
+
+  // Shows the full order details for confirmation; the actual placement
+  // runs on Proceed through the same _placeOrder flow.
+  void _openOrderConfirmation() {
+    final List<CartItem> orderItems;
+    final double subtotal;
+    final double deliveryTotal;
+
+    if (_isBuyNowMode) {
+      final product = widget.buyNowProduct!;
+      deliveryTotal = _deliveryMode == 'delivery'
+          ? _getDeliveryFeeForBuyNow(_selectedDeliveryInstitution)
+          : 0.0;
+      subtotal = product.effectivePrice * _buyNowQuantity;
+      orderItems = [
+        CartItem(
+          id: product.id,
+          productId: product.id,
+          title: product.title,
+          thumbnail: product.effectiveThumbnail,
+          price: product.effectivePrice,
+          quantity: _buyNowQuantity,
+          stock: product.stockQuantity,
+          sellerId: product.sellerId,
+          sellerName: product.sellerName,
+          deliveryFee: deliveryTotal,
+        ),
+      ];
+    } else {
+      final cart = ref.read(cartProvider).cart;
+      orderItems = cart.items;
+      subtotal = cart.subtotalAmount;
+      deliveryTotal = _deliveryMode == 'delivery'
+          ? orderItems.fold<double>(
+              0.0,
+              (sum, item) => sum + _getDeliveryFeeForProduct(item, _selectedDeliveryInstitution),
+            )
+          : 0.0;
+    }
+
+    Navigator.of(context).push(
+      AppTheme.fadeSlideRoute(
+        OrderConfirmationScreen(
+          items: orderItems,
+          deliveryMode: _deliveryMode!,
+          deliveryInstitution: _selectedDeliveryInstitution,
+          paymentMethod: _paymentMethod,
+          subtotal: subtotal,
+          deliveryFee: deliveryTotal,
+          onProceed: () async {
+            await _placeOrder();
+            return _orderPlaced;
+          },
+        ),
       ),
     );
   }
