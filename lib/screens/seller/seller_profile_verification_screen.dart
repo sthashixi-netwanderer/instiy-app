@@ -1559,6 +1559,7 @@ class _SellerProfileVerificationScreenState
                 flex: 2,
                 child: _currentStep == 3
                     ? ShadButton(
+                        enabled: _agreedToTerms,
                         onPressed: (_agreedToTerms && !prov.isUploadingBackground)
                             ? _submitVerification
                             : null,
@@ -1574,6 +1575,7 @@ class _SellerProfileVerificationScreenState
                             : const Text('Submit Verification'),
                       )
                     : ShadButton(
+                        enabled: _canProceed(),
                         onPressed: _canProceed() ? () => setState(() => _currentStep++) : null,
                         child: const Text('Continue'),
                       ),

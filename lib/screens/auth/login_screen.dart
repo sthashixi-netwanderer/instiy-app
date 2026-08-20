@@ -239,6 +239,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     AppButton(
                       onPressed: (_isLoading || !_isFormValid) ? null : _handleLogin,
+                      enabled: _isFormValid,
                       loading: _isLoading,
                       child: const Text('Sign In'),
                     ),

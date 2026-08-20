@@ -131,6 +131,7 @@ class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTi
                   ),
                   SizedBox(width: context.rw(8)),
                   ShadButton(
+                    enabled: (double.tryParse(amountCtrl.text.trim()) ?? 0) > 0,
                     onPressed: (isSubmitting || (double.tryParse(amountCtrl.text.trim()) ?? 0) <= 0)
                         ? null
                         : () async {

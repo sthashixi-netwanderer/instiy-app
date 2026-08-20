@@ -17,6 +17,7 @@ class AppButton extends StatelessWidget {
   final double maxWidth;
   final bool block;
   final bool loading;
+  final bool enabled;
   final bool outline;
   final bool ghost;
   final bool link;
@@ -35,6 +36,7 @@ class AppButton extends StatelessWidget {
     this.maxWidth = 400,
     this.block = false,
     this.loading = false,
+    this.enabled = true,
     this.outline = false,
     this.ghost = false,
     this.link = false,
@@ -54,6 +56,7 @@ class AppButton extends StatelessWidget {
     this.maxWidth = 400,
     this.block = false,
     this.loading = false,
+    this.enabled = true,
     this.ghost = false,
     this.link = false,
     this.backgroundColor,
@@ -72,6 +75,7 @@ class AppButton extends StatelessWidget {
     this.maxWidth = 400,
     this.block = false,
     this.loading = false,
+    this.enabled = true,
     this.outline = false,
     this.link = false,
     this.backgroundColor,
@@ -90,6 +94,7 @@ class AppButton extends StatelessWidget {
     this.maxWidth = 400,
     this.block = false,
     this.loading = false,
+    this.enabled = true,
     this.outline = false,
     this.ghost = false,
     this.backgroundColor,
@@ -130,6 +135,7 @@ class AppButton extends StatelessWidget {
     if (outline) {
       return ShadButton.outline(
         onPressed: loading ? null : onPressed,
+        enabled: enabled,
         leading: leading,
         trailing: trailing,
         backgroundColor: backgroundColor,
@@ -141,6 +147,7 @@ class AppButton extends StatelessWidget {
     if (ghost) {
       return ShadButton.ghost(
         onPressed: loading ? null : onPressed,
+        enabled: enabled,
         leading: leading,
         trailing: trailing,
         backgroundColor: backgroundColor,
@@ -152,11 +159,13 @@ class AppButton extends StatelessWidget {
     if (link) {
       return ShadButton.link(
         onPressed: loading ? null : onPressed,
+        enabled: enabled,
         child: child,
       );
     }
     return ShadButton(
       onPressed: loading ? null : onPressed,
+      enabled: enabled,
       leading: leading,
       trailing: trailing,
       backgroundColor: backgroundColor ?? AppTheme.accent,

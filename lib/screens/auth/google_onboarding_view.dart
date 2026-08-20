@@ -26,7 +26,27 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
   String? _errorMsg;
 
   @override
+  void initState() {
+    super.initState();
+    _phoneController.addListener(_onFormChanged);
+    _otpController.addListener(_onFormChanged);
+  }
+
+  void _onFormChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _canSendOtp =>
+      _phoneController.text.trim().isNotEmpty &&
+      _selectedUniversity != null &&
+      _selectedUniversity!.isNotEmpty;
+
+  bool get _canVerifyOtp => _otpController.text.trim().length == 6;
+
+  @override
   void dispose() {
+    _phoneController.removeListener(_onFormChanged);
+    _otpController.removeListener(_onFormChanged);
     _phoneController.dispose();
     _otpController.dispose();
     super.dispose();
@@ -267,6 +287,7 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
                       SizedBox(height: context.rh(24)),
                       ShadButton(
                         onPressed: _isLoading ? null : _verifyAndComplete,
+                        enabled: _canVerifyOtp,
                         child: _isLoading
                             ? SizedBox(
                                 width: context.rw(20),
@@ -280,6 +301,7 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
                 ] else ...[
                   ShadButton(
                     onPressed: _isLoading ? null : _sendOtpCode,
+                    enabled: _canSendOtp,
                     child: _isLoading
                         ? SizedBox(
                             width: context.rw(20),

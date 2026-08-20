@@ -187,6 +187,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           SizedBox(height: context.rh(32)),
           AppButton(
             onPressed: (_isLoading || !_isFormValid) ? null : _handleResetPassword,
+            enabled: _isFormValid,
             loading: _isLoading,
             child: const Text('Reset Password'),
           ),

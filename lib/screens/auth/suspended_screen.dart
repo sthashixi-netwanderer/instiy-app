@@ -215,6 +215,7 @@ class _SuspendedScreenState extends ConsumerState<SuspendedScreen> {
                           _complaintController.text.trim().isEmpty)
                       ? null
                       : _submitComplaint,
+                  enabled: _complaintController.text.trim().isNotEmpty,
                   loading: _isSubmitting,
                   child: const Text('Submit Complaint'),
                 ),

@@ -53,11 +53,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
     _verifiedPhoneNumber = _initialPhoneNumber;
     _phoneController.addListener(_onPhoneChanged);
+    _nameController.addListener(_onFormChanged);
+    _oldPasswordController.addListener(_onFormChanged);
+    _newPasswordController.addListener(_onFormChanged);
+    _confirmPasswordController.addListener(_onFormChanged);
   }
 
   @override
   void dispose() {
     _phoneController.removeListener(_onPhoneChanged);
+    _nameController.removeListener(_onFormChanged);
+    _oldPasswordController.removeListener(_onFormChanged);
+    _newPasswordController.removeListener(_onFormChanged);
+    _confirmPasswordController.removeListener(_onFormChanged);
     _nameController.dispose();
     _bioController.dispose();
     _phoneController.dispose();
@@ -78,6 +86,28 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         _isPhoneVerified = true;
       }
     });
+  }
+
+  void _onFormChanged() {
+    if (mounted) setState(() {});
+  }
+
+  // Mirrors the form validators used by _handleSave: name required, phone
+  // verified when changed, and consistent password fields when changing it.
+  bool _canSave() {
+    if (_nameController.text.isEmpty) return false;
+    if (!_isPhoneVerified) return false;
+    final oldPass = _oldPasswordController.text;
+    final newPass = _newPasswordController.text;
+    final confirmPass = _confirmPasswordController.text;
+    final changingPassword =
+        oldPass.isNotEmpty || newPass.isNotEmpty || confirmPass.isNotEmpty;
+    if (changingPassword) {
+      if (oldPass.isEmpty) return false;
+      if (newPass.length < 6) return false;
+      if (confirmPass != newPass) return false;
+    }
+    return true;
   }
 
   Future<void> _pickAvatar() async {
@@ -432,7 +462,8 @@ AppTheme.showGlassDialog(
                     ),
                     const Spacer(),
                     ShadButton(
-                      onPressed: (_isSaving || !_isPhoneVerified) ? null : _handleSave,
+                      enabled: _canSave(),
+                      onPressed: (_isSaving || !_canSave()) ? null : _handleSave,
                       child: _isSaving
                           ? const SizedBox(
                               height: 20, width: 20,

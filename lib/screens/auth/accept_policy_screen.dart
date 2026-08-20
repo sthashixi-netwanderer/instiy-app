@@ -109,6 +109,7 @@ class _AcceptPolicyScreenState extends ConsumerState<AcceptPolicyScreen> {
                     width: double.infinity,
                     child: ShadButton(
                       onPressed: _allAccepted ? _handleContinue : null,
+                      enabled: _allAccepted,
                       child: const Text('Continue'),
                     ),
                   ),

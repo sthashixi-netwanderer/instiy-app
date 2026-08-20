@@ -38,6 +38,10 @@ class _ProductReportScreenState extends State<ProductReportScreen> {
     super.dispose();
   }
 
+  bool get _canSubmit =>
+      _selectedCategory != null &&
+      (_selectedCategory != 'other' || _descriptionCtrl.text.trim().isNotEmpty);
+
   Future<void> _submit() async {
     if (_selectedCategory == null) {
       ShadToaster.of(context).show(
@@ -220,13 +224,8 @@ class _ProductReportScreenState extends State<ProductReportScreen> {
             SizedBox(
               width: double.infinity,
               child: ShadButton(
-                onPressed:
-                    (_isSubmitting ||
-                        _selectedCategory == null ||
-                        (_selectedCategory == 'other' &&
-                            _descriptionCtrl.text.trim().isEmpty))
-                    ? null
-                    : _submit,
+                enabled: _canSubmit,
+                onPressed: (_isSubmitting || !_canSubmit) ? null : _submit,
                 child: _isSubmitting
                     ? SizedBox(
                         width: context.rw(18),

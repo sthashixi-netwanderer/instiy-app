@@ -808,6 +808,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                     AppButton(
                       onPressed: (_isLoading || !_isFormValid) ? null : _handleRegister,
+                      enabled: _isFormValid,
                       loading: _isLoading,
                       child: const Text('Create Account'),
                     ),

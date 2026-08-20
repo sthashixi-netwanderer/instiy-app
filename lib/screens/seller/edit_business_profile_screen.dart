@@ -273,18 +273,27 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        ShadButton(
-          onPressed: () {
-            final number = numberController.text.trim();
-            final label = labelController.text.trim().isEmpty
-                ? 'Mobile'
-                : labelController.text.trim();
-            Navigator.of(context).pop();
-            if (number.isNotEmpty) {
-              _verifyAndAddNumber(number, label);
-            }
+        AnimatedBuilder(
+          animation: numberController,
+          builder: (context, _) {
+            final canAdd = numberController.text.trim().isNotEmpty;
+            return ShadButton(
+              enabled: canAdd,
+              onPressed: canAdd
+                  ? () {
+                      final number = numberController.text.trim();
+                      final label = labelController.text.trim().isEmpty
+                          ? 'Mobile'
+                          : labelController.text.trim();
+                      Navigator.of(context).pop();
+                      if (number.isNotEmpty) {
+                        _verifyAndAddNumber(number, label);
+                      }
+                    }
+                  : null,
+              child: const Text('Verify & Add'),
+            );
           },
-          child: const Text('Verify & Add'),
         ),
       ],
     );
@@ -402,49 +411,56 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
                   child: const Text('Cancel'),
                 ),
                 const SizedBox(width: 8),
-                ShadButton(
-                  onPressed: isVerifying
-                      ? null
-                      : () async {
-                          final input = otpController.text.trim();
-                          if (input.length != 6) {
-                            setDialogState(() => otpError = 'Enter a valid 6-digit code');
-                            return;
-                          }
-                          if (input != correctOtp) {
-                            setDialogState(() => otpError = 'Incorrect code. Try again.');
-                            return;
-                          }
+                AnimatedBuilder(
+                  animation: otpController,
+                  builder: (context, _) {
+                    final codeValid = otpController.text.trim().length == 6;
+                    return ShadButton(
+                      enabled: codeValid,
+                      onPressed: (codeValid && !isVerifying)
+                          ? () async {
+                              final input = otpController.text.trim();
+                              if (input.length != 6) {
+                                setDialogState(() => otpError = 'Enter a valid 6-digit code');
+                                return;
+                              }
+                              if (input != correctOtp) {
+                                setDialogState(() => otpError = 'Incorrect code. Try again.');
+                                return;
+                              }
 
-                          setDialogState(() {
-                            isVerifying = true;
-                            otpError = null;
-                          });
+                              setDialogState(() {
+                                isVerifying = true;
+                                otpError = null;
+                              });
 
-                          // Add the verified number
-                          setState(() {
-                            _phoneNumbers.add(StorePhoneNumber(
-                              number: number,
-                              label: label,
-                            ));
-                          });
+                              // Add the verified number
+                              setState(() {
+                                _phoneNumbers.add(StorePhoneNumber(
+                                  number: number,
+                                  label: label,
+                                ));
+                              });
 
-                          Navigator.of(ctx).pop();
-                          if (mounted) {
-                            ShadToaster.of(context).show(
-                              const ShadToast(
-                                title: Text('Phone number verified and added!'),
-                              ),
-                            );
-                          }
-                        },
-                  child: isVerifying
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Verify'),
+                              Navigator.of(ctx).pop();
+                              if (mounted) {
+                                ShadToaster.of(context).show(
+                                  const ShadToast(
+                                    title: Text('Phone number verified and added!'),
+                                  ),
+                                );
+                              }
+                            }
+                          : null,
+                      child: isVerifying
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Verify'),
+                    );
+                  },
                 ),
               ],
             ),
@@ -645,6 +661,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ShadButton(
+              enabled: _isFormValid,
               onPressed: (_isSaving || !_isFormValid) ? null : _save,
               size: ShadButtonSize.sm,
               child: _isSaving

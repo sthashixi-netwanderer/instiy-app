@@ -493,7 +493,8 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/notifications':
               return route(const NotificationsScreen());
             case '/account':
-              return route(const AccountSettingsScreen());
+              final initialTab = settings.arguments is int ? settings.arguments as int : 0;
+              return route(AccountSettingsScreen(initialTab: initialTab));
             case '/sell':
               return route(const SellScreen());
             case '/curated-collection':

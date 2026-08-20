@@ -132,6 +132,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           SizedBox(height: context.rh(24)),
           AppButton(
             onPressed: (_isLoading || !_isFormValid) ? null : _handleSendResetLink,
+            enabled: _isFormValid,
             loading: _isLoading,
             child: const Text('Send Reset Link'),
           ),

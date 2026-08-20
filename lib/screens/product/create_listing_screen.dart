@@ -283,9 +283,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     return title.isNotEmpty &&
         description.isNotEmpty &&
         priceStr.isNotEmpty &&
+        _selectedCondition != null &&
         hasImages &&
         specCount >= 3 &&
-        hasCampuses;
+        hasCampuses &&
+        (!_needsClipVideoSelection || _hasClipVideoSelected);
   }
 
   Future<void> _loadDraft() async {
@@ -1160,6 +1162,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                         child: const Text('Clear'),
                       ),
                     ShadButton(
+                      enabled: _isFormValid,
                       onPressed: (_isUploading || !_isFormValid) ? null : _handleSubmit,
                       child: _isUploading
                           ? const SizedBox(

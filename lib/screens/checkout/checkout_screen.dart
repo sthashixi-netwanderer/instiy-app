@@ -196,6 +196,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         ),
         child: SafeArea(
           child: AppButton(
+            enabled: _deliveryMode != null &&
+                (_deliveryMode != 'delivery' || _selectedDeliveryInstitution != null),
             onPressed: (_isProcessing ||
                     _deliveryMode == null ||
                     (_deliveryMode == 'delivery' && _selectedDeliveryInstitution == null))

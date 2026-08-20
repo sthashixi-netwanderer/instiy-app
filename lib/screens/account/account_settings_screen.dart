@@ -10,7 +10,8 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_button.dart';
 
 class AccountSettingsScreen extends ConsumerStatefulWidget {
-  const AccountSettingsScreen({super.key});
+  final int initialTab;
+  const AccountSettingsScreen({super.key, this.initialTab = 0});
 
   @override
   ConsumerState<AccountSettingsScreen> createState() => _AccountSettingsScreenState();
@@ -34,7 +35,11 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(
+      length: 4,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 3),
+    );
     _loadSettings();
   }
 
@@ -129,9 +134,18 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                   indicatorColor: AppTheme.accent,
                   labelColor: AppTheme.accent,
                   unselectedLabelColor: AppTheme.mutedSteel,
+                  labelStyle: TextStyle(
+                    fontSize: context.rsp(12),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  unselectedLabelStyle: TextStyle(
+                    fontSize: context.rsp(12),
+                    fontWeight: FontWeight.w500,
+                  ),
                   tabs: const [
                     Tab(icon: Icon(LucideIcons.user), text: 'Profile'),
                     Tab(icon: Icon(LucideIcons.bell), text: 'Notifications'),
+                    Tab(icon: Icon(LucideIcons.lock), text: 'App Lock'),
                     Tab(icon: Icon(LucideIcons.settings), text: 'General'),
                   ],
                 ),
@@ -145,6 +159,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
         children: [
           _buildProfileTab(theme, user),
           _buildNotificationsTab(theme, sp),
+          _buildAppLockTab(theme),
           _buildGeneralTab(theme),
         ],
       ),
@@ -310,9 +325,16 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
             ),
           );
         }),
-        SizedBox(height: context.rh(24)),
+        SizedBox(height: context.rh(32)),
+      ],
+    );
+  }
 
-        // ── App Lock Section ──────────────────────────────────────────
+  Widget _buildAppLockTab(ShadThemeData theme) {
+    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
+      children: [
         Container(
           padding: context.rAll(16),
           decoration: BoxDecoration(

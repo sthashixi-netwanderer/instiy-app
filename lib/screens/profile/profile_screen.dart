@@ -454,6 +454,52 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                     ),
                                   ),
                                 ),
+                              Positioned(
+                                top: context.rh(8),
+                                left: context.rw(8),
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: context.rw(6),
+                                    vertical: context.rh(3),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: product.stockQuantity <= 0
+                                        ? AppTheme.destructive
+                                        : product.stockQuantity < 5
+                                            ? AppTheme.warningAmber
+                                            : AppTheme.charcoalInk.withValues(alpha: 0.75),
+                                    borderRadius: BorderRadius.circular(context.rr(6)),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.15),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        LucideIcons.package,
+                                        size: context.ri(10),
+                                        color: Colors.white,
+                                      ),
+                                      SizedBox(width: context.rw(3)),
+                                      Text(
+                                        product.stockQuantity <= 0
+                                            ? '0 in stock'
+                                            : '${product.stockQuantity} in stock',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: context.rsp(9),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),

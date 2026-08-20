@@ -509,29 +509,38 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        ShadButton(
-          onPressed: () async {
-            final amountText = amountCtrl.text.trim();
-            final amount = double.tryParse(amountText);
-            if (amount == null || amount <= 0) {
-              ShadToaster.of(context).show(
-                const ShadToast(title: Text('Enter a valid amount')),
-              );
-              return;
-            }
+        AnimatedBuilder(
+          animation: amountCtrl,
+          builder: (_, _) {
+            final amountValid = (double.tryParse(amountCtrl.text.trim()) ?? 0) > 0;
+            return ShadButton(
+              enabled: amountValid,
+              onPressed: amountValid
+                  ? () async {
+                      final amountText = amountCtrl.text.trim();
+                      final amount = double.tryParse(amountText);
+                      if (amount == null || amount <= 0) {
+                        ShadToaster.of(context).show(
+                          const ShadToast(title: Text('Enter a valid amount')),
+                        );
+                        return;
+                      }
 
-            Navigator.of(context).pop();
+                      Navigator.of(context).pop();
 
-            final provider = ref.read(walletProvider);
-            final error = await provider.fundWalletWithPaystack(amount);
+                      final provider = ref.read(walletProvider);
+                      final error = await provider.fundWalletWithPaystack(amount);
 
-            if (!context.mounted) return;
+                      if (!context.mounted) return;
 
-            ShadToaster.of(context).show(
-              ShadToast(title: Text(error ?? 'Wallet funded successfully!')),
+                      ShadToaster.of(context).show(
+                        ShadToast(title: Text(error ?? 'Wallet funded successfully!')),
+                      );
+                    }
+                  : null,
+              child: const Text('Deposit'),
             );
           },
-          child: const Text('Deposit'),
         ),
       ],
     );
@@ -770,55 +779,64 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
-                  ShadButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            if (!formKey.currentState!.validate()) return;
-                            final amt = double.parse(amountCtrl.text.trim());
-                            final hasBalance = await WalletService.checkBalance(amt);
-                            if (!hasBalance) {
-                              if (ctx.mounted) {
-                                ShadToaster.of(ctx).show(
-                                  const ShadToast.destructive(
-                                    title: Text('Insufficient Balance'),
-                                    description: Text('You do not have enough funds for this withdrawal.'),
-                                  ),
+                  AnimatedBuilder(
+                    animation: Listenable.merge([accountCtrl, nameCtrl, amountCtrl]),
+                    builder: (_, _) {
+                      final formValid = accountCtrl.text.trim().isNotEmpty &&
+                          nameCtrl.text.trim().isNotEmpty &&
+                          (double.tryParse(amountCtrl.text.trim()) ?? 0) > 0;
+                      return ShadButton(
+                        enabled: formValid,
+                        onPressed: (isSubmitting || !formValid)
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                final amt = double.parse(amountCtrl.text.trim());
+                                final hasBalance = await WalletService.checkBalance(amt);
+                                if (!hasBalance) {
+                                  if (ctx.mounted) {
+                                    ShadToaster.of(ctx).show(
+                                      const ShadToast.destructive(
+                                        title: Text('Insufficient Balance'),
+                                        description: Text('You do not have enough funds for this withdrawal.'),
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+                                final authed = await WalletLockService.unlockIfNeeded(
+                                  reason: 'Authenticate to confirm withdrawal',
                                 );
-                              }
-                              return;
-                            }
-                            final authed = await WalletLockService.unlockIfNeeded(
-                              reason: 'Authenticate to confirm withdrawal',
-                            );
-                            if (!authed) return;
-                            setState(() => isSubmitting = true);
-                            try {
-                              final amt = double.parse(amountCtrl.text.trim());
-                              final fullDetails = '${nameCtrl.text.trim()} - ${accountCtrl.text.trim()}';
-                              await provider.requestWithdrawal(
-                                amount: amt,
-                                methodType: method,
-                                providerType: providerCtrl.text.trim(),
-                                accountDetails: fullDetails,
-                              );
-                              if (ctx.mounted) Navigator.of(ctx).pop();
-                              if (context.mounted) {
-                                ShadToaster.of(context).show(
-                                  const ShadToast(title: Text('Withdrawal request submitted successfully!')),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ShadToaster.of(context).show(
-                                  ShadToast(title: Text('Error: $e')),
-                                );
-                              }
-                            } finally {
-                              if (ctx.mounted) setState(() => isSubmitting = false);
-                            }
-                          },
-                    child: const Text('Submit'),
+                                if (!authed) return;
+                                setState(() => isSubmitting = true);
+                                try {
+                                  final amt = double.parse(amountCtrl.text.trim());
+                                  final fullDetails = '${nameCtrl.text.trim()} - ${accountCtrl.text.trim()}';
+                                  await provider.requestWithdrawal(
+                                    amount: amt,
+                                    methodType: method,
+                                    providerType: providerCtrl.text.trim(),
+                                    accountDetails: fullDetails,
+                                  );
+                                  if (ctx.mounted) Navigator.of(ctx).pop();
+                                  if (context.mounted) {
+                                    ShadToaster.of(context).show(
+                                      const ShadToast(title: Text('Withdrawal request submitted successfully!')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ShadToaster.of(context).show(
+                                      ShadToast(title: Text('Error: $e')),
+                                    );
+                                  }
+                                } finally {
+                                  if (ctx.mounted) setState(() => isSubmitting = false);
+                                }
+                              },
+                        child: const Text('Submit'),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1017,54 +1035,62 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
-                  ShadButton(
-                    onPressed: isSubmitting || resolvedUuid == null
-                        ? null
-                        : () async {
-                            if (!formKey.currentState!.validate()) return;
-                            final amt = double.parse(amountCtrl.text.trim());
-                            final hasBalance = await WalletService.checkBalance(amt);
-                            if (!hasBalance) {
-                              if (ctx.mounted) {
-                                ShadToaster.of(ctx).show(
-                                  const ShadToast.destructive(
-                                    title: Text('Insufficient Balance'),
-                                    description: Text('You do not have enough funds for this transfer.'),
-                                  ),
+                  AnimatedBuilder(
+                    animation: amountCtrl,
+                    builder: (_, _) {
+                      final formValid = resolvedUuid != null &&
+                          (double.tryParse(amountCtrl.text.trim()) ?? 0) > 0;
+                      return ShadButton(
+                        enabled: formValid,
+                        onPressed: (isSubmitting || !formValid)
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                final amt = double.parse(amountCtrl.text.trim());
+                                final hasBalance = await WalletService.checkBalance(amt);
+                                if (!hasBalance) {
+                                  if (ctx.mounted) {
+                                    ShadToaster.of(ctx).show(
+                                      const ShadToast.destructive(
+                                        title: Text('Insufficient Balance'),
+                                        description: Text('You do not have enough funds for this transfer.'),
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+                                final authed = await WalletLockService.unlockIfNeeded(
+                                  reason: 'Authenticate to confirm transfer',
                                 );
-                              }
-                              return;
-                            }
-                            final authed = await WalletLockService.unlockIfNeeded(
-                              reason: 'Authenticate to confirm transfer',
-                            );
-                            if (!authed) return;
-                            setState(() => isSubmitting = true);
-                            try {
-                              await provider.transferToUser(
-                                recipientId: resolvedUuid!,
-                                amount: amt,
-                                description: descriptionCtrl.text.trim().isNotEmpty
-                                    ? descriptionCtrl.text.trim()
-                                    : null,
-                              );
-                              if (ctx.mounted) Navigator.of(ctx).pop();
-                              if (context.mounted) {
-                                ShadToaster.of(context).show(
-                                  const ShadToast(title: Text('Transfer completed successfully!')),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ShadToaster.of(context).show(
-                                  ShadToast(title: Text('Transfer failed: $e')),
-                                );
-                              }
-                            } finally {
-                              if (ctx.mounted) setState(() => isSubmitting = false);
-                            }
-                          },
-                    child: const Text('Transfer'),
+                                if (!authed) return;
+                                setState(() => isSubmitting = true);
+                                try {
+                                  await provider.transferToUser(
+                                    recipientId: resolvedUuid!,
+                                    amount: amt,
+                                    description: descriptionCtrl.text.trim().isNotEmpty
+                                        ? descriptionCtrl.text.trim()
+                                        : null,
+                                  );
+                                  if (ctx.mounted) Navigator.of(ctx).pop();
+                                  if (context.mounted) {
+                                    ShadToaster.of(context).show(
+                                      const ShadToast(title: Text('Transfer completed successfully!')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ShadToaster.of(context).show(
+                                      ShadToast(title: Text('Transfer failed: $e')),
+                                    );
+                                  }
+                                } finally {
+                                  if (ctx.mounted) setState(() => isSubmitting = false);
+                                }
+                              },
+                        child: const Text('Transfer'),
+                      );
+                    },
                   ),
                 ],
               ),

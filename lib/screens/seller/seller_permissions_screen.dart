@@ -258,31 +258,39 @@ class _GrantAccessTab extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ShadButton(
-                    onPressed: isSearching
-                        ? null
-                        : () {
-                            final code = codeController.text.trim();
-                            if (code.length == 6) {
-                              onLookup(code);
-                            } else {
-                              ShadToaster.of(context).show(
-                                const ShadToast.destructive(
-                                  title: Text('Invalid Code'),
-                                  description: Text(
-                                      'Code must be exactly 6 alphanumeric characters.'),
-                                ),
-                              );
-                            }
-                          },
-                    child: isSearching
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text('Verify'),
+                  AnimatedBuilder(
+                    animation: codeController,
+                    builder: (context, _) {
+                      final codeValid =
+                          codeController.text.trim().length == 6;
+                      return ShadButton(
+                        enabled: codeValid,
+                        onPressed: (!isSearching && codeValid)
+                            ? () {
+                                final code = codeController.text.trim();
+                                if (code.length == 6) {
+                                  onLookup(code);
+                                } else {
+                                  ShadToaster.of(context).show(
+                                    const ShadToast.destructive(
+                                      title: Text('Invalid Code'),
+                                      description: Text(
+                                          'Code must be exactly 6 alphanumeric characters.'),
+                                    ),
+                                  );
+                                }
+                              }
+                            : null,
+                        child: isSearching
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('Verify'),
+                      );
+                    },
                   ),
                 ],
               ),

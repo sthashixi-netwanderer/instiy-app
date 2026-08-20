@@ -82,12 +82,21 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        ShadButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            _verifyCode(item, codeController.text.trim().toUpperCase());
+        AnimatedBuilder(
+          animation: codeController,
+          builder: (context, _) {
+            final canVerify = codeController.text.trim().isNotEmpty;
+            return ShadButton(
+              enabled: canVerify,
+              onPressed: canVerify
+                  ? () {
+                      Navigator.of(context).pop();
+                      _verifyCode(item, codeController.text.trim().toUpperCase());
+                    }
+                  : null,
+              child: const Text('Verify'),
+            );
           },
-          child: const Text('Verify'),
         ),
       ],
     );

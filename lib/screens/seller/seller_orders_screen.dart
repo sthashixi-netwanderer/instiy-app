@@ -267,11 +267,20 @@ return AppTheme.showGlassDialog<String>(
       onPressed: () => Navigator.of(context).pop(),
       child: const Text('Cancel'),
     ),
-    ShadButton(
-      backgroundColor: AppTheme.successMoss,
-      foregroundColor: Colors.white,
-      onPressed: () => Navigator.of(context).pop(codeController.text.trim().toUpperCase()),
-      child: const Text('Verify'),
+    AnimatedBuilder(
+      animation: codeController,
+      builder: (context, _) {
+        final canVerify = codeController.text.trim().isNotEmpty;
+        return ShadButton(
+          backgroundColor: AppTheme.successMoss,
+          foregroundColor: Colors.white,
+          enabled: canVerify,
+          onPressed: canVerify
+              ? () => Navigator.of(context).pop(codeController.text.trim().toUpperCase())
+              : null,
+          child: const Text('Verify'),
+        );
+      },
     ),
   ],
 );
@@ -336,18 +345,27 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
       onPressed: () => Navigator.of(context).pop(),
       child: const Text('Go Back'),
     ),
-    ShadButton.destructive(
-      onPressed: () {
-        final reason = reasonController.text.trim();
-        if (reason.isEmpty) {
-          ShadToaster.of(context).show(
-            const ShadToast(backgroundColor: AppTheme.destructive, title: Text('Please provide a reason')),
-          );
-          return;
-        }
-        Navigator.of(context).pop({'confirmed': true, 'reason': reason});
+    AnimatedBuilder(
+      animation: reasonController,
+      builder: (context, _) {
+        final reasonValid = reasonController.text.trim().isNotEmpty;
+        return ShadButton.destructive(
+          enabled: reasonValid,
+          onPressed: reasonValid
+              ? () {
+                  final reason = reasonController.text.trim();
+                  if (reason.isEmpty) {
+                    ShadToaster.of(context).show(
+                      const ShadToast(backgroundColor: AppTheme.destructive, title: Text('Please provide a reason')),
+                    );
+                    return;
+                  }
+                  Navigator.of(context).pop({'confirmed': true, 'reason': reason});
+                }
+              : null,
+          child: const Text('Cancel & Refund'),
+        );
       },
-      child: const Text('Cancel & Refund'),
     ),
   ],
 );
