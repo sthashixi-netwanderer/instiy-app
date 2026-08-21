@@ -410,8 +410,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (userUniversity == null || userUniversity.isEmpty) return false;
     // Empty campuses means the seller hasn't restricted to a campus.
     if (product.campuses.isEmpty) return false;
-    // If the buyer already has active or pending permission, not cross-institution.
-    if (_hasPermission || _hasPendingPermission) return false;
+    // Only an active (granted, unexpired) permission reveals the normal buy
+    // bar. A pending request must keep showing the permission UI — no Buy
+    // button until the seller grants access.
+    if (_hasPermission) return false;
     return !product.campuses.any((c) => c.toLowerCase() == userUniversity.toLowerCase());
   }
 

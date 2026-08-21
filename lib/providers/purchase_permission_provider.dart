@@ -30,6 +30,27 @@ class PurchasePermissionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Inserts an in-app notification via the create_notification RPC.
+  ///
+  /// Direct inserts into public.notifications are blocked by RLS (the table
+  /// has no INSERT policy), so clients must go through this SECURITY DEFINER
+  /// RPC. The push-notification trigger still fires inside it.
+  Future<void> _createNotification({
+    required String userId,
+    required String title,
+    required String body,
+    required String type,
+    Map<String, dynamic>? data,
+  }) async {
+    await SupabaseService.client.rpc('create_notification', params: {
+      'p_user_id': userId,
+      'p_title': title,
+      'p_body': body,
+      'p_type': type,
+      'p_data': data ?? {},
+    });
+  }
+
   /// Generates a code for a product and notifies the seller.
   Future<String> generateCode({
     required String productId,
@@ -45,36 +66,44 @@ class PurchasePermissionProvider extends ChangeNotifier {
         sellerId: sellerId,
       );
 
-      // Notify the seller via email and in-app notification.
+      // Notify the seller via email and in-app notification. Each channel
+      // fails independently so one can't suppress the other.
       final buyer = SupabaseService.instance.currentUser;
       final buyerName = buyer?.userMetadata?['full_name'] as String? ?? 'A buyer';
 
-      // Fetch seller info for notification.
+      Map<String, dynamic>? sellerData;
       try {
-        final sellerData = await SupabaseService.table('users')
+        sellerData = await SupabaseService.table('users')
             .select('full_name, email')
             .eq('id', sellerId)
             .maybeSingle();
+      } catch (e) {
+        debugPrint('Failed to fetch seller for notification: $e');
+      }
 
-        final sellerName = sellerData?['full_name'] as String? ?? 'Seller';
-        final sellerEmail = sellerData?['email'] as String? ?? '';
+      final sellerName = sellerData?['full_name'] as String? ?? 'Seller';
+      final sellerEmail = sellerData?['email'] as String? ?? '';
 
-        // In-app notification to seller.
-        await SupabaseService.table('notifications').insert({
-          'user_id': sellerId,
-          'title': 'Purchase Permission Request',
-          'body': '$buyerName wants to buy a product from you. Open Buyer Permissions to review.',
-          'type': 'permission',
-          'data': {
+      // In-app notification to seller.
+      try {
+        await _createNotification(
+          userId: sellerId,
+          title: 'Purchase Permission Request',
+          body: '$buyerName wants to buy a product from you. Open Buyer Permissions to review.',
+          type: 'permission',
+          data: {
             'code': code,
             'product_id': productId,
             'buyer_id': buyer?.id,
           },
-        });
+        );
+      } catch (e) {
+        debugPrint('Failed to send in-app notification: $e');
+      }
 
-        // Email to seller.
-        if (sellerEmail.isNotEmpty) {
-          // Fetch product title.
+      // Email to seller.
+      if (sellerEmail.isNotEmpty) {
+        try {
           final productData = await SupabaseService.table('products')
             .select('title')
             .eq('id', productId)
@@ -88,9 +117,9 @@ class PurchasePermissionProvider extends ChangeNotifier {
             productTitle: productTitle,
             code: code,
           );
+        } catch (e) {
+          debugPrint('Failed to send email notification: $e');
         }
-      } catch (e) {
-        debugPrint('Failed to notify seller: $e');
       }
 
       _isLoading = false;
@@ -139,10 +168,26 @@ class PurchasePermissionProvider extends ChangeNotifier {
       await PurchasePermissionService.grantPermission(permissionId, expiry: expiry);
       if (_activeLookupResult != null && _activeLookupResult!['id'] == permissionId) {
         _activeLookupResult!['status'] = 'granted';
+      }
 
-        final customer = _activeLookupResult!['customer'] as Map<String, dynamic>?;
-        final product = _activeLookupResult!['product'] as Map<String, dynamic>?;
-        final code = _activeLookupResult!['code'] as String? ?? '';
+      // Sellers can grant from the code-lookup screen or straight from the
+      // pending list, so resolve buyer/product details from whichever is loaded.
+      Map<String, dynamic>? perm;
+      if (_activeLookupResult != null && _activeLookupResult!['id'] == permissionId) {
+        perm = _activeLookupResult;
+      } else {
+        for (final p in _pendingPermissions) {
+          if (p['id'] == permissionId) {
+            perm = p;
+            break;
+          }
+        }
+      }
+
+      if (perm != null) {
+        final customer = perm['customer'] as Map<String, dynamic>?;
+        final product = perm['product'] as Map<String, dynamic>?;
+        final code = perm['code'] as String? ?? '';
 
         final buyerId = customer?['id'] as String?;
         final buyerEmail = customer?['email'] as String?;
@@ -154,17 +199,17 @@ class PurchasePermissionProvider extends ChangeNotifier {
         // 1. Send in-app notification
         if (buyerId != null) {
           try {
-            await SupabaseService.instance.from('notifications').insert({
-              'user_id': buyerId,
-              'title': 'Access Permission Granted',
-              'body': 'You have been granted permission to buy "$productTitle". Code: $code',
-              'type': 'permission',
-              'data': {
+            await _createNotification(
+              userId: buyerId,
+              title: 'Access Permission Granted',
+              body: 'You have been granted permission to buy "$productTitle". Code: $code',
+              type: 'permission',
+              data: {
                 'permission_id': permissionId,
                 'product_id': productId,
                 'code': code,
               },
-            });
+            );
           } catch (e) {
             debugPrint('Failed to send in-app notification: $e');
           }
@@ -227,16 +272,16 @@ class PurchasePermissionProvider extends ChangeNotifier {
 
       if (buyerId != null) {
         try {
-          await SupabaseService.instance.from('notifications').insert({
-            'user_id': buyerId,
-            'title': 'Permission Request Declined',
-            'body': 'Your permission request for "$productTitle" was declined by the seller.',
-            'type': 'permission',
-            'data': {
+          await _createNotification(
+            userId: buyerId,
+            title: 'Permission Request Declined',
+            body: 'Your permission request for "$productTitle" was declined by the seller.',
+            type: 'permission',
+            data: {
               'permission_id': permissionId,
               'product_id': productId,
             },
-          });
+          );
         } catch (e) {
           debugPrint('Failed to send in-app notification: $e');
         }
@@ -258,6 +303,79 @@ class PurchasePermissionProvider extends ChangeNotifier {
 
       // Remove from pending list.
       _pendingPermissions.removeWhere((p) => p['id'] == permissionId);
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Revokes a previously granted permission and notifies the buyer.
+  Future<bool> revokeAccess(String permissionId) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      // Get the permission details before revoking for notification.
+      final perm = _permissionHistory.firstWhere(
+        (p) => p['id'] == permissionId,
+        orElse: () => {},
+      );
+
+      await PurchasePermissionService.revokePermission(permissionId);
+
+      // Notify the buyer.
+      final customer = perm['customer'] as Map<String, dynamic>?;
+      final product = perm['product'] as Map<String, dynamic>?;
+      final buyerId = customer?['id'] as String?;
+      final buyerEmail = customer?['email'] as String?;
+      final buyerName = customer?['full_name'] as String? ?? 'Buyer';
+      final productTitle = product?['title'] as String? ?? 'Product';
+      final productId = product?['id'] as String?;
+
+      if (buyerId != null) {
+        try {
+          await _createNotification(
+            userId: buyerId,
+            title: 'Access Permission Revoked',
+            body: 'Your permission to buy "$productTitle" has been revoked by the seller.',
+            type: 'permission',
+            data: {
+              'permission_id': permissionId,
+              'product_id': productId,
+            },
+          );
+        } catch (e) {
+          debugPrint('Failed to send in-app notification: $e');
+        }
+      }
+
+      if (buyerEmail != null && buyerEmail.isNotEmpty) {
+        final sellerName = SupabaseService.instance.currentUser?.userMetadata?['full_name'] as String? ?? 'The Seller';
+        try {
+          await EmailService.sendPurchasePermissionRevoked(
+            buyerEmail: buyerEmail,
+            buyerName: buyerName,
+            sellerName: sellerName,
+            productTitle: productTitle,
+          );
+        } catch (e) {
+          debugPrint('Failed to send email notification: $e');
+        }
+      }
+
+      // Reflect the new status in place so the history tile updates.
+      final index = _permissionHistory.indexWhere((p) => p['id'] == permissionId);
+      if (index != -1) {
+        _permissionHistory[index]['status'] = 'revoked';
+        _permissionHistory[index]['expires_at'] = DateTime.now().toUtc().toIso8601String();
+      }
 
       _isLoading = false;
       notifyListeners();

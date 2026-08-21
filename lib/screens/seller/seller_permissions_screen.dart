@@ -1088,6 +1088,39 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
     });
   }
 
+  Future<void> _revokePermission(String permissionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Revoke Permission'),
+        content: const Text(
+            'The buyer will no longer be able to purchase this product and will be notified. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.destructive),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final success =
+        await ref.read(purchasePermissionProvider.notifier).revokeAccess(permissionId);
+    if (mounted) {
+      ShadToaster.of(context).show(
+        ShadToast(
+          title: Text(success ? 'Permission revoked' : 'Failed to revoke permission'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = ref.watch(purchasePermissionProvider);
@@ -1183,6 +1216,7 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
         return _HistoryPermissionTile(
           permission: history[index],
           sellerId: ref.read(authProvider).user?.id ?? '',
+          onRevoke: _revokePermission,
         );
       },
       ),
@@ -1195,10 +1229,12 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
 class _HistoryPermissionTile extends StatelessWidget {
   final Map<String, dynamic> permission;
   final String sellerId;
+  final ValueChanged<String>? onRevoke;
 
   const _HistoryPermissionTile({
     required this.permission,
     required this.sellerId,
+    this.onRevoke,
   });
 
   @override
@@ -1231,6 +1267,11 @@ class _HistoryPermissionTile extends StatelessWidget {
     if (createdAtStr != null) createdAt = DateTime.tryParse(createdAtStr);
     if (expiresAtStr != null) expiresAt = DateTime.tryParse(expiresAtStr);
 
+    // Only still-active grants can be revoked.
+    final canRevoke = status == 'granted' &&
+        onRevoke != null &&
+        (expiresAt == null || expiresAt.isAfter(DateTime.now()));
+
     final code = permission['code'] as String? ?? '';
 
     Color statusColor;
@@ -1243,6 +1284,10 @@ class _HistoryPermissionTile extends StatelessWidget {
       case 'pending':
         statusColor = Colors.orange;
         statusIcon = LucideIcons.clock;
+        break;
+      case 'revoked':
+        statusColor = AppTheme.destructive;
+        statusIcon = LucideIcons.shieldOff;
         break;
       default:
         statusColor = AppTheme.destructive;
@@ -1387,6 +1432,43 @@ class _HistoryPermissionTile extends StatelessWidget {
                 ),
             ],
           ),
+
+          // Revoke action for still-active grants.
+          if (canRevoke) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: () => onRevoke!(permission['id'] as String),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.destructive.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: AppTheme.destructive.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.shieldOff,
+                          size: 14, color: AppTheme.destructive),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Revoke Access',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.destructive,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

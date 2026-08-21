@@ -88,6 +88,16 @@ class PurchasePermissionService {
     }).eq('id', permissionId);
   }
 
+  /// Revokes a previously granted permission.
+  static Future<void> revokePermission(String permissionId) async {
+    final supabase = SupabaseService.instance;
+    await supabase.from('purchase_permissions').update({
+      'status': 'revoked',
+      'expires_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', permissionId);
+  }
+
   /// Fetches pending permission requests for a seller.
   static Future<List<Map<String, dynamic>>> getPendingPermissions({
     required String sellerId,
@@ -100,7 +110,7 @@ class PurchasePermissionService {
           .from('purchase_permissions')
           .select('''
             *,
-            customer:users!purchase_permissions_customer_id_fkey(id, full_name, avatar_url, university),
+            customer:users!purchase_permissions_customer_id_fkey(id, full_name, email, avatar_url, university),
             product:products!purchase_permissions_product_id_fkey(id, title, price, image_urls, thumbnail_url)
           ''')
           .eq('seller_id', sellerId)
@@ -125,11 +135,11 @@ class PurchasePermissionService {
           .from('purchase_permissions')
           .select('''
             *,
-            customer:users!purchase_permissions_customer_id_fkey(id, full_name, avatar_url, university),
+            customer:users!purchase_permissions_customer_id_fkey(id, full_name, email, avatar_url, university),
             product:products!purchase_permissions_product_id_fkey(id, title, price, image_urls, thumbnail_url)
           ''')
           .eq('seller_id', sellerId)
-          .inFilter('status', ['granted', 'cancelled'])
+          .inFilter('status', ['granted', 'cancelled', 'revoked'])
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
       return List<Map<String, dynamic>>.from(response);

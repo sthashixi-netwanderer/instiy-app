@@ -1038,4 +1038,50 @@ class EmailService {
       htmlBody: htmlBody,
     );
   }
+
+  static Future<void> sendPurchasePermissionRevoked({
+    required String buyerEmail,
+    required String buyerName,
+    required String sellerName,
+    required String productTitle,
+  }) async {
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Access Permission Revoked</h1>
+    </div>
+    <div class="content">
+      <p>Hi <strong>$buyerName</strong>,</p>
+      <p>The seller <strong>$sellerName</strong> has revoked your permission to buy <strong>"$productTitle"</strong>.</p>
+      <p>If you still want this item, please message the seller or send a new permission request.</p>
+    </div>
+    <div class="footer">
+      <p>Instiy — Automated Access Notification</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: buyerEmail,
+      subject: 'Permission Revoked: "$productTitle"',
+      htmlBody: htmlBody,
+    );
+  }
 }
