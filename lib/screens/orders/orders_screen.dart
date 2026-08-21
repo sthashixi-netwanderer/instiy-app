@@ -262,12 +262,12 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   }
 
   List<Order> _pendingOrders(List<Order> orders) => orders.where((o) {
-    final s = (o.status ?? '').toLowerCase();
+    final s = o.status.toLowerCase();
     return s == 'pending' || s == 'processing' || s == 'shipped';
   }).toList();
 
   List<Order> _completedOrders(List<Order> orders) => orders.where((o) {
-    final s = (o.status ?? '').toLowerCase();
+    final s = o.status.toLowerCase();
     return s == 'delivered' || s == 'cancelled';
   }).toList();
 
@@ -280,7 +280,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       // Match order ID
       if (o.id.toLowerCase().contains(query)) return true;
       // Match status
-      if ((o.status ?? '').toLowerCase().contains(query)) return true;
+      if (o.status.toLowerCase().contains(query)) return true;
       // Match any product title in the order
       return o.items.any((item) => item.productTitle.toLowerCase().contains(query));
     }).toList();

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -5,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import 'package:instiy/utils/formatters.dart';
+import '../../utils/responsive.dart';
 
 class SellerPermissionsScreen extends ConsumerStatefulWidget {
   const SellerPermissionsScreen({super.key});
@@ -20,19 +22,23 @@ class _SellerPermissionsScreenState
   final FocusNode _focusNode = FocusNode();
   bool _searching = false;
   final ScrollController _historyScrollController = ScrollController();
+  final ScrollController _pendingScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _codeController.addListener(_onCodeChanged);
     _historyScrollController.addListener(_onHistoryScroll);
+    _pendingScrollController.addListener(_onPendingScroll);
   }
 
   @override
   void dispose() {
     _codeController.removeListener(_onCodeChanged);
     _historyScrollController.removeListener(_onHistoryScroll);
+    _pendingScrollController.removeListener(_onPendingScroll);
     _historyScrollController.dispose();
+    _pendingScrollController.dispose();
     _focusNode.dispose();
 
     final controller = _codeController;
@@ -62,6 +68,18 @@ class _SellerPermissionsScreenState
     }
   }
 
+  void _onPendingScroll() {
+    if (_pendingScrollController.position.pixels >=
+        _pendingScrollController.position.maxScrollExtent - 200) {
+      final sellerId = ref.read(authProvider).user?.id;
+      if (sellerId != null) {
+        ref
+            .read(purchasePermissionProvider.notifier)
+            .loadMorePendingPermissions(sellerId);
+      }
+    }
+  }
+
   Future<void> _lookupCode(String code) async {
     setState(() => _searching = true);
     _focusNode.unfocus();
@@ -82,9 +100,9 @@ class _SellerPermissionsScreenState
     }
   }
 
-  Future<void> _grantPermission(String permissionId) async {
+  Future<void> _grantPermission(String permissionId, Duration expiry) async {
     final provider = ref.read(purchasePermissionProvider);
-    final success = await provider.grantAccess(permissionId);
+    final success = await provider.grantAccess(permissionId, expiry: expiry);
 
     if (mounted) {
       if (success) {
@@ -109,21 +127,41 @@ class _SellerPermissionsScreenState
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(
           context: context,
           title: const Text('Buyer Permissions'),
-          bottom: const TabBar(
-            labelColor: AppTheme.accent,
-            unselectedLabelColor: AppTheme.mutedSteel,
-            indicatorColor: AppTheme.accent,
-            tabs: [
-              Tab(text: 'Grant Access'),
-              Tab(text: 'History'),
-            ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(kTextTabBarHeight),
+            child: ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.compose(
+                  outer: ImageFilter.blur(sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+                  inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.pureSurface.withValues(alpha: 0.7),
+                    border: Border(bottom: BorderSide(color: AppTheme.whisperBorder, width: 0.5)),
+                  ),
+                  child: TabBar(
+                    indicatorColor: AppTheme.accent,
+                    labelColor: AppTheme.accent,
+                    unselectedLabelColor: AppTheme.mutedSteel,
+                    labelStyle: TextStyle(fontSize: context.rsp(12), fontWeight: FontWeight.w600),
+                    unselectedLabelStyle: TextStyle(fontSize: context.rsp(12), fontWeight: FontWeight.w500),
+                    tabs: const [
+                      Tab(text: 'Lookup'),
+                      Tab(text: 'Pending'),
+                      Tab(text: 'History'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
         body: TabBarView(
@@ -140,6 +178,7 @@ class _SellerPermissionsScreenState
                 _focusNode.requestFocus();
               },
             ),
+            _PendingTab(scrollController: _pendingScrollController),
             _HistoryTab(scrollController: _historyScrollController),
           ],
         ),
@@ -155,7 +194,7 @@ class _GrantAccessTab extends ConsumerWidget {
   final FocusNode focusNode;
   final bool searching;
   final ValueChanged<String> onLookup;
-  final ValueChanged<String> onGrant;
+  final void Function(String permissionId, Duration expiry) onGrant;
   final VoidCallback onClear;
 
   const _GrantAccessTab({
@@ -337,7 +376,7 @@ class _GrantAccessTab extends ConsumerWidget {
 
 // ───────────────────── Permission Result Card ─────────────────────
 
-class _PermissionResultCard extends StatelessWidget {
+class _PermissionResultCard extends StatefulWidget {
   final String code;
   final String customerName;
   final String? customerAvatar;
@@ -348,7 +387,7 @@ class _PermissionResultCard extends StatelessWidget {
   final String? permissionStatus;
   final DateTime? expiresAt;
   final String permissionId;
-  final ValueChanged<String> onGrant;
+  final void Function(String permissionId, Duration expiry) onGrant;
 
   const _PermissionResultCard({
     required this.code,
@@ -363,6 +402,23 @@ class _PermissionResultCard extends StatelessWidget {
     required this.permissionId,
     required this.onGrant,
   });
+
+  @override
+  State<_PermissionResultCard> createState() => _PermissionResultCardState();
+}
+
+class _PermissionResultCardState extends State<_PermissionResultCard> {
+  Duration _selectedExpiry = const Duration(hours: 24);
+
+  static const _expiryOptions = [
+    ('1 hour', Duration(hours: 1)),
+    ('6 hours', Duration(hours: 6)),
+    ('12 hours', Duration(hours: 12)),
+    ('24 hours', Duration(hours: 24)),
+    ('48 hours', Duration(hours: 48)),
+    ('72 hours', Duration(hours: 72)),
+    ('7 days', Duration(days: 7)),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +454,7 @@ class _PermissionResultCard extends StatelessWidget {
                     size: 14, color: AppTheme.accent),
                 const SizedBox(width: 6),
                 Text(
-                  'Code: $code',
+                  'Code: ${widget.code}',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -424,13 +480,13 @@ class _PermissionResultCard extends StatelessWidget {
           Row(
             children: [
               ShadAvatar(
-                (customerAvatar != null && customerAvatar!.isNotEmpty)
-                    ? customerAvatar
+                (widget.customerAvatar != null && widget.customerAvatar!.isNotEmpty)
+                    ? widget.customerAvatar
                     : null,
                 size: const Size(60, 60),
                 backgroundColor: AppTheme.accent,
                 placeholder: Text(
-                  customerName[0].toUpperCase(),
+                  widget.customerName[0].toUpperCase(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -444,7 +500,7 @@ class _PermissionResultCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      customerName,
+                      widget.customerName,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -459,7 +515,7 @@ class _PermissionResultCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            customerInstitution,
+                            widget.customerInstitution,
                             style: const TextStyle(
                               fontSize: 13,
                               color: AppTheme.mutedSteel,
@@ -494,10 +550,10 @@ class _PermissionResultCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: productThumbnail != null &&
-                        productThumbnail!.isNotEmpty
+                child: widget.productThumbnail != null &&
+                        widget.productThumbnail!.isNotEmpty
                     ? CachedNetworkImage(
-                        imageUrl: productThumbnail!,
+                        imageUrl: widget.productThumbnail!,
                         width: 64,
                         height: 64,
                         fit: BoxFit.cover,
@@ -516,7 +572,7 @@ class _PermissionResultCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      productTitle,
+                      widget.productTitle,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -527,7 +583,7 @@ class _PermissionResultCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      formatGhs(productPrice),
+                      formatGhs(widget.productPrice),
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -544,7 +600,7 @@ class _PermissionResultCard extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Status
-          if (permissionStatus == 'pending') ...[
+          if (widget.permissionStatus == 'pending') ...[
             const Row(
               children: [
                 Icon(LucideIcons.alertCircle,
@@ -560,15 +616,69 @@ class _PermissionResultCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+
+            // Expiry duration picker
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.warmMist,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Permission Duration',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _expiryOptions.map((opt) {
+                      final isSelected = _selectedExpiry == opt.$2;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedExpiry = opt.$2),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.accent.withValues(alpha: 0.12)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected ? AppTheme.accent : AppTheme.whisperBorder,
+                            ),
+                          ),
+                          child: Text(
+                            opt.$1,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected ? AppTheme.accent : AppTheme.charcoalInk,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: ShadButton(
-                onPressed: () => onGrant(permissionId),
+                onPressed: () => widget.onGrant(widget.permissionId, _selectedExpiry),
                 child: const Text('Grant Purchase Permission'),
               ),
             ),
-          ] else if (permissionStatus == 'granted') ...[
+          ] else if (widget.permissionStatus == 'granted') ...[
             Row(
               children: [
                 const Icon(LucideIcons.checkCircle2,
@@ -586,10 +696,10 @@ class _PermissionResultCard extends StatelessWidget {
                           color: Colors.green,
                         ),
                       ),
-                      if (expiresAt != null) ...[
+                      if (widget.expiresAt != null) ...[
                         const SizedBox(height: 4),
                         Text(
-                          'Expires: ${DateFormat('yyyy-MM-dd HH:mm').format(expiresAt!.toLocal())}',
+                          'Expires: ${DateFormat('yyyy-MM-dd HH:mm').format(widget.expiresAt!.toLocal())}',
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppTheme.mutedSteel,
@@ -608,7 +718,7 @@ class _PermissionResultCard extends StatelessWidget {
                     size: 16, color: AppTheme.destructive),
                 const SizedBox(width: 6),
                 Text(
-                  'Status: ${permissionStatus?.toUpperCase() ?? 'INACTIVE'}',
+                  'Status: ${widget.permissionStatus?.toUpperCase() ?? 'INACTIVE'}',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -618,6 +728,330 @@ class _PermissionResultCard extends StatelessWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────── Pending Tab ─────────────────────────
+
+class _PendingTab extends ConsumerStatefulWidget {
+  final ScrollController scrollController;
+
+  const _PendingTab({required this.scrollController});
+
+  @override
+  ConsumerState<_PendingTab> createState() => _PendingTabState();
+}
+
+class _PendingTabState extends ConsumerState<_PendingTab> {
+  bool _initialLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_initialLoaded) {
+        _initialLoaded = true;
+        final sellerId = ref.read(authProvider).user?.id;
+        if (sellerId != null) {
+          ref.read(purchasePermissionProvider.notifier).loadPendingPermissions(sellerId);
+        }
+      }
+    });
+  }
+
+  static const _expiryOptions = [
+    ('1 hour', Duration(hours: 1)),
+    ('6 hours', Duration(hours: 6)),
+    ('12 hours', Duration(hours: 12)),
+    ('24 hours', Duration(hours: 24)),
+    ('48 hours', Duration(hours: 48)),
+    ('72 hours', Duration(hours: 72)),
+    ('7 days', Duration(days: 7)),
+  ];
+
+  Future<void> _grantWithExpiry(String permissionId, Duration expiry) async {
+    final provider = ref.read(purchasePermissionProvider.notifier);
+    final success = await provider.grantAccess(permissionId, expiry: expiry);
+    if (mounted && success) {
+      ShadToaster.of(context).show(
+        ShadToast(
+          title: Text('Access granted for ${_expiryOptions.firstWhere((e) => e.$2 == expiry, orElse: () => ('24 hours', Duration(hours: 24))).$1}'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelPermission(String permissionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Decline Permission'),
+        content: const Text('The buyer will be notified that their request was declined. Continue?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.destructive),
+            child: const Text('Decline'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final provider = ref.read(purchasePermissionProvider.notifier);
+    final success = await provider.cancelAccess(permissionId);
+    if (mounted && success) {
+      ShadToaster.of(context).show(
+        const ShadToast(title: Text('Permission request declined')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = ref.watch(purchasePermissionProvider);
+    final pending = provider.pendingPermissions;
+    final isLoading = provider.isLoadingPending;
+    final hasMore = provider.hasMorePending;
+
+    if (isLoading && pending.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight + 56),
+          child: const CircularProgressIndicator(color: AppTheme.accent),
+        ),
+      );
+    }
+
+    if (pending.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () async {
+          final sellerId = ref.read(authProvider).user?.id;
+          if (sellerId != null) {
+            await ref.read(purchasePermissionProvider.notifier).loadPendingPermissions(sellerId);
+          }
+        },
+        child: ListView(
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+            Center(
+              child: Column(
+                children: [
+                  Icon(LucideIcons.inbox, size: 48, color: AppTheme.mutedSteel.withValues(alpha: 0.4)),
+                  const SizedBox(height: 16),
+                  const Text('No pending requests', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.charcoalInk)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Permission requests from buyers will appear here.',
+                    style: TextStyle(fontSize: 13, color: AppTheme.mutedSteel),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        final sellerId = ref.read(authProvider).user?.id;
+        if (sellerId != null) {
+          await ref.read(purchasePermissionProvider.notifier).loadPendingPermissions(sellerId);
+        }
+      },
+      child: ListView.builder(
+        controller: widget.scrollController,
+        padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight + 16, 20, 24),
+        itemCount: pending.length + (hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == pending.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent))),
+            );
+          }
+          return _PendingPermissionTile(
+            permission: pending[index],
+            onGrant: _grantWithExpiry,
+            onCancel: _cancelPermission,
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ───────────────────── Pending Permission Tile ─────────────────────
+
+class _PendingPermissionTile extends StatefulWidget {
+  final Map<String, dynamic> permission;
+  final void Function(String permissionId, Duration expiry) onGrant;
+  final ValueChanged<String> onCancel;
+
+  const _PendingPermissionTile({
+    required this.permission,
+    required this.onGrant,
+    required this.onCancel,
+  });
+
+  @override
+  State<_PendingPermissionTile> createState() => _PendingPermissionTileState();
+}
+
+class _PendingPermissionTileState extends State<_PendingPermissionTile> {
+  Duration _selectedExpiry = const Duration(hours: 24);
+
+  static const _expiryOptions = [
+    ('1h', Duration(hours: 1)),
+    ('6h', Duration(hours: 6)),
+    ('12h', Duration(hours: 12)),
+    ('24h', Duration(hours: 24)),
+    ('48h', Duration(hours: 48)),
+    ('72h', Duration(hours: 72)),
+    ('7d', Duration(days: 7)),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final customer = widget.permission['customer'] as Map<String, dynamic>?;
+    final product = widget.permission['product'] as Map<String, dynamic>?;
+    final customerName = customer?['full_name'] as String? ?? 'Unknown';
+    final customerAvatar = customer?['avatar_url'] as String?;
+    final customerInstitution = customer?['university'] as String? ?? '';
+    final productTitle = product?['title'] as String? ?? '';
+    final code = widget.permission['code'] as String? ?? '';
+    final createdAtStr = widget.permission['created_at'] as String?;
+    DateTime? createdAt;
+    if (createdAtStr != null) createdAt = DateTime.tryParse(createdAtStr);
+
+    String? productThumbnail;
+    final imageUrlsList = product?['image_urls'];
+    if (product?['thumbnail_url'] != null) {
+      productThumbnail = product!['thumbnail_url'] as String;
+    } else if (imageUrlsList is List && imageUrlsList.isNotEmpty) {
+      productThumbnail = imageUrlsList.first as String;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.warningAmber.withValues(alpha: 0.3)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: code + time
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.warningAmber.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(code, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.warningAmber, letterSpacing: 1.0)),
+              ),
+              const Spacer(),
+              if (createdAt != null)
+                Text(
+                  DateFormat('MMM d, HH:mm').format(createdAt.toLocal()),
+                  style: TextStyle(fontSize: 11, color: AppTheme.mutedSteel.withValues(alpha: 0.6)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Buyer + product row
+          Row(
+            children: [
+              ShadAvatar(
+                (customerAvatar != null && customerAvatar.isNotEmpty) ? customerAvatar : null,
+                size: const Size(36, 36),
+                backgroundColor: AppTheme.accent,
+                placeholder: Text(customerName[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(customerName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.charcoalInk), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(productTitle, style: const TextStyle(fontSize: 12, color: AppTheme.mutedSteel), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (customerInstitution.isNotEmpty)
+                      Text(customerInstitution, style: TextStyle(fontSize: 11, color: AppTheme.accent.withValues(alpha: 0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              if (productThumbnail != null && productThumbnail.isNotEmpty)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(imageUrl: productThumbnail, width: 40, height: 40, fit: BoxFit.cover),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Expiry picker
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: AppTheme.warmMist, borderRadius: BorderRadius.circular(10)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Permission Duration', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _expiryOptions.map((opt) {
+                    final isSelected = _selectedExpiry == opt.$2;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedExpiry = opt.$2),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppTheme.accent.withValues(alpha: 0.12) : Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: isSelected ? AppTheme.accent : AppTheme.whisperBorder),
+                        ),
+                        child: Text(opt.$1, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? AppTheme.accent : AppTheme.charcoalInk)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Action buttons
+          Row(
+            children: [
+              Expanded(
+                child: ShadButton(
+                  onPressed: () => widget.onGrant(widget.permission['id'] as String, _selectedExpiry),
+                  child: const Text('Grant'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ShadButton.destructive(
+                  onPressed: () => widget.onCancel(widget.permission['id'] as String),
+                  child: const Text('Decline'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

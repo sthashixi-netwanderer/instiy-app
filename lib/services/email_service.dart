@@ -936,4 +936,106 @@ class EmailService {
       htmlBody: htmlBody,
     );
   }
+
+  static Future<void> sendPurchasePermissionRequested({
+    required String sellerEmail,
+    required String sellerName,
+    required String buyerName,
+    required String productTitle,
+    required String code,
+  }) async {
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .code-box { background: #f5f5f4; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; border: 1px dashed #f59e0b; }
+    .code-label { font-size: 12px; text-transform: uppercase; color: #78716c; letter-spacing: 0.5px; display: block; margin-bottom: 6px; font-weight: 600; }
+    .code-value { font-size: 28px; color: #d97706; letter-spacing: 3.0px; font-family: monospace; font-weight: 700; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Purchase Permission Request</h1>
+    </div>
+    <div class="content">
+      <p>Hi <strong>$sellerName</strong>,</p>
+      <p>A buyer <strong>$buyerName</strong> wants to purchase <strong>"$productTitle"</strong> from your store. They are from a different institution and need your approval.</p>
+
+      <div class="code-box">
+        <span class="code-label">Buyer's Access Code</span>
+        <span class="code-value">$code</span>
+      </div>
+
+      <p>Open the Instiy app, go to <strong>Seller Dashboard → Buyer Permissions</strong>, and enter this code to grant or reject the request.</p>
+    </div>
+    <div class="footer">
+      <p>Instiy — Automated Access Notification</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: sellerEmail,
+      subject: 'Permission Request: "$productTitle" — Buyer Needs Approval',
+      htmlBody: htmlBody,
+    );
+  }
+
+  static Future<void> sendPurchasePermissionRejected({
+    required String buyerEmail,
+    required String buyerName,
+    required String sellerName,
+    required String productTitle,
+  }) async {
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Permission Request Declined</h1>
+    </div>
+    <div class="content">
+      <p>Hi <strong>$buyerName</strong>,</p>
+      <p>Unfortunately, the seller <strong>$sellerName</strong> has declined your permission request to buy <strong>"$productTitle"</strong>.</p>
+      <p>You can try messaging the seller directly to discuss the purchase.</p>
+    </div>
+    <div class="footer">
+      <p>Instiy — Automated Access Notification</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: buyerEmail,
+      subject: 'Permission Request Declined: "$productTitle"',
+      htmlBody: htmlBody,
+    );
+  }
 }

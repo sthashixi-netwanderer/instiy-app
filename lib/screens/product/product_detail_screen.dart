@@ -60,6 +60,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   int? _viewCount;
   Timer? _realtimeDebounce;
   bool _isGeneratingPermissionCode = false;
+  bool _hasPermission = false;
+  bool _hasPendingPermission = false;
   ProviderSubscription<int>? _productsVersionSub;
 
   @override
@@ -138,7 +140,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       _startCountdownTimer();
       unawaited(_loadFollowStatus());
       unawaited(_loadRelatedProducts());
-      if (product != null) unawaited(_recordView());
+      if (product != null) {
+        unawaited(_recordView());
+        unawaited(_checkPermissionStatus());
+      }
     }
   }
 
@@ -405,7 +410,27 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (userUniversity == null || userUniversity.isEmpty) return false;
     // Empty campuses means the seller hasn't restricted to a campus.
     if (product.campuses.isEmpty) return false;
+    // If the buyer already has active or pending permission, not cross-institution.
+    if (_hasPermission || _hasPendingPermission) return false;
     return !product.campuses.any((c) => c.toLowerCase() == userUniversity.toLowerCase());
+  }
+
+  /// Checks whether the current user has active or pending permission for
+  /// this product. Called after loading and after generating a permission code.
+  Future<void> _checkPermissionStatus() async {
+    final product = _product;
+    if (product == null) return;
+    try {
+      final permProv = ref.read(purchasePermissionProvider.notifier);
+      final active = await permProv.checkPermissionForProduct(product.id);
+      final pending = await permProv.checkPendingPermission(product.id);
+      if (mounted) {
+        setState(() {
+          _hasPermission = active;
+          _hasPendingPermission = pending;
+        });
+      }
+    } catch (_) {}
   }
 
   /// Generates a 6-character permission code and shows it in a dialog.
@@ -440,15 +465,19 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       }
 
       if (!mounted) return;
+
+      // Re-check permission status — the request is now pending.
+      await _checkPermissionStatus();
+
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Permission Code Generated'),
+          title: const Text('Permission Request Sent'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Share this code with the seller to get permission to buy:',
+                'A permission request has been sent to the seller. Share this code in the chat:',
                 style: TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
@@ -471,7 +500,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'The seller needs to grant this code before you can buy.',
+                'You\'ll be notified when the seller responds.',
                 style: TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
                 textAlign: TextAlign.center,
               ),
@@ -1624,11 +1653,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(LucideIcons.shieldAlert, size: context.ri(18), color: AppTheme.accent),
+                      Icon(
+                        _hasPendingPermission ? LucideIcons.clock : LucideIcons.shieldAlert,
+                        size: context.ri(18),
+                        color: _hasPendingPermission ? AppTheme.warningAmber : AppTheme.accent,
+                      ),
                       SizedBox(width: context.rw(8)),
                       Expanded(
                         child: Text(
-                          'This product is listed for ${_product!.campuses.join(", ")}. You are from ${authProvider.user?.university ?? "another institution"}.',
+                          _hasPendingPermission
+                              ? 'Permission request pending. Waiting for the seller to respond.'
+                              : 'This product is listed for ${_product!.campuses.join(", ")}. You are from ${authProvider.user?.university ?? "another institution"}.',
                           style: TextStyle(
                             fontSize: context.rsp(12),
                             color: AppTheme.charcoalInk,
@@ -1681,16 +1716,36 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         ),
                       ),
                       SizedBox(width: context.rw(8)),
-                      // Request Permission button
+                      // Request Permission / Pending button
                       Expanded(
                         flex: 2,
-                        child: ShadButton(
-                          onPressed: _isGeneratingPermissionCode ? null : () => _generateAndShowPermissionCode(),
-                          leading: _isGeneratingPermissionCode
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Icon(LucideIcons.key, size: 18),
-                          child: Text(_isGeneratingPermissionCode ? 'Generating...' : 'Request Permission'),
-                        ),
+                        child: _hasPendingPermission
+                            ? Container(
+                                padding: EdgeInsets.symmetric(vertical: context.rh(12)),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.warningAmber.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(context.rr(12)),
+                                  border: Border.all(color: AppTheme.warningAmber.withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(LucideIcons.clock, size: context.ri(16), color: AppTheme.warningAmber),
+                                    SizedBox(width: context.rw(4)),
+                                    Text(
+                                      'Pending',
+                                      style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.warningAmber, fontSize: context.rsp(13)),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ShadButton(
+                                onPressed: _isGeneratingPermissionCode ? null : () => _generateAndShowPermissionCode(),
+                                leading: _isGeneratingPermissionCode
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    : Icon(LucideIcons.key, size: 18),
+                                child: Text(_isGeneratingPermissionCode ? 'Generating...' : 'Request Permission'),
+                              ),
                       ),
                     ],
                   ),
