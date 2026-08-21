@@ -27,6 +27,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../utils/bold_text.dart';
 import 'package:instiy/utils/formatters.dart';
 import '../../widgets/verification_badge.dart';
+import '../../widgets/video_watermark_overlay.dart';
 import '../../models/institution_model.dart';
 import '../../services/institution_service.dart';
 import '../../services/supabase_service.dart';
@@ -58,6 +59,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   bool _isRelatedLoading = false;
   int? _viewCount;
   Timer? _realtimeDebounce;
+  bool _isGeneratingPermissionCode = false;
   ProviderSubscription<int>? _productsVersionSub;
 
   @override
@@ -394,6 +396,109 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     );
   }
 
+  /// Whether the current buyer is from a different institution than the
+  /// product's listed campuses, requiring seller permission to purchase.
+  bool get _isCrossInstitution {
+    final product = _product;
+    if (product == null) return false;
+    final userUniversity = ref.read(authProvider).user?.university;
+    if (userUniversity == null || userUniversity.isEmpty) return false;
+    // Empty campuses means the seller hasn't restricted to a campus.
+    if (product.campuses.isEmpty) return false;
+    return !product.campuses.any((c) => c.toLowerCase() == userUniversity.toLowerCase());
+  }
+
+  /// Generates a 6-character permission code and shows it in a dialog.
+  /// The buyer can then share this code with the seller via chat.
+  Future<void> _generateAndShowPermissionCode() async {
+    final product = _product;
+    if (product == null) return;
+
+    setState(() => _isGeneratingPermissionCode = true);
+    try {
+      final code = await ref.read(purchasePermissionProvider.notifier).generateCode(
+        productId: product.id,
+        sellerId: product.sellerId,
+      );
+      if (!mounted) return;
+
+      // Auto-open the conversation with the seller so the buyer can share
+      // the code directly.
+      final userId = ref.read(authProvider).user?.id;
+      if (userId != null) {
+        final productRef = {
+          'product_id': product.id,
+          'title': product.title,
+          'price': product.price,
+          'image_url': product.effectiveThumbnail,
+        };
+        await ref.read(messageProvider).createAndOpenConversation(
+          buyerId: userId,
+          sellerId: product.sellerId,
+          productReference: productRef,
+        );
+      }
+
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Permission Code Generated'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Share this code with the seller to get permission to buy:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  code,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.accent,
+                    letterSpacing: 4.0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'The seller needs to grant this code before you can buy.',
+                style: TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            title: const Text('Failed to generate code'),
+            description: Text(e.toString()),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGeneratingPermissionCode = false);
+    }
+  }
+
   Future<int?> _showMarkAsSoldDialog(int currentStock) async {
     int selectedQty = 1;
     return AppTheme.showGlassDialog<int>(
@@ -644,7 +749,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               combinedMedia,
                               initialIndex: 0,
                             ),
-                            child: _VideoPlayerTile(videoUrl: _product!.videoUrls.first),
+                            child: _VideoPlayerTile(
+                              videoUrl: _product!.videoUrls.first,
+                              storeName: _businessProfile?.businessName ?? _product!.businessName,
+                            ),
                           );
                         }
 
@@ -891,7 +999,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             children: [
                               if (_product!.isDiscountActive) ...[
                                 Text(
-                                  'GH\u00a2 ${_product!.effectivePrice.toStringAsFixed(2)}',
+                                  formatGhs(_product!.effectivePrice),
                                   style: TextStyle(
                                     fontSize: context.rsp(24),
                                     fontWeight: FontWeight.bold,
@@ -901,7 +1009,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 Row(
                                   children: [
                                     Text(
-                                      'GH\u00a2 ${_product!.price.toStringAsFixed(2)}',
+                                      formatGhs(_product!.price),
                                       style: TextStyle(
                                         fontSize: context.rsp(14),
                                         color: AppTheme.mutedSteel,
@@ -928,7 +1036,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 ),
                               ] else ...[
                                 Text(
-                                  'GH\u00a2 ${_product!.price.toStringAsFixed(2)}',
+                                  formatGhs(_product!.price),
                                   style: TextStyle(
                                     fontSize: context.rsp(24),
                                     fontWeight: FontWeight.bold,
@@ -1076,8 +1184,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                             ? 'Delivery (Varies)'
                                             : 'Pickup & Delivery (Varies)')
                                         : _product!.deliveryOption == 'delivery'
-                                            ? 'Delivery (GH¢ ${_product!.deliveryFee.toStringAsFixed(2)})'
-                                            : 'Pickup & Delivery (GH¢ ${_product!.deliveryFee.toStringAsFixed(2)})',
+                                            ? 'Delivery (${formatGhs(_product!.deliveryFee)})'
+                                            : 'Pickup & Delivery (${formatGhs(_product!.deliveryFee)})',
                                 style: TextStyle(
                                   color: AppTheme.charcoalInk,
                                   fontSize: context.rsp(12),
@@ -1114,7 +1222,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                     border: Border.all(color: AppTheme.whisperBorder),
                                   ),
                                   child: Text(
-                                    '$shortName: GH¢ ${entry.value.toStringAsFixed(2)}',
+                                    '$shortName: ${formatGhs(entry.value)}',
                                     style: TextStyle(
                                       color: AppTheme.mutedSteel,
                                       fontSize: context.rsp(11),
@@ -1500,6 +1608,101 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   }
 
   Widget _buildBuyerBottomBar(AuthProvider authProvider, CartProvider cartProvider, bool isFavorited, bool inCart) {
+    // Cross-institution: show request permission instead of buy buttons.
+    if (_isCrossInstitution) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(context.rw(12), 0, context.rw(12), context.rh(12)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(context.rr(20)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
+            child: Container(
+              decoration: AppTheme.glassDecoration(radius: 20),
+              padding: EdgeInsets.fromLTRB(context.rw(12), context.rh(10), context.rw(12), context.rh(10)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.shieldAlert, size: context.ri(18), color: AppTheme.accent),
+                      SizedBox(width: context.rw(8)),
+                      Expanded(
+                        child: Text(
+                          'This product is listed for ${_product!.campuses.join(", ")}. You are from ${authProvider.user?.university ?? "another institution"}.',
+                          style: TextStyle(
+                            fontSize: context.rsp(12),
+                            color: AppTheme.charcoalInk,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.rh(8)),
+                  Row(
+                    children: [
+                      // Message button
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            if (!authProvider.isAuthenticated) {
+                              Navigator.of(context).pushNamed('/login');
+                              return;
+                            }
+                            final userId = authProvider.user?.id;
+                            final sellerId = _product?.sellerId;
+                            if (userId == null || sellerId == null) return;
+                            final productRef = {
+                              'product_id': _product!.id,
+                              'title': _product!.title,
+                              'price': _product!.price,
+                              'image_url': _product!.effectiveThumbnail,
+                            };
+                            _openConversation(userId, sellerId, productRef);
+                          },
+                          child: Container(
+                            padding: EdgeInsets.symmetric(vertical: context.rh(12)),
+                            decoration: BoxDecoration(
+                              color: AppTheme.glassSurfaceLight,
+                              borderRadius: BorderRadius.circular(context.rr(12)),
+                              border: Border.all(color: AppTheme.glassBorder),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(LucideIcons.send, size: context.ri(16), color: AppTheme.charcoalInk),
+                                SizedBox(width: context.rw(4)),
+                                Text(
+                                  'Message',
+                                  style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.charcoalInk, fontSize: context.rsp(13)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: context.rw(8)),
+                      // Request Permission button
+                      Expanded(
+                        flex: 2,
+                        child: ShadButton(
+                          onPressed: _isGeneratingPermissionCode ? null : () => _generateAndShowPermissionCode(),
+                          leading: _isGeneratingPermissionCode
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Icon(LucideIcons.key, size: 18),
+                          child: Text(_isGeneratingPermissionCode ? 'Generating...' : 'Request Permission'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Normal flow: same institution or no campus restriction.
     return Padding(
       padding: EdgeInsets.fromLTRB(context.rw(12), 0, context.rw(12), context.rh(12)),
       child: ClipRRect(
@@ -1868,7 +2071,8 @@ class _SpecificationsTab extends StatelessWidget {
 
 class _VideoPlayerTile extends StatefulWidget {
   final String videoUrl;
-  const _VideoPlayerTile({required this.videoUrl});
+  final String? storeName;
+  const _VideoPlayerTile({required this.videoUrl, this.storeName});
 
   @override
   State<_VideoPlayerTile> createState() => _VideoPlayerTileState();
@@ -1902,6 +2106,12 @@ class _VideoPlayerTileState extends State<_VideoPlayerTile> {
           VideoPlayer(_controller!)
         else
           Container(color: Colors.black),
+        // Subtle attribution watermark on listing videos
+        Positioned(
+          left: 8,
+          bottom: 8,
+          child: VideoWatermarkOverlay(storeName: widget.storeName),
+        ),
         Center(
           child: Container(
             padding: const EdgeInsets.all(16),

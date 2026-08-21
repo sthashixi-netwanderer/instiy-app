@@ -25,9 +25,11 @@ import '../../models/chat_background_model.dart';
 import '../../providers/providers.dart';
 import '../../widgets/verification_badge.dart';
 import '../../providers/message_provider.dart';
+import '../../utils/formatters.dart';
 
 
 import '../../services/storage_service.dart';
+import '../../services/video_service.dart';
 import '../../widgets/adaptive_nav.dart';
 import '../../widgets/media_viewer.dart';
 import '../../widgets/skeleton.dart';
@@ -478,6 +480,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   bool _isSendingMedia = false;
   List<dynamic> _pendingMediaList = [];
   List<bool> _pendingIsVideoList = [];
+  // Thumbnails (random video frame) for pending videos, aligned by index
+  // with [_pendingMediaList]; null for images or while generating.
+  List<Uint8List?> _pendingVideoThumbList = [];
   String? _firstUnreadMessageId;
   bool _hasSetInitialScroll = false;
   bool _showScrollDownButton = false;
@@ -913,12 +918,16 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           mediaType: _pendingIsVideoList[i] ? 'video' : 'image',
           caption: i == 0 ? text : '',
           replyToMessageId: replyId,
+          thumbnailBytes: i < _pendingVideoThumbList.length
+              ? _pendingVideoThumbList[i]
+              : null,
         );
       }
       _messageCtrl.clear();
       setState(() {
         _pendingMediaList = [];
         _pendingIsVideoList = [];
+        _pendingVideoThumbList = [];
         _productReference = null;
         _replyToMessage = null;
       });
@@ -971,7 +980,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
-      await _handleVideoPicked(bytes, picked.name);
+      await _handleVideoPicked(bytes, picked.name, path: picked.path);
     } else {
       final pickedList = await picker.pickMultiImage(maxWidth: 1080, maxHeight: 1080, imageQuality: 60);
       if (pickedList.isEmpty) return;
@@ -986,21 +995,36 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     setState(() {
       _pendingMediaList.add(bytes);
       _pendingIsVideoList.add(false);
+      _pendingVideoThumbList.add(null);
     });
   }
 
-  Future<void> _handleVideoPicked(dynamic bytes, String name) async {
+  Future<void> _handleVideoPicked(dynamic bytes, String name, {String? path}) async {
     // Add the video bytes — backend handles duration check and trimming.
+    // A thumbnail from a random frame is generated in the background and
+    // attached so the chat bubble shows a preview instead of an icon.
+    final slot = _pendingMediaList.length;
     setState(() {
       _pendingMediaList.add(bytes);
       _pendingIsVideoList.add(true);
+      _pendingVideoThumbList.add(null);
     });
+
+    final thumb = await VideoService.generateThumbnail(path);
+    if (thumb != null && mounted) {
+      setState(() {
+        if (slot < _pendingVideoThumbList.length && _pendingIsVideoList[slot]) {
+          _pendingVideoThumbList[slot] = thumb;
+        }
+      });
+    }
   }
 
   void clearPendingMedia() {
     setState(() {
       _pendingMediaList.clear();
       _pendingIsVideoList.clear();
+      _pendingVideoThumbList.clear();
     });
   }
 
@@ -1052,6 +1076,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     required String mediaType,
     required String caption,
     String? replyToMessageId,
+    Uint8List? thumbnailBytes,
   }) {
     setState(() => _isSendingMedia = true);
 
@@ -1072,9 +1097,25 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           extension: ext,
         );
 
+        // Videos carry their thumbnail in the media URL ("videoUrl|thumbUrl")
+        // so the chat bubble can show a preview frame without loading the video.
+        var mediaUrl = url;
+        if (mediaType == 'video' && thumbnailBytes != null) {
+          try {
+            final thumbUrl = await StorageService.uploadImageBytes(
+              bytes: thumbnailBytes,
+              folder: 'chat-media/thumbnails',
+              extension: 'jpg',
+            );
+            mediaUrl = '$url|$thumbUrl';
+          } catch (_) {
+            // Thumbnail is optional — send the video without it.
+          }
+        }
+
         if (mounted) {
           await ref.read(messageProvider).sendMediaMessage(
-            mediaUrl: url,
+            mediaUrl: mediaUrl,
             mediaType: mediaType,
             caption: caption,
             replyToMessageId: replyToMessageId,
@@ -1667,6 +1708,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                           setState(() {
                                             _pendingMediaList.removeAt(idx);
                                             _pendingIsVideoList.removeAt(idx);
+                                            _pendingVideoThumbList.removeAt(idx);
                                           });
                                         },
                                         child: Container(
@@ -2131,7 +2173,7 @@ class _ProductReferenceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'GH\u00a2 ${price.toStringAsFixed(2)}',
+                  formatGhs(price),
                   style: TextStyle(
                     fontSize: 12,
                     color: chatColor,
@@ -2517,6 +2559,7 @@ class _MediaBubbleContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = message.mediaUrl as String;
     final isVideo = message.mediaType == 'video';
+    final thumbnail = message.thumbnailUrl;
 
     return GestureDetector(
       onTap: () => MediaViewer.open(context, [url], initialIndex: 0),
@@ -2529,14 +2572,39 @@ class _MediaBubbleContent extends StatelessWidget {
           alignment: Alignment.center,
           children: [
             if (isVideo)
-              Container(
-                width: double.infinity,
-                height: 200,
-                color: AppTheme.charcoalInk,
-                child: const Center(
-                  child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
-                ),
-              )
+              // Preview frame extracted at send time; fall back to an icon
+              // for videos without one (e.g. sent from web).
+              if (thumbnail != null)
+                CachedNetworkImage(
+                  imageUrl: thumbnail,
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 400,
+                  placeholder: (_, _) => Container(
+                    height: 200,
+                    color: AppTheme.charcoalInk,
+                    child: const Center(
+                      child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
+                    ),
+                  ),
+                  errorWidget: (_, _, _) => Container(
+                    height: 200,
+                    color: AppTheme.charcoalInk,
+                    child: const Center(
+                      child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  height: 200,
+                  color: AppTheme.charcoalInk,
+                  child: const Center(
+                    child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
+                  ),
+                )
             else
               CachedNetworkImage(
                 imageUrl: url,
@@ -2668,7 +2736,7 @@ class _InlineProductCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'GH\u00a2 ${price.toStringAsFixed(2)}',
+                            formatGhs(price),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,

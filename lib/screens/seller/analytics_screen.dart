@@ -84,7 +84,7 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
                   const SizedBox(height: 12),
                   _buildAnalyticsCard(
                     'Total Earned',
-                    'GH\u00a2 ${(analytics['totalEarned'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                    formatGhs((analytics['totalEarned'] as num?) ?? 0),
                     LucideIcons.dollarSign,
                     AppTheme.successMoss,
                     'Revenue from paid orders',
@@ -92,7 +92,7 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
                   const SizedBox(height: 12),
                   _buildAnalyticsCard(
                     'This Month',
-                    'GH\u00a2 ${(analytics['monthRevenue'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                    formatGhs((analytics['monthRevenue'] as num?) ?? 0),
                     LucideIcons.trendingUp,
                     const Color(0xFF059669),
                     'Revenue in last 30 days',
@@ -100,7 +100,7 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
                   const SizedBox(height: 12),
                   _buildAnalyticsCard(
                     'Avg Order Value',
-                    'GH\u00a2 ${(analytics['avgOrderValue'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                    formatGhs((analytics['avgOrderValue'] as num?) ?? 0),
                     LucideIcons.shoppingCart,
                     AppTheme.warningAmber,
                     'Average per order',

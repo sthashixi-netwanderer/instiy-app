@@ -20,6 +20,7 @@ import '../../widgets/verification_badge.dart';
 import '../../widgets/discount_countdown.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/empty_state.dart';
+import '../../utils/formatters.dart';
 import '../../widgets/responsive_layout.dart';
 
 const _exploreConditions = ['Brand New', 'Used', 'Refurbished'];
@@ -1109,7 +1110,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'GH\u00a2 ${product.effectivePrice.toStringAsFixed(2)}',
+                                      formatGhs(product.effectivePrice),
                                       style: TextStyle(
                                         fontSize: context.rsp(14),
                                         fontWeight: FontWeight.bold,
@@ -1117,7 +1118,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                       ),
                                     ),
                                     Text(
-                                      'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                                      formatGhs(product.price),
                                       style: TextStyle(
                                         fontSize: context.rsp(10),
                                         color: AppTheme.mutedSteel,
@@ -1127,7 +1128,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   ],
                                 )
                               : Text(
-                                  'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                                  formatGhs(product.price),
                                   style: TextStyle(
                                     fontSize: context.rsp(14),
                                     fontWeight: FontWeight.bold,
@@ -1269,7 +1270,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                    formatGhs(product.price),
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppTheme.accent,

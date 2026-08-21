@@ -6,6 +6,7 @@ import '../../config/app_theme.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
 import '../../services/product_service.dart';
+import '../../utils/formatters.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 
@@ -169,7 +170,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
                                       ),
                                       const Spacer(),
                                       Text(
-                                        'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                                        formatGhs(product.price),
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: AppTheme.charcoalInk,

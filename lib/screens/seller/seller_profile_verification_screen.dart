@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:image_picker/image_picker.dart';
@@ -998,6 +999,13 @@ class _SellerProfileVerificationScreenState
           ShadInput(
             controller: _digitalAddressController,
             placeholder: const Text('e.g. GA-123-4567'),
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              TextInputFormatter.withFunction(
+                (oldValue, newValue) =>
+                    newValue.copyWith(text: newValue.text.toUpperCase()),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Container(

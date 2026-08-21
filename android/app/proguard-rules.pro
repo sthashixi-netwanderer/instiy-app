@@ -17,10 +17,6 @@
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.gms.**
 
-# Paystack SDK
--keep class com.paystack.android.** { *; }
--dontwarn com.paystack.android.**
-
 # Supabase / OkHttp / Retrofit style reflection
 -dontwarn okhttp3.**
 -dontwarn okio.**

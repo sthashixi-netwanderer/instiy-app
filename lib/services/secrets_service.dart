@@ -12,6 +12,7 @@ class SecretsService {
   String? _r2BucketName;
   String? _r2PublicUrl;
   String? _paystackPublicKey;
+  String? _paystackSecretKey;
   String? _supabaseRedirectUrl;
   String? _giphyApiKey;
   String? _appVersion;
@@ -28,6 +29,11 @@ class SecretsService {
   String get r2PublicUrl => _r2PublicUrl ?? 'https://media.instiy.com';
   // No hardcoded fallback — must be fetched from remote secrets.
   String get paystackPublicKey => _paystackPublicKey ?? '';
+  // Client-side checkout key for pay_with_paystack. Only served by the
+  // worker to authenticated requests, so the first anonymous startup fetch
+  // returns it empty — callers refresh after login (see [refresh]).
+  // No hardcoded fallback.
+  String get paystackSecretKey => _paystackSecretKey ?? '';
   String get supabaseRedirectUrl =>
       _supabaseRedirectUrl ?? 'http://localhost:3000';
   // No hardcoded fallback — must be fetched from remote secrets.
@@ -57,6 +63,14 @@ class SecretsService {
   /// defaults if the fetch fails.
   Future<void> ensureLoaded() => initialize();
 
+  /// Force a fresh fetch, discarding the cached values. Used before Paystack
+  /// checkout: the key is only returned once the request carries a user JWT,
+  /// which the anonymous startup fetch does not have.
+  Future<void> refresh() {
+    _loaded = false;
+    return initialize();
+  }
+
   Future<void> _fetch() async {
     try {
       final data = await SupabaseService.callFunction('get-secrets');
@@ -66,6 +80,7 @@ class SecretsService {
       _r2BucketName = data['r2_bucket_name'] as String?;
       _r2PublicUrl = data['r2_public_url'] as String?;
       _paystackPublicKey = data['paystack_public_key'] as String?;
+      _paystackSecretKey = data['paystack_secret_key'] as String?;
       _supabaseRedirectUrl = data['supabase_redirect_url'] as String?;
       _giphyApiKey = data['giphy_api_key'] as String?;
       _appVersion = data['app_version'] as String?;

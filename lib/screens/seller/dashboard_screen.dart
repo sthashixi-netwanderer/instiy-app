@@ -11,6 +11,7 @@ import '../../models/draft_listing_model.dart';
 import '../../models/seller_review_model.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/product_service.dart';
+import '../../services/wallet_lock_service.dart';
 import '../../models/institution_model.dart';
 import '../../services/institution_service.dart';
 import '../../utils/responsive.dart';
@@ -29,14 +30,33 @@ class SellerDashboardScreen extends ConsumerStatefulWidget {
 class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
   List<Institution> _institutions = [];
   int _totalListingViews = 0;
+  bool _isLocked = true;
+  bool _checkingLock = true;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_loadData());
-      unawaited(_loadInstitutions());
-    });
+    _checkLock();
+  }
+
+  Future<void> _checkLock() async {
+    final unlocked = await WalletLockService.unlockIfNeeded(
+      screenKey: 'seller_dashboard',
+      reason: 'Authenticate to view your seller dashboard',
+    );
+    if (!mounted) return;
+    if (unlocked) {
+      setState(() {
+        _isLocked = false;
+        _checkingLock = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_loadData());
+        unawaited(_loadInstitutions());
+      });
+    } else {
+      setState(() => _checkingLock = false);
+    }
   }
 
   Future<void> _loadData() async {
@@ -154,6 +174,70 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     final prodP = ref.watch(productProvider);
     final user = auth.user;
     final stats = sellerP.dashboardStats;
+
+    if (_checkingLock) {
+      return Scaffold(
+        backgroundColor: AppTheme.cleanBackground,
+        appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
+        body: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    if (_isLocked) {
+      return Scaffold(
+        backgroundColor: AppTheme.cleanBackground,
+        extendBodyBehindAppBar: true,
+        appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: context.rw(80),
+                height: context.rh(80),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(LucideIcons.lock, size: context.ri(40), color: AppTheme.accent),
+              ),
+              SizedBox(height: context.rh(16)),
+              Text(
+                'Dashboard Locked',
+                style: TextStyle(
+                  fontSize: context.rsp(20),
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.charcoalInk,
+                ),
+              ),
+              SizedBox(height: context.rh(8)),
+              Text(
+                'Use your fingerprint or screen lock\nto view your seller dashboard.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.mutedSteel),
+              ),
+              SizedBox(height: context.rh(24)),
+              ShadButton(
+                onPressed: () async {
+                  final authed = await WalletLockService.authenticate(
+                    reason: 'Authenticate to view your seller dashboard',
+                  );
+                  if (authed && mounted) {
+                    setState(() => _isLocked = false);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      unawaited(_loadData());
+                      unawaited(_loadInstitutions());
+                    });
+                  }
+                },
+                leading: Icon(LucideIcons.fingerprint, size: context.ri(20)),
+                child: const Text('Unlock Dashboard'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     final userListings = prodP.userListings;
     final activeCount = stats != null ? stats.activeListings : userListings.where((p) => p.status == ProductStatus.available).length;

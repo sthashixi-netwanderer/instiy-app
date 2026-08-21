@@ -28,6 +28,9 @@ import '../../widgets/verification_badge.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/review_section.dart';
 import '../../widgets/app_button.dart';
+import '../../utils/phone_utils.dart';
+import '../../services/ghanapost_service.dart';
+import '../../widgets/store_map_preview.dart';
 
 
 class BusinessProfileScreen extends ConsumerStatefulWidget {
@@ -46,6 +49,12 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   List<Institution> _institutions = [];
   final Map<String, int> _viewCounts = {};
 
+  // Resolved store coordinates for the embedded map preview, looked up from
+  // the Ghana Post digital address when the profile has no saved location URL.
+  (double, double)? _storeCoords;
+  bool _resolvingStoreCoords = false;
+  bool _triedResolveStoreCoords = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,7 +68,11 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
           Navigator.of(context).pushNamed('/business-profile', arguments: widget.sellerId);
           return;
         }
-        ref.read(businessProfileProvider).loadStore(widget.sellerId).then((_) => _loadViewCounts());
+        ref.read(businessProfileProvider).loadStore(widget.sellerId).then((_) {
+          final profile = ref.read(businessProfileProvider).profile;
+          if (profile != null) _resolveStoreCoords(profile);
+          _loadViewCounts();
+        });
         _loadInstitutions();
       }
     });
@@ -95,6 +108,33 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     } catch (_) {
       return null;
     }
+  }
+
+  /// Resolves the store's coordinates for the embedded map: first from the
+  /// saved location URL, otherwise via a Ghana Post lookup of the digital
+  /// address (same integration the admin panel's GPS settings configures).
+  Future<void> _resolveStoreCoords(BusinessProfile profile) async {
+    if (_storeCoords != null || _resolvingStoreCoords || _triedResolveStoreCoords) {
+      return;
+    }
+    _triedResolveStoreCoords = true;
+
+    final coords = GhanaPostService.coordsFromMapsUrl(profile.locationUrl ?? '');
+    if (coords != null) {
+      if (mounted) setState(() => _storeCoords = coords);
+      return;
+    }
+
+    final digitalAddress = profile.digitalAddress;
+    if (digitalAddress == null || digitalAddress.trim().isEmpty) return;
+
+    setState(() => _resolvingStoreCoords = true);
+    final location = await GhanaPostService.resolve(digitalAddress);
+    if (!mounted) return;
+    setState(() {
+      _resolvingStoreCoords = false;
+      if (location != null) _storeCoords = (location.lat, location.lng);
+    });
   }
 
   @override
@@ -135,7 +175,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   }
 
   Future<void> _openWhatsApp(String number, {String? sellerName}) async {
-    final cleaned = number.replaceAll(RegExp(r'[^\d]'), '');
+    final cleaned = normalizeWhatsAppNumber(number);
     final greeting = Uri.encodeComponent(
       'Hi${sellerName != null ? ' $sellerName' : ''}, I saw your store on Instiy and I\'m interested.',
     );
@@ -234,7 +274,8 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
                       _buildPhoneNumbers(profile!),
                       const SizedBox(height: 16),
                     ],
-                    if (profile?.locationUrl?.isNotEmpty == true) ...[
+                    if (profile?.locationUrl?.isNotEmpty == true ||
+                        profile?.digitalAddress?.isNotEmpty == true) ...[
                       _buildLocation(profile!),
                     ],
                   ],
@@ -940,34 +981,85 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
             children: [
               Icon(LucideIcons.mapPin, size: context.ri(16), color: AppTheme.accent),
               SizedBox(width: context.rw(6)),
-              Text(
-                'Location',
-                style: TextStyle(
-                  fontSize: context.rsp(14),
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.charcoalInk,
+              Expanded(
+                child: Text(
+                  'Location',
+                  style: TextStyle(
+                    fontSize: context.rsp(14),
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.charcoalInk,
+                  ),
                 ),
               ),
+              if (profile.digitalAddress?.isNotEmpty == true)
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: context.rw(8), vertical: context.rh(3)),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(context.rr(6)),
+                  ),
+                  child: Text(
+                    profile.digitalAddress!.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: context.rsp(11),
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                      color: AppTheme.accent,
+                    ),
+                  ),
+                ),
             ],
           ),
           SizedBox(height: context.rh(12)),
-          Row(
-            children: [
-              Expanded(
-                child: ShadButton.outline(
-                  onPressed: () => _openMapPreview(profile.locationUrl!),
-                  leading: Icon(LucideIcons.map, size: context.ri(16)),
-                  child: const Text('View on Map'),
+          // Embedded map preview (same embed the admin panel's GPS settings
+          // uses). Coordinates come from the saved URL or are resolved
+          // via a Ghana Post lookup of the digital address.
+          if (_resolvingStoreCoords)
+            Container(
+              height: 200,
+              decoration: BoxDecoration(
+                color: AppTheme.warmMist,
+                borderRadius: BorderRadius.circular(context.rr(12)),
+              ),
+              child: const Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
-              SizedBox(width: context.rw(8)),
-              ShadButton.outline(
-                onPressed: () => _openInGoogleMaps(profile.locationUrl!),
-                leading: Icon(LucideIcons.externalLink, size: context.ri(16)),
-                child: const Text('Open'),
+            )
+          else if (_storeCoords != null)
+            StoreMapPreview(lat: _storeCoords!.$1, lng: _storeCoords!.$2)
+          else if (profile.locationUrl?.isNotEmpty == true)
+            // Fallback for location URLs without parseable coordinates —
+            // hand the raw `q` value to the embed.
+            SizedBox(
+              height: 200,
+              child: StoreMapPreview(
+                query: Uri.tryParse(profile.locationUrl!)?.queryParameters['q'],
               ),
-            ],
-          ),
+            ),
+          if (profile.locationUrl?.isNotEmpty == true) ...[
+            SizedBox(height: context.rh(12)),
+            Row(
+              children: [
+                Expanded(
+                  child: ShadButton.outline(
+                    onPressed: () => _openMapPreview(profile.locationUrl!),
+                    leading: Icon(LucideIcons.map, size: context.ri(16)),
+                    child: const Text('View on Map'),
+                  ),
+                ),
+                SizedBox(width: context.rw(8)),
+                ShadButton.outline(
+                  onPressed: () => _openInGoogleMaps(profile.locationUrl!),
+                  leading: Icon(LucideIcons.externalLink, size: context.ri(16)),
+                  child: const Text('Open'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

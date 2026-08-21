@@ -10,6 +10,7 @@ import '../../services/seller_service.dart';
 import '../../services/wallet_lock_service.dart';
 import '../../models/order_model.dart';
 import '../../utils/responsive.dart';
+import '../../utils/formatters.dart';
 import 'scanner_screen.dart';
 import '../../widgets/skeleton.dart';
 
@@ -168,8 +169,8 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
       title: const Text('Complete Order Item'),
       description: Text(
         'Mark "${item.productTitle}" as delivered?\n\n'
-        'You will be credited GH\u00a2 ${totalCredit.toStringAsFixed(2)} to your wallet.'
-        '${deliveryFee > 0 ? ' (includes GH\u00a2 ${deliveryFee.toStringAsFixed(2)} delivery fee)' : ''}',
+        'You will be credited ${formatGhs(totalCredit)} to your wallet.'
+        '${deliveryFee > 0 ? ' (includes ${formatGhs(deliveryFee)} delivery fee)' : ''}',
       ),
   actions: [
     ShadButton.ghost(
@@ -260,7 +261,7 @@ return AppTheme.showGlassDialog<String>(
         ShadToaster.of(context).show(
           ShadToast(
             backgroundColor: AppTheme.successMoss,
-            title: Text('Verified! GH\u00a2 ${(result['amount'] as num?)?.toStringAsFixed(2) ?? ''} released to wallet.'),
+            title: Text('Verified! ${formatGhs((result['amount'] as num?) ?? 0)} released to wallet.'),
           ),
         );
         unawaited(_refreshOrders());
@@ -289,7 +290,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Cancel "${item.productTitle}"? The buyer will be refunded GH\u00a2 ${(item.price * item.quantity).toStringAsFixed(2)}.',
+          'Cancel "${item.productTitle}"? The buyer will be refunded ${formatGhs(item.price * item.quantity)}.',
           style: const TextStyle(fontSize: 14),
         ),
         const SizedBox(height: 16),
@@ -764,7 +765,7 @@ class _SellerItemRow extends StatelessWidget {
                   ),
                   SizedBox(height: context.rh(2)),
                   Text(
-                    'GH\u00a2 ${item.price.toStringAsFixed(2)} x${item.quantity}',
+                    '${formatGhs(item.price)} x${item.quantity}',
                     style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13)),
                   ),
                   SizedBox(height: context.rh(2)),

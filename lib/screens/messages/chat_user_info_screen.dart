@@ -20,6 +20,7 @@ import '../../widgets/verification_badge.dart';
 import '../seller/business_profile_screen.dart';
 import 'report_screen.dart';
 import 'chat_background_settings_screen.dart';
+import '../../utils/phone_utils.dart';
 
 class ChatUserInfoScreen extends ConsumerStatefulWidget {
   final Conversation conversation;
@@ -978,10 +979,9 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
   }
 
   void _launchPhone(String number, bool isWhatsApp) async {
-    final cleanNumber = number.replaceAll(RegExp(r'[^\d+]'), '');
     final url = isWhatsApp
-        ? Uri.parse('https://wa.me/$cleanNumber')
-        : Uri.parse('tel:$cleanNumber');
+        ? Uri.parse('https://wa.me/${normalizeWhatsAppNumber(number)}')
+        : Uri.parse('tel:${number.replaceAll(RegExp(r'[^\d+]'), '')}');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }

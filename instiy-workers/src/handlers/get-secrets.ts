@@ -1,3 +1,5 @@
+import { verifyAuth } from '../middleware/auth';
+
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -11,6 +13,11 @@ export async function handleGetSecrets(request: Request, env: Env, _corsHeaders:
 
   // No auth required — this endpoint provides client-side config values.
   // Called at app startup before user login.
+  //
+  // Exception: paystack_secret_key is the client-side checkout key required
+  // by pay_with_paystack (it initializes transactions from the app). It is
+  // returned ONLY for requests carrying a valid user JWT — never anonymously.
+  const auth = await verifyAuth(request, env);
 
   return new Response(
     JSON.stringify({
@@ -22,6 +29,7 @@ export async function handleGetSecrets(request: Request, env: Env, _corsHeaders:
       hubtel_client_secret: env.HUBTEL_CLIENT_SECRET || '',
       hubtel_sender_id: env.HUBTEL_SENDER_ID || '',
       paystack_public_key: env.PAYSTACK_PUBLIC_KEY || '',
+      paystack_secret_key: auth.isAuthenticated ? (env.PAYSTACK_SECRET_KEY || '') : '',
       supabase_redirect_url: env.REDIRECT_URL || '',
       giphy_api_key: env.GIPHY_API_KEY || '',
       app_version: env.APP_VERSION || '',

@@ -1,49 +1,71 @@
-import 'dart:io';
-import 'dart:math';
+import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
+import '../models/picked_media.dart';
 
+/// Burns a subtle "Posted on Instiy" + store name watermark into listing
+/// images before upload, so shared/saved copies stay attributed to the app
+/// and the seller wherever they travel.
 class WatermarkService {
-  /// Adds an Adobe Stock-style translucent diagonal repeating watermark
-  /// across the center of the image. The watermark uses the store name
-  /// and "Posted on Instiy" text.
-  static Future<File> addWatermark({
-    required File imageFile,
-    required String storeName,
+  /// Watermark opacity (alpha 0–255). Kept low so the pattern labels the
+  /// content without hiding it.
+  static const _alpha = 60;
+
+  /// Adds a translucent diagonal repeating watermark across the center of
+  /// the image: the store name and "Posted on Instiy". Returns a new
+  /// [PickedMedia] with the watermarked JPEG bytes; on any failure the
+  /// original media is returned untouched.
+  static Future<PickedMedia> addWatermark({
+    required PickedMedia media,
+    String? storeName,
   }) async {
-    final bytes = await imageFile.readAsBytes();
+    final label = (storeName ?? '').trim();
+    if (label.isEmpty) return media;
+
+    try {
+      final displayName = label.length > 30 ? '${label.substring(0, 27)}...' : label;
+      final source = media.bytes;
+      final watermarked = await Isolate.run(
+        () => _watermarkBytes(source, displayName),
+      );
+      // Output is re-encoded as JPEG — keep the name in sync so the upload
+      // gets the right content type.
+      final dot = media.name.lastIndexOf('.');
+      final baseName = dot > 0 ? media.name.substring(0, dot) : media.name;
+      return PickedMedia(
+        bytes: watermarked,
+        name: '$baseName.jpg',
+        path: null,
+      );
+    } catch (_) {
+      return media;
+    }
+  }
+
+  static Uint8List _watermarkBytes(Uint8List bytes, String displayName) {
     final image = img.decodeImage(bytes);
-    if (image == null) return imageFile;
+    if (image == null) return bytes;
 
-    final width = image.width;
-    final height = image.height;
-
-    final displayName = storeName.length > 30
-        ? '${storeName.substring(0, 27)}...'
-        : storeName;
-
-    final font24 = img.arial24;
-    final font14 = img.arial14;
-
-    // Fixed tile size — large enough for two lines of text with padding
-    final tileWidth = 300;
-    final tileHeight = 80;
-
-    // Create transparent tile
+    // Tile with two lines of text: store name + app attribution. A dark
+    // shadow copy under the white text keeps the watermark readable on
+    // bright photos while staying subtle.
+    const tileWidth = 320;
+    const tileHeight = 80;
     final tile = img.Image(width: tileWidth, height: tileHeight, numChannels: 4);
 
-    // Draw store name (white)
+    img.drawString(tile, displayName, x: 13, y: 9,
+        font: img.arial24, color: img.ColorUint8.rgb(35, 35, 35));
     img.drawString(tile, displayName, x: 12, y: 8,
-        color: img.ColorUint8.rgb(255, 255, 255), font: font24);
+        font: img.arial24, color: img.ColorUint8.rgb(255, 255, 255));
 
-    // Draw "Posted on Instiy" (white)
+    img.drawString(tile, 'Posted on Instiy', x: 13, y: 43,
+        font: img.arial14, color: img.ColorUint8.rgb(35, 35, 35));
     img.drawString(tile, 'Posted on Instiy', x: 12, y: 42,
-        color: img.ColorUint8.rgb(255, 255, 255), font: font14);
+        font: img.arial14, color: img.ColorUint8.rgb(255, 255, 255));
 
-    // Rotate the tile -45 degrees (diagonal)
     final rotatedTile = img.copyRotate(tile, angle: -45);
 
-    // Apply global alpha to make the entire rotated tile translucent (~20%)
-    final alpha = 50;
+    // Scale the whole rotated tile's alpha down for the see-through look.
     final translucentTile = img.Image(
       width: rotatedTile.width,
       height: rotatedTile.height,
@@ -52,32 +74,26 @@ class WatermarkService {
     for (int y = 0; y < rotatedTile.height; y++) {
       for (int x = 0; x < rotatedTile.width; x++) {
         final pixel = rotatedTile.getPixel(x, y);
-        final blendedA = (pixel.a.toInt() * alpha ~/ 255).clamp(0, 255);
+        final blendedA = (pixel.a.toInt() * _alpha ~/ 255).clamp(0, 255);
         translucentTile.setPixelRgba(
           x, y, pixel.r.toInt(), pixel.g.toInt(), pixel.b.toInt(), blendedA,
         );
       }
     }
 
-    // Tile the watermark across the center 60% of the image
+    // Tile across the middle band of the image, leaving top and bottom
+    // clear so faces/products stay readable.
     final tileW = translucentTile.width;
     final tileH = translucentTile.height;
-    final startY = (height * 0.2).toInt();
-    final endY = (height * 0.8).toInt();
+    final startY = (image.height * 0.2).toInt();
+    final endY = (image.height * 0.8).toInt();
 
     for (int y = startY; y < endY; y += tileH) {
-      for (int x = -tileW; x < width + tileW; x += tileW) {
+      for (int x = -tileW; x < image.width + tileW; x += tileW) {
         img.compositeImage(image, translucentTile, dstX: x, dstY: y);
       }
     }
 
-    // Encode back to JPEG
-    final watermarkedBytes = img.encodeJpg(image, quality: 90);
-
-    final tempDir = Directory.systemTemp;
-    final tempFile = File('${tempDir.path}/watermarked_${Random().nextInt(999999)}.jpg');
-    await tempFile.writeAsBytes(watermarkedBytes);
-
-    return tempFile;
+    return img.encodeJpg(image, quality: 90);
   }
 }

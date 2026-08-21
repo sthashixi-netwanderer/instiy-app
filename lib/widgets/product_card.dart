@@ -192,7 +192,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              '-${formatCurrency(product.discountPercent)}%',
+                              '-${product.discountPercent.toInt()}%',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: context.rsp(10),

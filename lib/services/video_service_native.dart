@@ -1,10 +1,38 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
 import '../models/picked_media.dart';
+
+/// Extracts a JPEG thumbnail from a random point in the video timeline —
+/// between 20% and 80% of the duration, so black intro/outro frames are
+/// skipped. Returns null when the video can't be read.
+Future<Uint8List?> generateVideoThumbnailBytes(String? path) async {
+  if (path == null || path.isEmpty) return null;
+  try {
+    var positionMs = -1;
+    try {
+      final info = await VideoCompress.getMediaInfo(path);
+      final durationMs = info.duration ?? 0;
+      if (durationMs > 1000) {
+        final lo = (durationMs * 0.2).round();
+        final hi = (durationMs * 0.8).round();
+        if (hi > lo) positionMs = lo + math.Random().nextInt(hi - lo);
+      }
+    } catch (_) {}
+    return await VideoCompress.getByteThumbnail(
+      path,
+      quality: 70,
+      position: positionMs,
+    );
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Native (mobile) video services using dart:io and video_compress.
 Future<PickedMedia?> pickVideoOrRecord(BuildContext context) async {

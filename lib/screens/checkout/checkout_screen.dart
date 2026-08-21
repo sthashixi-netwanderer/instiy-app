@@ -499,7 +499,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                     ),
                                   ),
                                   Text(
-                                    'GH\u00a2 ${itemDeliveryFee.toStringAsFixed(2)}',
+                                    formatGhs(itemDeliveryFee),
                                     style: TextStyle(
                                       fontSize: context.rsp(12),
                                       color: AppTheme.mutedSteel,
@@ -521,7 +521,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     const Text('Subtotal',
                         style: TextStyle(color: AppTheme.mutedSteel)),
                     Text(
-                      'GH\u00a2 ${subtotal.toStringAsFixed(2)}',
+                      formatGhs(subtotal),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ],
@@ -535,7 +535,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       _deliveryMode == 'delivery' && _selectedDeliveryInstitution == null
                           ? 'Select campus'
                           : deliveryTotal > 0
-                              ? 'GH\u00a2 ${deliveryTotal.toStringAsFixed(2)}'
+                              ? formatGhs(deliveryTotal)
                               : 'Free',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
@@ -557,7 +557,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           color: AppTheme.charcoalInk,
                         )),
                     Text(
-                      'GH\u00a2 ${cartTotal.toStringAsFixed(2)}',
+                      formatGhs(cartTotal),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: context.rsp(18),
@@ -852,6 +852,48 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           );
         }
         return;
+      }
+
+      // Cross-institution permission check: verify that the buyer has
+      // active permission for any product whose campuses don't include
+      // the buyer's university.
+      final userUniversity = authProv.user?.university;
+      if (userUniversity != null && userUniversity.isNotEmpty) {
+        List<Product> itemsToCheck;
+        if (_isBuyNowMode) {
+          itemsToCheck = [widget.buyNowProduct!];
+        } else {
+          final cartItems = cartProv.cart.items;
+          itemsToCheck = cartItems
+              .map((item) => _productsMap[item.productId])
+              .whereType<Product>()
+              .toList();
+        }
+        for (final product in itemsToCheck) {
+          if (product.campuses.isEmpty) continue;
+          final sameInstitution = product.campuses.any(
+            (c) => c.toLowerCase() == userUniversity.toLowerCase(),
+          );
+          if (!sameInstitution) {
+            final hasPermission = await ref
+                .read(purchasePermissionProvider.notifier)
+                .checkPermissionForProduct(product.id);
+            if (!hasPermission) {
+              if (mounted) {
+                ShadToaster.of(context).show(
+                  ShadToast.destructive(
+                    title: const Text('Permission Required'),
+                    description: Text(
+                      '"${product.title}" requires seller permission. '
+                      'Ask the seller for a permission code from the product page.',
+                    ),
+                  ),
+                );
+              }
+              return;
+            }
+          }
+        }
       }
     }
 

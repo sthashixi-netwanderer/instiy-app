@@ -172,6 +172,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         );
       }).toList();
     });
+    // Refresh the header badge count immediately instead of waiting for a
+    // realtime event that may not arrive.
+    ref.read(messageProvider).loadUnreadNotificationsCount(); // ignore: unawaited_futures
   }
 
   Widget _buildFilterItem({
@@ -427,7 +430,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         onTap: () {
                           // Mark as read
                           if (!notification.isRead) {
-                            NotificationService.markAsRead(notification.id);
+                            () async {
+                              await NotificationService.markAsRead(notification.id);
+                              // Keep the header badge in sync right away.
+                              ref.read(messageProvider).loadUnreadNotificationsCount(); // ignore: unawaited_futures
+                            }();
                             setState(() {
                               final idx = _notifications.indexOf(notification);
                               if (idx != -1) {

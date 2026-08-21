@@ -10,6 +10,7 @@ class WalletLockService {
     'orders': 'lock_orders',
     'checkout': 'lock_checkout',
     'seller_orders': 'lock_seller_orders',
+    'seller_dashboard': 'lock_seller_dashboard',
     'messages': 'lock_messages',
   };
   static final _localAuth = LocalAuthentication();

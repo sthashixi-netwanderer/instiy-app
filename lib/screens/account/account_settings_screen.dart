@@ -29,6 +29,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
     ('orders', LucideIcons.shoppingBag, 'Orders', 'Order history & tracking'),
     ('checkout', LucideIcons.creditCard, 'Checkout', 'Payment confirmation'),
     ('seller_orders', LucideIcons.store, 'Seller Orders', 'Incoming orders & earnings'),
+    ('seller_dashboard', LucideIcons.layoutDashboard, 'Seller Dashboard', 'Sales stats, listings & drafts'),
     ('messages', LucideIcons.messageSquare, 'Messages', 'Chat conversations'),
   ];
 
@@ -169,7 +170,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   Widget _buildProfileTab(ShadThemeData theme, dynamic user) {
     final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
       children: [
         // Profile summary card
         Container(
@@ -240,7 +241,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   Widget _buildNotificationsTab(ShadThemeData theme, SoundProvider soundProvider) {
     final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
       children: [
         Container(
           padding: context.rAll(16),
@@ -333,7 +334,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   Widget _buildAppLockTab(ShadThemeData theme) {
     final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
       children: [
         Container(
           padding: context.rAll(16),
@@ -410,7 +411,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   Widget _buildGeneralTab(ShadThemeData theme) {
     final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(16), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
       children: [
         _GeneralLinkRow(
           icon: LucideIcons.shieldCheck,

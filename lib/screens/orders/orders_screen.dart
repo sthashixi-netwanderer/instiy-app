@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,11 +27,38 @@ class OrdersScreen extends ConsumerStatefulWidget {
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   bool _isLocked = true;
   bool _checkingLock = true;
+  final TextEditingController _pendingSearchController = TextEditingController();
+  final TextEditingController _completedSearchController = TextEditingController();
+  String _pendingQuery = '';
+  String _completedQuery = '';
+  Timer? _pendingSearchDebounce;
+  Timer? _completedSearchDebounce;
 
   @override
   void initState() {
     super.initState();
+    _pendingSearchController.addListener(() {
+      _pendingSearchDebounce?.cancel();
+      _pendingSearchDebounce = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) setState(() => _pendingQuery = _pendingSearchController.text.trim().toLowerCase());
+      });
+    });
+    _completedSearchController.addListener(() {
+      _completedSearchDebounce?.cancel();
+      _completedSearchDebounce = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) setState(() => _completedQuery = _completedSearchController.text.trim().toLowerCase());
+      });
+    });
     _checkLock();
+  }
+
+  @override
+  void dispose() {
+    _pendingSearchController.dispose();
+    _completedSearchController.dispose();
+    _pendingSearchDebounce?.cancel();
+    _completedSearchDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkLock() async {
@@ -155,49 +184,181 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: AppTheme.cleanBackground,
-      extendBodyBehindAppBar: true,
-      appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
-      body: orderProv.isLoading
-          ? Padding(
-              padding: EdgeInsets.fromLTRB(
-                context.rw(16),
-                MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(16),
-                context.rw(16),
-                context.rh(16),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppTheme.cleanBackground,
+        extendBodyBehindAppBar: true,
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('My Orders'),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(kTextTabBarHeight),
+            child: ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.compose(
+                  outer: ImageFilter.blur(sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+                  inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.pureSurface.withValues(alpha: 0.7),
+                    border: Border(
+                      bottom: BorderSide(color: AppTheme.whisperBorder, width: 0.5),
+                    ),
+                  ),
+                  child: TabBar(
+                    indicatorColor: AppTheme.accent,
+                    labelColor: AppTheme.accent,
+                    unselectedLabelColor: AppTheme.mutedSteel,
+                    labelStyle: TextStyle(
+                      fontSize: context.rsp(13),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontSize: context.rsp(13),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    tabs: [
+                      Tab(text: 'Pending (${_pendingCount(orderProv.orders)})'),
+                      Tab(text: 'Completed (${_completedCount(orderProv.orders)})'),
+                    ],
+                  ),
+                ),
               ),
-              child: const ListSkeleton(count: 6),
-            )
-          : orderProv.orders.isEmpty
-              ? _buildEmptyState()
+            ),
+          ),
+        ),
+        body: orderProv.isLoading
+            ? Padding(
+                padding: EdgeInsets.fromLTRB(
+                  context.rw(16),
+                  MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight + context.rh(16),
+                  context.rw(16),
+                  context.rh(16),
+                ),
+                child: const ListSkeleton(count: 6),
+              )
+            : TabBarView(
+                children: [
+                  _buildOrderTab(
+                    orders: _pendingOrders(orderProv.orders),
+                    searchController: _pendingSearchController,
+                    query: _pendingQuery,
+                    emptyTitle: 'No pending orders',
+                    emptyDescription: 'Active orders will appear here.',
+                  ),
+                  _buildOrderTab(
+                    orders: _completedOrders(orderProv.orders),
+                    searchController: _completedSearchController,
+                    query: _completedQuery,
+                    emptyTitle: 'No completed orders',
+                    emptyDescription: 'Delivered and cancelled orders will appear here.',
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  List<Order> _pendingOrders(List<Order> orders) => orders.where((o) {
+    final s = (o.status ?? '').toLowerCase();
+    return s == 'pending' || s == 'processing' || s == 'shipped';
+  }).toList();
+
+  List<Order> _completedOrders(List<Order> orders) => orders.where((o) {
+    final s = (o.status ?? '').toLowerCase();
+    return s == 'delivered' || s == 'cancelled';
+  }).toList();
+
+  int _pendingCount(List<Order> orders) => _pendingOrders(orders).length;
+  int _completedCount(List<Order> orders) => _completedOrders(orders).length;
+
+  List<Order> _searchOrders(List<Order> orders, String query) {
+    if (query.isEmpty) return orders;
+    return orders.where((o) {
+      // Match order ID
+      if (o.id.toLowerCase().contains(query)) return true;
+      // Match status
+      if ((o.status ?? '').toLowerCase().contains(query)) return true;
+      // Match any product title in the order
+      return o.items.any((item) => item.productTitle.toLowerCase().contains(query));
+    }).toList();
+  }
+
+  Widget _buildOrderTab({
+    required List<Order> orders,
+    required TextEditingController searchController,
+    required String query,
+    required String emptyTitle,
+    required String emptyDescription,
+  }) {
+    final filtered = _searchOrders(orders, query);
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            context.rw(16),
+            MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight + context.rh(12),
+            context.rw(16),
+            context.rh(8),
+          ),
+          child: ShadInput(
+            controller: searchController,
+            placeholder: Text('Search orders by name or ID...'),
+            leading: Icon(LucideIcons.search, size: context.ri(18), color: AppTheme.mutedSteel),
+            trailing: searchController.text.isNotEmpty
+                ? GestureDetector(
+                    onTap: () {
+                      searchController.clear();
+                      setState(() => query = '');
+                    },
+                    child: Icon(LucideIcons.x, size: context.ri(16), color: AppTheme.mutedSteel),
+                  )
+                : null,
+          ),
+        ),
+        // Order list
+        Expanded(
+          child: filtered.isEmpty
+              ? RefreshIndicator(
+                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight,
+                  onRefresh: () => ref.read(orderProvider.notifier).loadOrders(),
+                  child: ListView(
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.12),
+                      EmptyState(
+                        icon: LucideIcons.package,
+                        title: emptyTitle,
+                        description: query.isNotEmpty
+                            ? 'No orders match "$query"'
+                            : emptyDescription,
+                        actionLabel: query.isEmpty ? 'Start Shopping' : null,
+                        onActionPressed: query.isEmpty ? () => Navigator.of(context).pushNamed('/explore') : null,
+                      ),
+                    ],
+                  ),
+                )
               : RefreshIndicator(
-                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight,
+                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight,
                   onRefresh: () => ref.read(orderProvider.notifier).loadOrders(),
                   child: ListView.separated(
                     padding: EdgeInsets.fromLTRB(
                       context.rw(16),
-                      MediaQuery.of(context).padding.top + kToolbarHeight + context.rh(16),
+                      context.rh(4),
                       context.rw(16),
                       context.rh(16),
                     ),
-                    itemCount: orderProv.orders.length,
+                    itemCount: filtered.length,
                     separatorBuilder: (_, _) => SizedBox(height: context.rh(12)),
                     itemBuilder: (context, index) {
-                      return _OrderCard(order: orderProv.orders[index]);
+                      return _OrderCard(order: filtered[index]);
                     },
                   ),
                 ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return EmptyState(
-      icon: LucideIcons.package,
-      title: 'No orders yet',
-      description: 'Orders will appear here after checkout.',
-      actionLabel: 'Start Shopping',
-      onActionPressed: () => Navigator.of(context).pushNamed('/explore'),
+        ),
+      ],
     );
   }
 }

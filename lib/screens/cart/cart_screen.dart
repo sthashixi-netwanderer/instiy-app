@@ -10,6 +10,7 @@ import '../../widgets/adaptive_nav.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/skeleton.dart';
 import '../../utils/responsive.dart';
+import '../../utils/formatters.dart';
 import '../../widgets/responsive_layout.dart';
 
 class CartScreen extends ConsumerStatefulWidget {
@@ -156,7 +157,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
               children: [
                 Text('Total', style: TextStyle(color: AppTheme.mutedSteel, fontSize: context.rsp(13))),
                 Text(
-                  'GH\u00a2 ${provider.cart.totalAmount.toStringAsFixed(2)}',
+                  formatGhs(provider.cart.totalAmount),
                   style: TextStyle(
                     fontSize: context.rsp(22),
                     fontWeight: FontWeight.bold,
@@ -313,7 +314,7 @@ class _CartItemCard extends StatelessWidget {
                 ),
                 SizedBox(height: context.rh(4)),
                 Text(
-                  'GH\u00a2 ${item.price.toStringAsFixed(2)}',
+                  formatGhs(item.price),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: AppTheme.charcoalInk,

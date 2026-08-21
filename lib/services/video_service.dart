@@ -37,4 +37,11 @@ class VideoService {
   static Future<bool> checkVideoHasAudio(String pathOrUrl) async {
     return true;
   }
+
+  /// Extract a thumbnail (JPEG bytes) from a random frame of the video.
+  /// Mobile only — returns null on web or when extraction fails.
+  static Future<Uint8List?> generateThumbnail(String? path) async {
+    if (kIsWeb) return null;
+    return generateVideoThumbnailBytes(path);
+  }
 }

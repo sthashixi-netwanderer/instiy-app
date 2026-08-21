@@ -620,13 +620,14 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
     final provider = ref.read(productProvider);
 
-    // Fetch business name for watermark
+    // Fetch business name for watermark (falls back to the seller's name)
     String? storeName;
     try {
       final userId = SupabaseService.instance.currentUser?.id;
       if (userId != null) {
         final profile = await BusinessProfileService.getProfile(userId);
         storeName = profile?.businessName;
+        storeName ??= SupabaseService.instance.currentUser?.userMetadata?['full_name'] as String?;
       }
     } catch (_) {}
 
@@ -683,13 +684,12 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         if (selectedImagesCopy.isNotEmpty) {
           final newUrls = <String>[];
           for (var image in selectedImagesCopy) {
-            if (storeName != null && storeName.isNotEmpty) {
-              try {
-                image = await WatermarkService.addWatermark(
-                  imageFile: image,
-                  storeName: storeName,
-                );
-              } catch (_) {}
+            // Burn the watermark into newly added images before upload.
+            if (image is PickedMedia) {
+              image = await WatermarkService.addWatermark(
+                media: image,
+                storeName: storeName,
+              );
             }
             final url = await StorageService.uploadImage(
               file: image,
@@ -888,13 +888,12 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
       if (selectedImagesCopy.isNotEmpty) {
         for (var image in selectedImagesCopy) {
-          if (storeName != null && storeName.isNotEmpty) {
-            try {
-              image = await WatermarkService.addWatermark(
-                imageFile: image,
-                storeName: storeName,
-              );
-            } catch (_) {}
+          // Burn the watermark into newly added images before upload.
+          if (image is PickedMedia) {
+            image = await WatermarkService.addWatermark(
+              media: image,
+              storeName: storeName,
+            );
           }
           final url = await StorageService.uploadImage(
             file: image,

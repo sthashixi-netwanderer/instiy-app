@@ -57,6 +57,5 @@ flutter {
 }
 
 dependencies {
-    implementation("com.paystack.android:paystack-ui:0.0.11")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
+import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
 import '../../models/service_model.dart';
 import '../../providers/providers.dart';
@@ -205,7 +206,7 @@ class _ServiceCard extends StatelessWidget {
                         const Spacer(),
                       ],
                       Text(
-                        'GH\u00a2 ${service.price.toStringAsFixed(0)}',
+                        formatGhs(service.price),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: context.rsp(14),
@@ -281,7 +282,7 @@ class _ServiceDetailScreen extends ConsumerWidget {
                 ),
               ),
               Text(
-                'GH\u00a2 ${service.price.toStringAsFixed(2)}',
+                formatGhs(service.price),
                 style: TextStyle(
                   fontSize: context.rsp(22),
                   fontWeight: FontWeight.bold,

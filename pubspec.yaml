@@ -58,7 +58,13 @@ dependencies:
 
   # Intl for date formatting
   intl: ^0.20.2
-  paystack_flutter_sdk: 0.0.1-alpha.2
+
+  # Paystack checkout (WebView-based; initializes transactions client-side
+  # with the secret key fetched at runtime from get-secrets — never bundled)
+  pay_with_paystack: ^1.6.1
+
+  # Embedded map previews (store location on business profile)
+  webview_flutter: ^4.14.1
 
   # QR code generation
   qr_flutter: ^4.1.0

@@ -22,6 +22,7 @@ import '../../widgets/review_section.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/share_bottom_sheet.dart';
 import '../../widgets/video_init_helper.dart';
+import '../../widgets/video_watermark_overlay.dart';
 import '../../utils/bold_text.dart';
 import '../../utils/responsive.dart';
 import 'package:instiy/utils/formatters.dart';
@@ -647,6 +648,16 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
             ),
           ),
         ),
+
+        // Video watermark — subtle attribution on the clip itself
+        if (_isInitialized)
+          Positioned(
+            left: 16,
+            top: MediaQuery.of(context).padding.top + 52,
+            child: VideoWatermarkOverlay(
+              storeName: widget.product.businessName ?? widget.product.sellerName,
+            ),
+          ),
 
         // Double-tap heart pop animation
         if (_showHeartAnimation)

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/picked_media.dart';
@@ -24,3 +25,6 @@ Future<PickedMedia?> compressVideoOrPass(PickedMedia media, {Function(String)? o
   onProgress?.call('Video compression not available on web');
   return null;
 }
+
+/// On web, frame extraction is not available — chat video thumbnails are skipped.
+Future<Uint8List?> generateVideoThumbnailBytes(String? path) async => null;
