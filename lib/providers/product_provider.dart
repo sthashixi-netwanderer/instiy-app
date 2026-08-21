@@ -30,6 +30,7 @@ class ProductProvider extends ChangeNotifier {
   RealtimeChannel? _categoriesChannel;
 
   String? _currentUserId;
+  int _productsVersion = 0;
 
   ProductProvider() {
     _initAuthListener();
@@ -99,6 +100,7 @@ class ProductProvider extends ChangeNotifier {
         if (deletedId == null) return;
         _products.removeWhere((p) => p.id == deletedId);
         _userListings.removeWhere((p) => p.id == deletedId);
+        _productsVersion++;
         notifyListeners();
         return;
       }
@@ -151,6 +153,7 @@ class ProductProvider extends ChangeNotifier {
         }
       }
 
+      _productsVersion++;
       notifyListeners();
     } catch (_) {
       _silentReloadProducts(); // ignore: unawaited_futures
@@ -167,6 +170,7 @@ class ProductProvider extends ChangeNotifier {
       if (currentUser != null) {
         _userListings = await ProductService.getUserListings(currentUser.id);
       }
+      _productsVersion++;
       notifyListeners();
     } catch (_) {}
   }
@@ -193,6 +197,9 @@ class ProductProvider extends ChangeNotifier {
   List<Product> get userListings => _userListings;
   List<Category> get categories => _categories;
   List<String> get favoriteIds => _favoriteIds;
+  /// Bumped whenever a realtime product change (insert/update/delete) is
+  /// applied, so screens can react to product data changes precisely.
+  int get productsVersion => _productsVersion;
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get selectedCategoryId => _selectedCategoryId;

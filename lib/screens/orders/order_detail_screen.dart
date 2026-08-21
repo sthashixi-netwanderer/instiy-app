@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
+import '../../providers/order_provider.dart';
 import '../../models/order_model.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/skeleton.dart';
@@ -28,10 +29,16 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   Order? _order;
   bool _isLoading = true;
   RealtimeChannel? _itemsChannel;
+  ProviderSubscription<OrderProvider>? _ordersSub;
 
   @override
   void initState() {
     super.initState();
+    // OrderProvider realtime-reloads when any of the user's orders change
+    // (status updates, cancellations) — keep this screen in sync with them.
+    _ordersSub = ref.listenManual(orderProvider, (previous, next) {
+      if (!_isLoading) _loadOrder();
+    });
     _loadOrder();
     _subscribeToOrderItems();
   }
@@ -55,6 +62,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
 
   @override
   void dispose() {
+    _ordersSub?.close();
     if (_itemsChannel != null) {
       SupabaseService.client.removeChannel(_itemsChannel!);
     }

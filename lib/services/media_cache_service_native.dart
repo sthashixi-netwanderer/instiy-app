@@ -10,6 +10,7 @@ class MediaCacheService {
 
   static const _mediaDirName = 'media_cache';
   static Directory? _cachedDir;
+  static final Map<String, Future<File>> _inFlight = {};
 
   static Future<Directory> get _cacheDir async {
     if (_cachedDir != null && await _cachedDir!.exists()) return _cachedDir!;
@@ -52,6 +53,13 @@ class MediaCacheService {
     final existing = await getCachedFile(url);
     if (existing != null) return existing;
 
+    // Dedupe concurrent downloads of the same URL (e.g. repeated prefetches)
+    return _inFlight.putIfAbsent(url, () {
+      return _download(url).whenComplete(() => _inFlight.remove(url));
+    });
+  }
+
+  static Future<File> _download(String url) async {
     final response = await http.get(Uri.parse(url));
     if (response.statusCode != 200) {
       throw Exception('Media download failed (${response.statusCode}): $url');

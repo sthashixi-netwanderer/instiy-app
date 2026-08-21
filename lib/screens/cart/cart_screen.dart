@@ -74,9 +74,17 @@ class _CartScreenState extends ConsumerState<CartScreen> {
             ),
       child: cartProv.isLoading
           ? const Padding(padding: EdgeInsets.all(16), child: ListSkeleton(count: 6))
-          : cartProv.cart.items.isEmpty
-              ? _buildEmptyCart()
-              : _buildCartContent(cartProv),
+          : RefreshIndicator(
+              onRefresh: () => ref.read(cartProvider).loadCart(),
+              child: cartProv.cart.items.isEmpty
+                  ? ListView(
+                      children: [
+                        SizedBox(height: MediaQuery.sizeOf(context).height * 0.25),
+                        _buildEmptyCart(),
+                      ],
+                    )
+                  : _buildCartContent(cartProv),
+            ),
     );
   }
 

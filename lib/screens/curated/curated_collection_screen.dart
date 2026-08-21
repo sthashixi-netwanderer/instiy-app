@@ -5,12 +5,10 @@ import '../../config/app_theme.dart';
 import '../../models/curated_collection_model.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
-import '../../services/curated_collection_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/adaptive_nav.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/responsive_layout.dart';
-import '../../providers/block_provider.dart';
 import 'package:instiy/utils/formatters.dart';
 
 class CuratedCollectionScreen extends ConsumerStatefulWidget {
@@ -26,60 +24,36 @@ class CuratedCollectionScreen extends ConsumerStatefulWidget {
 }
 
 class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScreen> {
-  CuratedCollection? _collection;
-  bool _isLoading = true;
-  String? _error;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCollection();
+      final prov = ref.read(curatedProvider);
+      prov.ensureInitialized();
+      if (prov.sections.isEmpty) {
+        prov.loadSections();
+      }
     });
   }
 
   Future<void> _loadCollection() async {
-    try {
-      final allSections = await CuratedCollectionService.getHomeSections();
-      final blockProv = BlockProvider.instance;
-      final filteredSections = allSections.map((s) {
-        final filteredItems = s.items.where((item) {
-          if (item.product != null) {
-            return !blockProv.isUserBlocked(item.product!.sellerId);
-          }
-          return true;
-        }).toList();
-        return CuratedCollection(
-          id: s.id, title: s.title,
-          subtitle: s.subtitle, icon: s.icon, imageUrl: s.imageUrl,
-          displayMode: s.displayMode, contentType: s.contentType,
-          maxItems: s.maxItems, sortOrder: s.sortOrder,
-          isVisible: s.isVisible, items: filteredItems,
-        );
-      }).toList();
-      final collection = filteredSections.firstWhere(
-        (c) => c.id == widget.collectionId,
-        orElse: () => throw Exception('Collection not found'),
-      );
-      if (mounted) {
-        setState(() {
-          _collection = collection;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
+    await ref.read(curatedProvider).loadSections();
   }
 
   @override
   Widget build(BuildContext context) {
-    final products = _collection?.items.where((item) => item.product != null).map((item) => item.product!).toList() ?? [];
+    final curatedProv = ref.watch(curatedProvider);
+    final sections = curatedProv.sections;
+    CuratedCollection? collection;
+    for (final s in sections) {
+      if (s.id == widget.collectionId) {
+        collection = s;
+        break;
+      }
+    }
+    final isLoading = curatedProv.isLoading;
+    final error = curatedProv.error;
+    final products = collection?.items.where((item) => item.product != null).map((item) => item.product!).toList() ?? [];
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
@@ -87,24 +61,27 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
       bottomNavigationBar: const AdaptiveNav(currentIndex: 0),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: CustomScrollView(
-          slivers: [
-            _buildAppBar(context),
-            if (_isLoading)
-              _buildLoadingSliver()
-            else if (_error != null)
-              _buildErrorSliver(context)
-            else if (_collection == null)
-              _buildNotFoundSliver(context)
-            else
-              _buildContentSliver(context, products),
-          ],
+        body: RefreshIndicator(
+          onRefresh: _loadCollection,
+          child: CustomScrollView(
+            slivers: [
+              _buildAppBar(context, collection),
+              if (isLoading && collection == null)
+                _buildLoadingSliver()
+              else if (error != null && collection == null)
+                _buildErrorSliver(context)
+              else if (collection == null)
+                _buildNotFoundSliver(context)
+              else
+                _buildContentSliver(context, products),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar(BuildContext context, CuratedCollection? collection) {
     return SliverAppBar(
       expandedHeight: context.rh(200),
       pinned: true,
@@ -115,7 +92,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: Text(
-        _collection?.title ?? 'Collection',
+        collection?.title ?? 'Collection',
         style: const TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
@@ -125,11 +102,11 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
         overflow: TextOverflow.ellipsis,
       ),
       flexibleSpace: FlexibleSpaceBar(
-        background: _collection?.imageUrl != null
+        background: collection?.imageUrl != null
             ? Container(
                 decoration: BoxDecoration(
                   image: DecorationImage(
-                    image: CachedNetworkImageProvider(_collection!.imageUrl!),
+                    image: CachedNetworkImageProvider(collection!.imageUrl!),
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -153,9 +130,9 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (_collection?.subtitle != null)
+                      if (collection.subtitle != null)
                         Text(
-                          _collection!.subtitle!,
+                          collection.subtitle!,
                           style: const TextStyle(
                             fontSize: 14,
                             color: Colors.white70,
@@ -165,7 +142,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                         ),
                       const SizedBox(height: 8),
                       Text(
-                        '${_collection?.items.where((item) => item.product != null).length ?? 0} products',
+                        '${collection.items.where((item) => item.product != null).length} products',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -187,9 +164,9 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (_collection?.subtitle != null)
+                    if (collection?.subtitle != null)
                       Text(
-                        _collection!.subtitle!,
+                        collection!.subtitle!,
                         style: const TextStyle(
                           fontSize: 14,
                           color: AppTheme.charcoalInk,
@@ -199,7 +176,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                       ),
                     const SizedBox(height: 8),
                     Text(
-                      '${_collection?.items.where((item) => item.product != null).length ?? 0} products',
+                      '${collection?.items.where((item) => item.product != null).length ?? 0} products',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -237,7 +214,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
         child: EmptyState(
           icon: Icons.error_outline,
           title: 'Failed to load collection',
-          description: _error ?? 'Please try again later',
+          description: ref.watch(curatedProvider).error ?? 'Please try again later',
           actionLabel: 'Retry',
           onActionPressed: () => _loadCollection(),
         ),

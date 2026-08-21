@@ -7,28 +7,25 @@ import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/skeleton.dart';
 import '../../models/service_model.dart';
-import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../messages/messages_screen.dart';
 
-class ServicesScreen extends StatefulWidget {
+class ServicesScreen extends ConsumerStatefulWidget {
   const ServicesScreen({super.key});
 
   @override
-  State<ServicesScreen> createState() => _ServicesScreenState();
+  ConsumerState<ServicesScreen> createState() => _ServicesScreenState();
 }
 
-class _ServicesScreenState extends State<ServicesScreen> {
-  List<Service> _services = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
-
+class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadServices();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(serviceProvider).loadServices();
+    });
   }
 
   @override
@@ -38,18 +35,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
   }
 
   Future<void> _loadServices() async {
-    setState(() => _isLoading = true);
-    try {
-      final services = await ServiceService.getServices(
-        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
-      );
-      if (mounted) setState(() => _services = services);
-    } catch (_) {}
-    if (mounted) setState(() => _isLoading = false);
+    await ref.read(serviceProvider).loadServices();
   }
 
   @override
   Widget build(BuildContext context) {
+    final serviceProv = ref.watch(serviceProvider);
+    final services = serviceProv.services;
+    final isLoading = serviceProv.isLoading;
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
@@ -58,31 +51,35 @@ class _ServicesScreenState extends State<ServicesScreen> {
         children: [
           // Content extends behind the search bar
           Positioned.fill(
-            child: _isLoading
+            child: isLoading
                 ? Padding(
                     padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 72, 16, 16),
                     child: const ListSkeleton(count: 6),
                   )
-                : _services.isEmpty
-                    ? Padding(
-                        padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight + 72),
-                        child: _buildEmptyState(),
+                : services.isEmpty
+                    ? RefreshIndicator(
+                        edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight + 56,
+                        onRefresh: _loadServices,
+                        child: ListView(
+                          padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight + 72),
+                          children: [_buildEmptyState()],
+                        ),
                       )
                     : RefreshIndicator(
                         edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight + 56,
                         onRefresh: _loadServices,
                         child: ListView.separated(
                           padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 72, 16, 16),
-                          itemCount: _services.length,
+                          itemCount: services.length,
                           separatorBuilder: (_, _) =>
                               SizedBox(height: context.rh(12)),
                           itemBuilder: (context, index) {
                             return _ServiceCard(
-                              service: _services[index],
+                              service: services[index],
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) =>
-                                      _ServiceDetailScreen(service: _services[index]),
+                                      _ServiceDetailScreen(service: services[index]),
                                 ),
                               ),
                             );
@@ -103,7 +100,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 leading: Icon(LucideIcons.search, size: context.ri(20)),
                 textInputAction: TextInputAction.search,
                 onSubmitted: (value) {
-                  setState(() => _searchQuery = value);
+                  ref.read(serviceProvider).setSearchQuery(value);
                   _loadServices();
                 },
               ),

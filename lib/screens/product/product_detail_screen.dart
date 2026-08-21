@@ -55,11 +55,49 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   List<Product> _relatedProducts = [];
   bool _isRelatedLoading = false;
   int? _viewCount;
+  Timer? _realtimeDebounce;
+  ProviderSubscription<int>? _productsVersionSub;
 
   @override
   void initState() {
     super.initState();
+    // Keep this screen in sync when the product changes in realtime
+    // (price/stock edits, sold-out, deletion) without re-entering the screen.
+    _productsVersionSub = ref.listenManual(
+      productProvider.select((p) => p.productsVersion),
+      (previous, next) {
+        _realtimeDebounce?.cancel();
+        _realtimeDebounce = Timer(const Duration(milliseconds: 600), () {
+          if (mounted) unawaited(_refreshProductSilently());
+        });
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadProduct());
+  }
+
+  /// Re-fetches just this product and swaps it in without a loading state.
+  Future<void> _refreshProductSilently() async {
+    final product = await ref.read(productProvider).getProduct(widget.productId);
+    if (!mounted) return;
+    final current = _product;
+    if (product == null) {
+      if (current != null) unawaited(_loadProduct());
+      return;
+    }
+    if (current == null) return;
+    final changed = current.title != product.title ||
+        current.price != product.price ||
+        current.discountPercent != product.discountPercent ||
+        current.status != product.status ||
+        current.stockQuantity != product.stockQuantity ||
+        current.imageUrls.length != product.imageUrls.length ||
+        current.description != product.description;
+    if (changed) {
+      setState(() => _product = product);
+      if (current.status != product.status) {
+        unawaited(_loadRelatedProducts());
+      }
+    }
   }
 
   Future<void> _loadProduct() async {
@@ -313,6 +351,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _realtimeDebounce?.cancel();
+    _productsVersionSub?.close();
     super.dispose();
   }
 
@@ -571,7 +611,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             : isOwner && _product!.status == ProductStatus.available
                 ? _buildOwnerBottomBar()
                 : null,
-        child: CustomScrollView(
+        child: RefreshIndicator(
+          onRefresh: _loadProduct,
+          child: CustomScrollView(
           slivers: [
             SliverAppBar(
               expandedHeight: 300,
@@ -1449,6 +1491,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

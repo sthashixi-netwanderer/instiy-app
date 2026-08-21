@@ -36,6 +36,10 @@ class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTi
     // when the user is on "Receive" and avoids the camera silently running in
     // the background of an off-screen tab.
     _tabController.addListener(_onTabChanged);
+    // Name/avatar can change via profile edits elsewhere — keep in sync
+    ref.listenManual(authProvider, (previous, next) {
+      _loadDisplayName();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadDisplayName();
     });
@@ -257,8 +261,11 @@ class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTi
     return Container(
       color: AppTheme.canvasWhite,
       child: Center(
-        child: SingleChildScrollView(
-          child: Column(
+        child: RefreshIndicator(
+          onRefresh: _loadDisplayName,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // White QR card matching screenshot layout
@@ -370,6 +377,7 @@ class _WalletTagScreenState extends ConsumerState<WalletTagScreen> with SingleTi
                 ),
               ],
             ],
+          ),
           ),
         ),
       ),

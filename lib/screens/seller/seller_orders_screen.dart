@@ -4,11 +4,9 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/seller_service.dart';
-import '../../services/supabase_service.dart';
 import '../../services/wallet_lock_service.dart';
 import '../../models/order_model.dart';
 import '../../utils/responsive.dart';
@@ -23,13 +21,9 @@ class SellerOrdersScreen extends ConsumerStatefulWidget {
 }
 
 class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
-  List<Order> _orders = [];
-  bool _isLoading = true;
   bool _isLocked = true;
   bool _checkingLock = true;
-  String? _error;
   String _filter = 'all';
-  RealtimeChannel? _orderItemsChannel;
 
   @override
   void initState() {
@@ -48,7 +42,6 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
         _checkingLock = false;
       });
       unawaited(_loadOrders());
-      _subscribeToRealtime();
     } else {
       setState(() {
         _isLocked = true;
@@ -57,51 +50,24 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
     }
   }
 
-  void _subscribeToRealtime() {
-    final userId = ref.read(authProvider).user?.id;
-    if (userId == null) return;
-
-    _orderItemsChannel = SupabaseService.client
-        .channel('seller-orders-screen:$userId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'order_items',
-          callback: (_) => _loadOrders(),
-        );
-    _orderItemsChannel!.subscribe();
-  }
-
-  @override
-  void dispose() {
-    if (_orderItemsChannel != null) {
-      SupabaseService.client.removeChannel(_orderItemsChannel!);
-    }
-    super.dispose();
-  }
-
+  /// Loads orders into sellerProvider, which keeps them fresh via its own
+  /// realtime subscription (no screen-level channel needed).
   Future<void> _loadOrders() async {
     final user = ref.read(authProvider).user;
     if (user == null) return;
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final orders = await SellerService.getSellerOrders(user.id);
-      if (mounted) setState(() => _orders = orders);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    await ref.read(sellerProvider).ensureInitialized(user.id);
   }
 
-  List<Order> get _filteredOrders {
-    if (_filter == 'all') return _orders;
-    return _orders.where((o) {
+  /// Force-fetches the latest orders (used after user actions).
+  Future<void> _refreshOrders() async {
+    final user = ref.read(authProvider).user;
+    if (user == null) return;
+    await ref.read(sellerProvider).loadSellerOrders(user.id);
+  }
+
+  List<Order> _filterOrders(List<Order> orders) {
+    if (_filter == 'all') return orders;
+    return orders.where((o) {
       if (_filter == 'pending') {
         return o.items.any((i) => i.status == 'pending');
       }
@@ -193,7 +159,7 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
       return;
     }
 
-    final parentOrder = _orders.firstWhere((o) => o.id == item.orderId);
+    final parentOrder = ref.read(sellerProvider).sellerOrders.firstWhere((o) => o.id == item.orderId);
     final deliveryFee = parentOrder.deliveryMode == 'delivery' ? parentOrder.deliveryFee : 0.0;
     final totalCredit = (item.price * item.quantity) + deliveryFee;
 
@@ -227,7 +193,7 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
       ShadToaster.of(context).show(
         ShadToast(backgroundColor: AppTheme.successMoss, title: Text('${item.productTitle} marked as delivered')),
       );
-      unawaited(_loadOrders());
+      unawaited(_refreshOrders());
     } catch (e) {
       if (!mounted) return;
       ShadToaster.of(context).show(
@@ -297,7 +263,7 @@ return AppTheme.showGlassDialog<String>(
             title: Text('Verified! GH\u00a2 ${(result['amount'] as num?)?.toStringAsFixed(2) ?? ''} released to wallet.'),
           ),
         );
-        unawaited(_loadOrders());
+        unawaited(_refreshOrders());
       } else {
         ShadToaster.of(context).show(
           ShadToast(backgroundColor: AppTheme.destructive, title: Text(result['error'] as String? ?? 'Verification failed')),
@@ -378,7 +344,7 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
       ShadToaster.of(context).show(
         ShadToast(backgroundColor: AppTheme.warningAmber, title: Text('${item.productTitle} cancelled. Buyer refunded.')),
       );
-      unawaited(_loadOrders());
+      unawaited(_refreshOrders());
     } catch (e) {
       if (!mounted) return;
       ShadToaster.of(context).show(
@@ -389,6 +355,12 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
 
   @override
   Widget build(BuildContext context) {
+    final sellerProv = ref.watch(sellerProvider);
+    final orders = sellerProv.sellerOrders;
+    final isLoading = sellerProv.isLoading && orders.isEmpty;
+    final error = orders.isEmpty ? sellerProv.error : null;
+    final filteredOrders = _filterOrders(orders);
+
     if (_checkingLock) {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
@@ -443,7 +415,6 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
                   if (authed && mounted) {
                     setState(() => _isLocked = false);
                     unawaited(_loadOrders());
-                    _subscribeToRealtime();
                   }
                 },
                 leading: Icon(LucideIcons.fingerprint, size: context.ri(20)),
@@ -472,13 +443,18 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
           Positioned.fill(
             child: RefreshIndicator(
               edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight + 56,
-              onRefresh: _loadOrders,
-              child: _isLoading
+              onRefresh: () async {
+                final user = ref.read(authProvider).user;
+                if (user != null) {
+                  await ref.read(sellerProvider).loadSellerOrders(user.id);
+                }
+              },
+              child: isLoading
                   ? Padding(
                       padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 64, 16, 16),
                       child: const ListSkeleton(count: 6),
                     )
-                  : _error != null
+                  : error != null
                       ? SingleChildScrollView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           child: Container(
@@ -490,14 +466,22 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
                               children: [
                                 Icon(LucideIcons.circleAlert, size: context.ri(48), color: AppTheme.destructive),
                                 SizedBox(height: context.rh(12)),
-                                Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.destructive)),
+                                Text(error, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.destructive)),
                                 SizedBox(height: context.rh(16)),
-                                ShadButton(onPressed: _loadOrders, child: const Text('Retry')),
+                                ShadButton(
+                                  onPressed: () async {
+                                    final user = ref.read(authProvider).user;
+                                    if (user != null) {
+                                      await ref.read(sellerProvider).ensureInitialized(user.id, force: true);
+                                    }
+                                  },
+                                  child: const Text('Retry'),
+                                ),
                               ],
                             ),
                           ),
                         )
-                      : _filteredOrders.isEmpty
+                      : filteredOrders.isEmpty
                           ? SingleChildScrollView(
                               physics: const AlwaysScrollableScrollPhysics(),
                               child: Container(
@@ -524,10 +508,10 @@ final result = await AppTheme.showGlassDialog<Map<String, dynamic>>(
                           : ListView.separated(
                               physics: const AlwaysScrollableScrollPhysics(),
                               padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 64, 16, 16),
-                              itemCount: _filteredOrders.length,
+                              itemCount: filteredOrders.length,
                               separatorBuilder: (_, _) => const SizedBox(height: 12),
                               itemBuilder: (context, index) => _SellerOrderCard(
-                                order: _filteredOrders[index],
+                                order: filteredOrders[index],
                                 statusColor: _statusColor,
                                 onCompleteItem: _completeItem,
                                 onCancelItem: _cancelItem,

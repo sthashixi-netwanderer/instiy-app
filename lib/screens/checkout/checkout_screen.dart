@@ -67,17 +67,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _institutions = list;
           _productsMap = productsMap;
 
-          // Automatically select customer's campus
-          final userUniv = ref.read(authProvider).user?.university;
-          if (userUniv != null && userUniv.isNotEmpty) {
-            final match = list.firstWhere(
-              (inst) =>
-                  inst.name.toLowerCase() == userUniv.toLowerCase() ||
-                  inst.code.toLowerCase() == userUniv.toLowerCase(),
-              orElse: () => Institution(id: '', code: '', name: ''),
-            );
-            if (match.name.isNotEmpty) {
-              _selectedDeliveryInstitution = match.name;
+          // Automatically select customer's campus (only while nothing is
+          // selected, so a manual choice survives pull-to-refresh)
+          if (_selectedDeliveryInstitution == null) {
+            final userUniv = ref.read(authProvider).user?.university;
+            if (userUniv != null && userUniv.isNotEmpty) {
+              final match = list.firstWhere(
+                (inst) =>
+                    inst.name.toLowerCase() == userUniv.toLowerCase() ||
+                    inst.code.toLowerCase() == userUniv.toLowerCase(),
+                orElse: () => Institution(id: '', code: '', name: ''),
+              );
+              if (match.name.isNotEmpty) {
+                _selectedDeliveryInstitution = match.name;
+              }
             }
           }
         });
@@ -210,7 +213,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ),
       ),
-      child: ListView(
+      child: RefreshIndicator(
+        // Only re-fetches reference data (institutions/product info);
+        // form selections are kept intact.
+        onRefresh: _loadData,
+        child: ListView(
         padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
         children: [
           Container(
@@ -758,6 +765,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
           SizedBox(height: context.rh(100)),
         ],
+      ),
       ),
     );
   }

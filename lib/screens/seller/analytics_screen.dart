@@ -46,7 +46,17 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
               ),
               child: const ListSkeleton(count: 6),
             )
-          : ListView(
+          : RefreshIndicator(
+              onRefresh: () async {
+                final user = ref.read(authProvider).user;
+                if (user != null) {
+                  await Future.wait([
+                    ref.read(sellerProvider).loadAnalytics(user.id),
+                    ref.read(sellerProvider).loadDashboardStats(user.id),
+                  ]);
+                }
+              },
+              child: ListView(
               padding: EdgeInsets.fromLTRB(
                 16,
                 MediaQuery.of(context).padding.top + kToolbarHeight + 16,
@@ -149,7 +159,8 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
                     'Orders awaiting fulfillment',
                   ),
                 ],
-              ],
+                ],
+              ),
             ),
     );
   }

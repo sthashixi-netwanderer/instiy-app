@@ -17,39 +17,53 @@ class WishlistScreen extends ConsumerStatefulWidget {
 }
 
 class _WishlistScreenState extends ConsumerState<WishlistScreen> {
-  List<Product> _wishlistedProducts = [];
+  final Map<String, Product> _productCache = {};
   bool _isLoading = true;
+  ProviderSubscription< List<String> >? _favoritesSub;
 
   @override
   void initState() {
     super.initState();
+    _favoritesSub = ref.listenManual(
+      productProvider.select((p) => p.favoriteIds),
+      (previous, next) => _syncWithFavorites(next),
+    );
     _loadWishlist();
+  }
+
+  @override
+  void dispose() {
+    _favoritesSub?.close();
+    super.dispose();
   }
 
   Future<void> _loadWishlist() async {
     setState(() => _isLoading = true);
     try {
-      final ids = await ProductService.getFavoriteIds();
-      if (ids.isEmpty) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-      final products = <Product>[];
+      await ref.read(productProvider).loadFavoriteIds();
+      final ids = List<String>.from(ref.read(productProvider).favoriteIds);
+      _productCache.clear();
       for (final id in ids) {
         try {
-          products.add(await ProductService.getProduct(id));
+          _productCache[id] = await ProductService.getProduct(id);
         } catch (_) {}
       }
+    } catch (_) {}
+    if (mounted) setState(() => _isLoading = false);
+  }
 
-      if (mounted) {
-        setState(() {
-          _wishlistedProducts = products;
-          _isLoading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+  /// Reacts to favorite toggles made anywhere in the app (e.g. product
+  /// detail) without needing to re-open this screen.
+  Future<void> _syncWithFavorites(List<String> ids) async {
+    final knownIds = ids.toSet();
+    _productCache.removeWhere((id, _) => !knownIds.contains(id));
+    final missing = ids.where((id) => !_productCache.containsKey(id)).toList();
+    for (final id in missing) {
+      try {
+        _productCache[id] = await ProductService.getProduct(id);
+      } catch (_) {}
     }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -65,6 +79,12 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
       );
     }
 
+    final favoriteIds = ref.watch(productProvider.select((p) => p.favoriteIds));
+    final wishlistedProducts = favoriteIds
+        .map((id) => _productCache[id])
+        .whereType<Product>()
+        .toList();
+
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
@@ -74,8 +94,14 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
               padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + kToolbarHeight + 12, 12, 12),
               child: ProductGridSkeleton(),
             )
-          : _wishlistedProducts.isEmpty
-              ? _buildEmptyState()
+          : wishlistedProducts.isEmpty
+              ? RefreshIndicator(
+                  onRefresh: _loadWishlist,
+                  child: ListView(
+                    padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight + 12),
+                    children: [_buildEmptyState()],
+                  ),
+                )
               : RefreshIndicator(
                   onRefresh: _loadWishlist,
                   child: GridView.builder(
@@ -87,9 +113,9 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
                       crossAxisSpacing: 12,
                       childAspectRatio: 0.72,
                     ),
-                    itemCount: _wishlistedProducts.length,
+                    itemCount: wishlistedProducts.length,
                     itemBuilder: (context, index) {
-                      final product = _wishlistedProducts[index];
+                      final product = wishlistedProducts[index];
                       return GestureDetector(
                         onTap: () => Navigator.of(context).pushNamed(
                           '/product',

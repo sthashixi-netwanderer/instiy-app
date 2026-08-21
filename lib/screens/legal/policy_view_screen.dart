@@ -56,13 +56,23 @@ class _PolicyViewScreenState extends State<PolicyViewScreen> {
               padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
               child: const ListSkeleton(count: 6))
           : _content.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No content available.',
-                    style: TextStyle(color: AppTheme.mutedSteel),
+              ? RefreshIndicator(
+                  onRefresh: _loadPolicy,
+                  child: ListView(
+                    children: const [
+                      SizedBox(height: 200),
+                      Center(
+                        child: Text(
+                          'No content available.',
+                          style: TextStyle(color: AppTheme.mutedSteel),
+                        ),
+                      ),
+                    ],
                   ),
                 )
-              : Markdown(
+              : RefreshIndicator(
+                  onRefresh: _loadPolicy,
+                  child: Markdown(
                   data: _content,
                   padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
                   styleSheet: MarkdownStyleSheet(
@@ -79,6 +89,7 @@ class _PolicyViewScreenState extends State<PolicyViewScreen> {
                     ),
                   ),
                 ),
+              ),
     );
   }
 }

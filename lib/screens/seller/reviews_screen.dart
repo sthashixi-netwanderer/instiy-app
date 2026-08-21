@@ -85,13 +85,20 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
               ),
               child: const ListSkeleton(count: 6),
             )
-          : reviews.isEmpty
-              ? Padding(
-                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight),
-                  child: _buildEmptyState(),
-                )
-              : ListView.builder(
-                  controller: _scrollController,
+          : RefreshIndicator(
+              onRefresh: () async {
+                final user = ref.read(authProvider).user;
+                if (user != null) {
+                  await ref.read(sellerProvider).loadReviews(user.id);
+                }
+              },
+              child: reviews.isEmpty
+                  ? ListView(
+                      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight),
+                      children: [_buildEmptyState()],
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
                   padding: EdgeInsets.fromLTRB(
                     16,
                     MediaQuery.of(context).padding.top + kToolbarHeight + 16,
@@ -129,6 +136,7 @@ class _SellerReviewsScreenState extends ConsumerState<SellerReviewsScreen> {
                     );
                   },
                 ),
+            ),
     );
   }
 

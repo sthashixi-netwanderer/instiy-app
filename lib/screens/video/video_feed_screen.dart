@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -7,6 +8,7 @@ import '../../config/app_theme.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
 import '../../services/follow_service.dart';
+import '../../services/media_cache_service.dart';
 import '../../services/video_analytics_service.dart';
 import '../../services/video_service.dart';
 import '../../services/review_service.dart';
@@ -19,6 +21,7 @@ import '../../widgets/instiy_logo_placeholder.dart';
 import '../../widgets/review_section.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/share_bottom_sheet.dart';
+import '../../widgets/video_init_helper.dart';
 import '../../utils/bold_text.dart';
 import '../../utils/responsive.dart';
 import 'package:instiy/utils/formatters.dart';
@@ -33,6 +36,8 @@ class VideoFeedScreen extends ConsumerStatefulWidget {
 class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsBindingObserver, RouteAware {
   late final PageController _pageController;
   final ValueNotifier<bool> _canPlay = ValueNotifier(true);
+  ProviderSubscription<List<Product>>? _productsSub;
+  ProviderSubscription<int>? _focusedIndexSub;
 
   @override
   void initState() {
@@ -40,9 +45,37 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     WidgetsBinding.instance.addObserver(this);
     final initialPage = ref.read(videoProvider).focusedIndex;
     _pageController = PageController(initialPage: initialPage);
+    // Warm the cache for the next two clips whenever the feed reloads or the
+    // user pages forward, so swiping to the next video starts instantly.
+    _productsSub = ref.listenManual(
+      videoProvider.select((v) => v.products),
+      (previous, next) => _prefetchUpcomingClips(),
+    );
+    _focusedIndexSub = ref.listenManual(
+      videoProvider.select((v) => v.focusedIndex),
+      (previous, next) => _prefetchUpcomingClips(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoProvider).ensureInitialized();
+      // Covers the already-initialized case; a fresh load triggers the
+      // products listener above.
+      _prefetchUpcomingClips();
     });
+  }
+
+  /// Downloads the video files of the next two clips after the focused one.
+  /// no-op on web (web streams directly from network).
+  void _prefetchUpcomingClips() {
+    final videoState = ref.read(videoProvider);
+    final products = videoState.products;
+    final first = videoState.focusedIndex + 1;
+    for (var i = first; i < first + 2 && i < products.length; i++) {
+      final url = products[i].clipVideoUrl ??
+          (products[i].videoUrls.isNotEmpty ? products[i].videoUrls.first : null);
+      if (url != null && url.isNotEmpty) {
+        MediaCacheService.precache(url); // ignore: unawaited_futures
+      }
+    }
   }
 
   @override
@@ -85,6 +118,8 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     NavigationService.routeObserver.unsubscribe(this);
     _canPlay.value = false;
     WidgetsBinding.instance.removeObserver(this);
+    _productsSub?.close();
+    _focusedIndexSub?.close();
     _canPlay.dispose();
     _pageController.dispose();
     super.dispose();
@@ -105,57 +140,90 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
           ? const VideoFeedSkeleton()
           : products.isEmpty
               ? _buildEmptyState()
-              : PageView.builder(
-                  controller: _pageController,
-                  scrollDirection: Axis.vertical,
-                  itemCount: products.length,
-                  onPageChanged: (index) {
-                    ref.read(videoProvider).setFocusedIndex(index);
+              : NotificationListener<OverscrollNotification>(
+                  onNotification: (notification) {
+                    // Pulling down past the top of the first video refreshes
+                    // the feed (debounced).
+                    if (notification.overscroll < 0 && focusedIndex == 0) {
+                      _maybeRefreshFeed();
+                    }
+                    return false;
                   },
-                  itemBuilder: (context, index) {
-                    final product = products[index];
-                    return VideoFeedItem(
-                      key: ValueKey(product.id),
-                      product: product,
-                      isActive: index == focusedIndex,
-                      canPlay: _canPlay,
-                    );
-                  },
+                  child: PageView.builder(
+                    controller: _pageController,
+                    scrollDirection: Axis.vertical,
+                    // Pre-builds the adjacent pages so the next clip's UI is
+                    // ready before the user swipes to it.
+                    allowImplicitScrolling: true,
+                    itemCount: products.length,
+                    onPageChanged: (index) {
+                      ref.read(videoProvider).setFocusedIndex(index);
+                    },
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      return VideoFeedItem(
+                        key: ValueKey(product.id),
+                        product: product,
+                        isActive: index == focusedIndex,
+                        canPlay: _canPlay,
+                      );
+                    },
+                  ),
                 ),
     );
   }
 
+  DateTime? _lastFeedRefreshAt;
+
+  void _maybeRefreshFeed() {
+    final now = DateTime.now();
+    if (_lastFeedRefreshAt != null &&
+        now.difference(_lastFeedRefreshAt!) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastFeedRefreshAt = now;
+    ref.read(videoProvider).refresh();
+  }
+
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      onRefresh: () => ref.read(videoProvider).loadVideos(silent: false),
+      child: ListView(
         children: [
-          Icon(
-            LucideIcons.videoOff,
-            size: context.ri(64),
-            color: Colors.white30,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No video clips yet',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: context.rsp(18),
-              fontWeight: FontWeight.w600,
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.28),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  LucideIcons.videoOff,
+                  size: context.ri(64),
+                  color: Colors.white30,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No video clips yet',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: context.rsp(18),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Check back later or upload a listing with video',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: context.rsp(14),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ShadButton(
+                  onPressed: () => ref.read(videoProvider).loadVideos(silent: false),
+                  child: const Text('Refresh'),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Check back later or upload a listing with video',
-            style: TextStyle(
-              color: Colors.white38,
-              fontSize: context.rsp(14),
-            ),
-          ),
-          const SizedBox(height: 24),
-          ShadButton(
-            onPressed: () => ref.read(videoProvider).loadVideos(silent: false),
-            child: const Text('Refresh'),
           ),
         ],
       ),
@@ -182,6 +250,7 @@ class VideoFeedItem extends ConsumerStatefulWidget {
 class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTickerProviderStateMixin {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
+  bool _isInitializing = false;
   bool _isPlaying = false;
   bool _showHeartAnimation = false;
   late AnimationController _heartController;
@@ -266,11 +335,29 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
       return;
     }
     if (widget.product.videoUrls.isEmpty) return;
+    // Guard against overlapping init calls (e.g. quick inactive→active flips
+    // while a previous initialization is still awaiting the cache lookup).
+    if (_isInitializing) return;
+    _isInitializing = true;
 
     final videoUrl = widget.product.clipVideoUrl ?? widget.product.videoUrls.first;
-    _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
 
     try {
+      // Cache-first on mobile: start instantly from a previously downloaded
+      // (prefetched) copy; otherwise stream from network and warm the cache in
+      // the background so the next view of this clip is instant. Web always
+      // streams from network.
+      if (kIsWeb) {
+        _controller = createVideoControllerNative(videoUrl);
+      } else {
+        final cachedFile = await MediaCacheService.getCachedFile(videoUrl);
+        if (!mounted) return;
+        _controller = createVideoControllerNative(videoUrl, cachedFile: cachedFile);
+        if (cachedFile == null) {
+          MediaCacheService.precache(videoUrl); // ignore: unawaited_futures
+        }
+      }
+
       await _controller!.initialize();
       _controller!.setLooping(true); // ignore: unawaited_futures
 
@@ -294,6 +381,8 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
       }
     } catch (e) {
       debugPrint('Error initializing video player: $e');
+    } finally {
+      _isInitializing = false;
     }
   }
 

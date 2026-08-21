@@ -19,6 +19,7 @@ import '../../widgets/media_viewer.dart';
 import '../../widgets/verification_badge.dart';
 import '../seller/business_profile_screen.dart';
 import 'report_screen.dart';
+import 'chat_background_settings_screen.dart';
 
 class ChatUserInfoScreen extends ConsumerStatefulWidget {
   final Conversation conversation;
@@ -199,7 +200,9 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
         context: context,
         title: Text(conv.displayName),
       ),
-      body: ListView(
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: ListView(
         padding: EdgeInsets.only(
           top: MediaQuery.paddingOf(context).top + kToolbarHeight + 12,
         ),
@@ -224,6 +227,7 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
           _buildActions(isBlocked),
           SizedBox(height: context.rh(24)),
         ],
+      ),
       ),
     );
   }
@@ -898,6 +902,25 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
                   ),
                   title: const Text('Change theme color'),
                   onTap: _showThemeColorPicker,
+                ),
+                const Divider(height: 1),
+                // Chat Background
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    LucideIcons.image,
+                    color: AppTheme.accent,
+                  ),
+                  title: const Text('Chat background'),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChatBackgroundSettingsScreen(
+                          conversationId: widget.conversation.id,
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const Divider(height: 1),
                 // Archive

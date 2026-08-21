@@ -254,7 +254,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildDefaultContent() {
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.wait([
+          _loadCategories(),
+          _loadRecentSearches(),
+          _fetchRandomActiveKeyword(),
+        ]);
+      },
+      child: ListView(
       padding: EdgeInsets.fromLTRB(context.rw(12), context.rh(16), context.rw(12), context.rh(100)),
       children: [
         // Recent searches
@@ -278,6 +286,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ),
           ),
       ],
+    ),
     );
   }
 
@@ -527,13 +536,23 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       );
     }
     if (_searchResults.isEmpty) {
-      return EmptyState(
-        icon: LucideIcons.searchX,
-        title: 'No products found',
-        description: 'Try a different search term',
+      return RefreshIndicator(
+        onRefresh: () => _performSearch(_searchController.text.trim()),
+        child: ListView(
+          children: [
+            SizedBox(height: context.rh(100)),
+            EmptyState(
+              icon: LucideIcons.searchX,
+              title: 'No products found',
+              description: 'Try a different search term',
+            ),
+          ],
+        ),
       );
     }
-    return GridView.builder(
+    return RefreshIndicator(
+      onRefresh: () => _performSearch(_searchController.text.trim()),
+      child: GridView.builder(
       padding: EdgeInsets.fromLTRB(context.rw(12), context.rh(12), context.rw(12), context.rh(100)),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: context.isDesktop ? 4 : (context.isTablet ? 3 : 2),
@@ -554,6 +573,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           },
         );
       },
+      ),
     );
   }
 }

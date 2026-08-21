@@ -301,7 +301,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('My Listings')),
-      body: ListView(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final user = ref.read(authProvider).user;
+          if (user != null) {
+            await Future.wait([
+              ref.read(productProvider).loadUserListings(user.id),
+              ref.read(sellerProvider).loadDashboardStats(user.id),
+            ]);
+          }
+          await ref.read(productProvider).loadPublishingDraft();
+        },
+        child: ListView(
         padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
         children: [
           Row(
@@ -641,6 +652,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           SizedBox(height: context.rh(80)),
         ],
+      ),
       ),
     );
   }

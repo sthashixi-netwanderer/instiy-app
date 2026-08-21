@@ -37,24 +37,32 @@ class _ArchivedChatsScreenState extends ConsumerState<ArchivedChatsScreen> {
           ? Padding(
               padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
               child: const ListSkeleton(count: 6))
-          : msgProv.archivedConversations.isEmpty
-              ? _buildEmptyState()
-              : ListView.separated(
-                  padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + kToolbarHeight + 8, 8, 100),
-                  itemCount: msgProv.archivedConversations.length,
-                  separatorBuilder: (_, _) => const Divider(indent: 76),
-                  itemBuilder: (context, index) {
-                    final conv = msgProv.archivedConversations[index];
-                    return _ArchivedConversationTile(
-                      conversation: conv,
-                      onTap: () => _openConversation(context, conv, msgProv),
-                      onUnarchive: () {
-                        msgProv.unarchiveConversation(conv.id);
-                        ShadToaster.of(context).show(ShadToast(title: const Text('Chat unarchived')));
+          : RefreshIndicator(
+              onRefresh: () => ref.read(messageProvider).loadArchivedConversations(),
+              child: msgProv.archivedConversations.isEmpty
+                  ? ListView(
+                      children: [
+                        SizedBox(height: MediaQuery.sizeOf(context).height * 0.3),
+                        _buildEmptyState(),
+                      ],
+                    )
+                  : ListView.separated(
+                      padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + kToolbarHeight + 8, 8, 100),
+                      itemCount: msgProv.archivedConversations.length,
+                      separatorBuilder: (_, _) => const Divider(indent: 76),
+                      itemBuilder: (context, index) {
+                        final conv = msgProv.archivedConversations[index];
+                        return _ArchivedConversationTile(
+                          conversation: conv,
+                          onTap: () => _openConversation(context, conv, msgProv),
+                          onUnarchive: () {
+                            msgProv.unarchiveConversation(conv.id);
+                            ShadToaster.of(context).show(ShadToast(title: const Text('Chat unarchived')));
+                          },
+                        );
                       },
-                    );
-                  },
-                ),
+                    ),
+            ),
     );
   }
 

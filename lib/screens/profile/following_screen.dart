@@ -38,6 +38,10 @@ class _FollowingScreenState extends ConsumerState<FollowingScreen>
       vsync: this,
       initialIndex: widget.initialTab,
     );
+    // Blocks changed anywhere in the app affect who shows in these lists
+    ref.listenManual(blockProvider, (previous, next) {
+      _loadBlockedIds();
+    });
     _loadData();
   }
 
@@ -251,19 +255,28 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
     }
 
     if (users.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return RefreshIndicator(
+        onRefresh: _loadData,
+        child: ListView(
           children: [
-            Icon(LucideIcons.users, size: context.ri(48), color: AppTheme.mutedSteel.withValues(alpha: 0.4)),
-            SizedBox(height: context.rh(12)),
-            Text(emptyMessage, style: const TextStyle(color: AppTheme.mutedSteel)),
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.25),
+            Center(
+              child: Column(
+                children: [
+                  Icon(LucideIcons.users, size: context.ri(48), color: AppTheme.mutedSteel.withValues(alpha: 0.4)),
+                  SizedBox(height: context.rh(12)),
+                  Text(emptyMessage, style: const TextStyle(color: AppTheme.mutedSteel)),
+                ],
+              ),
+            ),
           ],
         ),
       );
     }
 
-    return ListView.separated(
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView.separated(
       padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(8)),
       itemCount: users.length,
       separatorBuilder: (context, index) => SizedBox(height: context.rh(8)),
@@ -409,6 +422,7 @@ final confirmed = await AppTheme.showGlassDialog<bool>(
           ),
         );
       },
+      ),
     );
   }
 }

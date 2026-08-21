@@ -58,6 +58,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   bool _showSuggestions = false;
   bool _showScrollToTop = false;
   Timer? _searchDebounce;
+  Timer? _realtimeDebounce;
+  bool _isFetching = false;
+  ProviderSubscription<List<Product>>? _providerProductsSub;
+  ProviderSubscription<List<Category>>? _providerCategoriesSub;
 
   @override
   void initState() {
@@ -72,6 +76,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         setState(() => _showSuggestions = false);
       }
     });
+    // React to realtime product/category changes pushed by productProvider
+    // so the grid updates without leaving and re-entering the screen.
+    _providerProductsSub = ref.listenManual(
+      productProvider.select((p) => p.products),
+      (previous, next) => _scheduleRealtimeRefresh(),
+    );
+    _providerCategoriesSub = ref.listenManual(
+      productProvider.select((p) => p.categories),
+      (previous, next) => _loadCategories(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(cartProvider).loadCart();
       ref.read(walletProvider).loadWallet();
@@ -148,7 +162,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _searchFocusNode.dispose();
     _scrollController.dispose();
     _searchDebounce?.cancel();
+    _realtimeDebounce?.cancel();
+    _providerProductsSub?.close();
+    _providerCategoriesSub?.close();
     super.dispose();
+  }
+
+  /// Debounced silent refresh when products change in realtime.
+  void _scheduleRealtimeRefresh() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) _loadProducts(reset: true, silent: true);
+    });
   }
 
   void _onScroll() {
@@ -159,7 +184,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
     if (position.pixels >= position.maxScrollExtent * 0.8 &&
         _hasMore &&
-        !_isLoading) {
+        !_isFetching) {
       setState(() => _page++);
       _loadProducts();
     }
@@ -198,10 +223,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Future<void> _loadProducts({bool reset = false, bool silent = false}) async {
+    if (_isFetching && silent) return;
+    _isFetching = true;
     if (reset) {
       setState(() {
         _page = 0;
-        _products.clear();
+        // Silent refreshes swap the grid in place once data arrives so the
+        // current content doesn't flash empty.
+        if (!silent) _products.clear();
       });
     }
 
@@ -251,6 +280,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       }
     } catch (e) {
       if (mounted && !silent) setState(() => _isLoading = false);
+    } finally {
+      _isFetching = false;
     }
   }
 

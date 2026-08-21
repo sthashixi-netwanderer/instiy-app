@@ -671,38 +671,59 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
     }
 
     if (history.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + 56),
-          child: Column(
-            children: [
-              Icon(LucideIcons.history,
-                  size: 48, color: AppTheme.mutedSteel.withValues(alpha: 0.4)),
-              const SizedBox(height: 16),
-              const Text(
-                'No permission history',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.charcoalInk,
-                ),
+      return RefreshIndicator(
+        onRefresh: () async {
+          final sellerId = ref.read(authProvider).user?.id;
+          if (sellerId != null) {
+            await ref
+                .read(purchasePermissionProvider.notifier)
+                .loadPermissionHistory(sellerId);
+          }
+        },
+        child: ListView(
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+            Center(
+              child: Column(
+                children: [
+                  Icon(LucideIcons.history,
+                      size: 48, color: AppTheme.mutedSteel.withValues(alpha: 0.4)),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No permission history',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.charcoalInk,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Permissions you grant to buyers will appear here.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.mutedSteel,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Permissions you grant to buyers will appear here.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.mutedSteel,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView.builder(
+    return RefreshIndicator(
+      onRefresh: () async {
+        final sellerId = ref.read(authProvider).user?.id;
+        if (sellerId != null) {
+          await ref
+              .read(purchasePermissionProvider.notifier)
+              .loadPermissionHistory(sellerId);
+        }
+      },
+      child: ListView.builder(
       controller: widget.scrollController,
       padding: EdgeInsets.fromLTRB(
         20,
@@ -730,6 +751,7 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
           sellerId: ref.read(authProvider).user?.id ?? '',
         );
       },
+      ),
     );
   }
 }

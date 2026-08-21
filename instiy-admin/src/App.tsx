@@ -41,6 +41,7 @@ import {
 	MapPin,
 	Wallet,
 } from "lucide-react";
+const instiyLogo = "/favicon.svg";
 
 export const App: React.FC = () => {
 	const [sessionUser, setSessionUser] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [authLoading, setAuthLoading] = useState(true);
 	const [unreadReports, setUnreadReports] = useState(0);
+	const [pendingVerifications, setPendingVerifications] = useState(0);
 	const location = useLocation();
 
 	// Fetch unread report count
@@ -60,10 +62,24 @@ export const App: React.FC = () => {
 		} catch (_) {}
 	};
 
+	// Fetch pending verification count
+	const fetchPendingVerificationCount = async () => {
+		try {
+			const { data, error } = await supabase.rpc("get_unread_verification_count");
+			if (!error && data != null) {
+				setPendingVerifications(data as number);
+			}
+		} catch (_) {}
+	};
+
 	useEffect(() => {
 		if (sessionUser) {
 			fetchUnreadCount();
-			const interval = setInterval(fetchUnreadCount, 30000);
+			fetchPendingVerificationCount();
+			const interval = setInterval(() => {
+				fetchUnreadCount();
+				fetchPendingVerificationCount();
+			}, 30000);
 			return () => clearInterval(interval);
 		}
 	}, [sessionUser]);
@@ -160,7 +176,15 @@ export const App: React.FC = () => {
 		return <Login onLoginSuccess={(uid) => setSessionUser(uid)} />;
 	}
 
-	const navItems = [
+	interface NavItem {
+		id: string;
+		label: string;
+		icon: React.ReactNode;
+		path: string;
+		badgeCount?: number;
+	}
+
+	const navItems: NavItem[] = [
 		{
 			id: "dashboard",
 			label: "Dashboard",
@@ -178,6 +202,7 @@ export const App: React.FC = () => {
 			label: "Verifications",
 			icon: <Shield size={18} />,
 			path: "/verifications",
+			badgeCount: pendingVerifications,
 		},
 		{
 			id: "categories",
@@ -238,6 +263,7 @@ export const App: React.FC = () => {
 			label: "Reports",
 			icon: <Flag size={18} />,
 			path: "/reports",
+			badgeCount: unreadReports,
 		},
 		{
 			id: "ai-settings",
@@ -283,7 +309,7 @@ export const App: React.FC = () => {
 						fontFamily: "var(--font-title)",
 					}}
 				>
-					<Shield size={18} style={{ color: "hsl(var(--accent))" }} />
+					<img src={instiyLogo} alt="Instiy" style={{ width: "20px", height: "20px" }} />
 					Instiy
 				</div>
 				<button
@@ -303,7 +329,7 @@ export const App: React.FC = () => {
 			{/* Sidebar */}
 			<aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
 				<div className="sidebar-logo">
-					<Shield size={22} />
+					<img src={instiyLogo} alt="Instiy" style={{ width: "24px", height: "24px" }} />
 					<span>Instiy</span>
 				</div>
 
@@ -312,6 +338,8 @@ export const App: React.FC = () => {
 						const isActive =
 							location.pathname === item.path ||
 							(item.path === "/dashboard" && location.pathname === "/");
+						const badgeCount = (item as any).badgeCount || 0;
+						const showBadge = badgeCount > 0;
 						return (
 							<li
 								key={item.id}
@@ -321,14 +349,14 @@ export const App: React.FC = () => {
 								<Link to={item.path}>
 									{item.icon}
 									<span>{item.label}</span>
-									{item.id === "reports" && unreadReports > 0 && (
+									{showBadge && (
 										<span
 											style={{
 												marginLeft: "auto",
 												display: "inline-flex",
 												alignItems: "center",
 												justifyContent: "center",
-												background: "hsl(var(--danger, 0 84% 60%))",
+												background: "hsl(var(--accent))",
 												color: "white",
 												borderRadius: "10px",
 												minWidth: "18px",
@@ -338,7 +366,7 @@ export const App: React.FC = () => {
 												fontWeight: 700,
 											}}
 										>
-											{unreadReports}
+											{badgeCount > 99 ? '99+' : badgeCount}
 										</span>
 									)}
 								</Link>
