@@ -313,15 +313,14 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
           SizedBox(height: context.rh(4)),
 
           // Online / Last seen status
-          Text(
-            conv.isOnline
-                ? 'Online'
-                : 'Last seen ${conv.lastMessageAt != null ? _formatLastSeen(conv.lastMessageAt!) : 'recently'}',
-            style: TextStyle(
-              fontSize: context.rsp(14),
-              color: conv.isOnline ? Colors.green : AppTheme.mutedSteel,
+          if (_presenceLabel().isNotEmpty)
+            Text(
+              _presenceLabel(),
+              style: TextStyle(
+                fontSize: context.rsp(14),
+                color: conv.isOnline ? Colors.green : AppTheme.mutedSteel,
+              ),
             ),
-          ),
           if (_otherUser?.university != null &&
               _otherUser!.university!.isNotEmpty) ...[
             SizedBox(height: context.rh(8)),
@@ -965,14 +964,19 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
     }
   }
 
-  String _formatLastSeen(DateTime lastSeen) {
+  String _presenceLabel() {
+    final conv = widget.conversation;
+    if (conv.isOnline) return 'online';
+    final lastSeen = conv.otherUserLastSeen?.toLocal();
+    if (lastSeen == null) return '';
     final now = DateTime.now();
-    final diff = now.difference(lastSeen);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return DateFormat('MMM d, h:mm a').format(lastSeen);
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(lastSeen.year, lastSeen.month, lastSeen.day);
+    final time = DateFormat('h:mm a').format(lastSeen);
+    final days = today.difference(day).inDays;
+    if (days == 0) return 'last seen today at $time';
+    if (days == 1) return 'last seen yesterday at $time';
+    return 'last seen ${DateFormat('d/M/yyyy').format(lastSeen)} at $time';
   }
 }
 

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io' show File;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/picked_media.dart';
@@ -46,12 +48,14 @@ class StorageService {
     if (file is PickedMedia) {
       bytes = file.bytes;
       ext = file.extension;
+    } else if (!kIsWeb && file is File) {
+      bytes = await file.readAsBytes();
     } else if (file is Uint8List) {
       bytes = file;
     } else if (file is List<int>) {
       bytes = Uint8List.fromList(file);
     } else {
-      throw ArgumentError('Expected PickedMedia, Uint8List, or List<int>');
+      throw ArgumentError('Expected PickedMedia, File, Uint8List, or List<int>');
     }
     return await _uploadViaProxy(
       folder: folder,
@@ -71,12 +75,14 @@ class StorageService {
     Uint8List bytes;
     if (file is PickedMedia) {
       bytes = file.bytes;
+    } else if (!kIsWeb && file is File) {
+      bytes = await file.readAsBytes();
     } else if (file is Uint8List) {
       bytes = file;
     } else if (file is List<int>) {
       bytes = Uint8List.fromList(file);
     } else {
-      throw ArgumentError('Expected PickedMedia, Uint8List, or List<int>');
+      throw ArgumentError('Expected PickedMedia, File, Uint8List, or List<int>');
     }
     return await _uploadViaProxy(
       folder: folder,

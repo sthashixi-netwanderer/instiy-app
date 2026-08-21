@@ -11,10 +11,10 @@ import '../../config/app_theme.dart';
 import '../../widgets/skeleton.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
+import '../../services/product_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/follow_service.dart';
-import '../../services/product_service.dart';
 import '../../services/business_profile_service.dart';
 import '../../models/business_profile_model.dart';
 import '../messages/messages_screen.dart';
@@ -54,6 +54,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   int _discountSecondsRemaining = 0;
   List<Product> _relatedProducts = [];
   bool _isRelatedLoading = false;
+  int? _viewCount;
 
   @override
   void initState() {
@@ -95,6 +96,15 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       _startCountdownTimer();
       unawaited(_loadFollowStatus());
       unawaited(_loadRelatedProducts());
+      if (product != null) unawaited(_recordView());
+    }
+  }
+
+  /// Counts this visit (deduped server-side per user / per anonymous IP).
+  Future<void> _recordView() async {
+    final count = await ProductService.recordProductView(_product!.id);
+    if (mounted && count > 0) {
+      setState(() => _viewCount = count);
     }
   }
 
@@ -807,6 +817,26 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         color: AppTheme.charcoalInk,
                       ),
                     ),
+                    if (_viewCount != null) ...[
+                      SizedBox(height: context.rh(6)),
+                      Row(
+                        children: [
+                          Icon(
+                            LucideIcons.eye,
+                            size: context.ri(14),
+                            color: AppTheme.mutedSteel,
+                          ),
+                          SizedBox(width: context.rw(4)),
+                          Text(
+                            '$_viewCount ${_viewCount == 1 ? 'view' : 'views'}',
+                            style: TextStyle(
+                              fontSize: context.rsp(12),
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     SizedBox(height: context.rh(8)),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,

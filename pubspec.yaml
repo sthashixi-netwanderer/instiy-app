@@ -15,7 +15,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # UI Components
-  shadcn_ui: ^0.54.0
+  shadcn_ui: ^0.56.1
   google_fonts: ^8.1.0
   # Animation effects (re-exported by shadcn_ui; declared directly so the
   # `Effect` type can be imported for shared dropdown/popover animations).
@@ -29,7 +29,7 @@ dependencies:
 
   # Image handling
   image_picker: ^1.1.2
-  image_cropper: ^8.1.0
+  image_cropper: ^12.2.1
   cached_network_image: ^3.4.1
   image: ^4.3.0
   photo_view: ^0.15.0
@@ -64,7 +64,7 @@ dependencies:
   qr_flutter: ^4.1.0
 
   # QR code / barcode scanning
-  mobile_scanner: 7.2.0
+  mobile_scanner: ^7.4.0
   app_links: ^7.1.1
 
   # Markdown rendering
@@ -79,7 +79,7 @@ dependencies:
   local_auth: ^3.0.1
 
   # Local device notifications
-  flutter_local_notifications: ^21.0.0
+  flutter_local_notifications: ^22.3.0
 
   # Audio playback for in-app notification sounds
   audioplayers: ^6.7.1

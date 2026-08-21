@@ -260,6 +260,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       userListings = userListings.where((p) => p.stockQuantity <= 0).toList();
     } else if (_filter == 'sold') {
       userListings = userListings.where((p) => p.status == ProductStatus.sold).toList();
+    } else if (_filter == 'discounted') {
+      userListings = userListings.where((p) => p.isDiscountActive).toList();
     }
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
@@ -361,6 +363,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _FilterChip(label: 'Out of Stock', selected: _filter == 'out_of_stock', onTap: () => setState(() => _filter = 'out_of_stock')),
                 SizedBox(width: context.rw(8)),
                 _FilterChip(label: 'Sold', selected: _filter == 'sold', onTap: () => setState(() => _filter = 'sold')),
+                SizedBox(width: context.rw(8)),
+                _FilterChip(label: 'Discounted', selected: _filter == 'discounted', onTap: () => setState(() => _filter = 'discounted')),
               ],
             ),
           ),
@@ -500,6 +504,51 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   ),
                                 ),
                               ),
+                              if (product.isDiscountActive)
+                                Positioned(
+                                  top: context.rh(8),
+                                  right: context.rw(8),
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: context.rw(6),
+                                      vertical: context.rh(3),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [Color(0xFFF43F5E), AppTheme.destructive],
+                                      ),
+                                      borderRadius: BorderRadius.circular(context.rr(6)),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppTheme.destructive.withValues(alpha: 0.35),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 1),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          LucideIcons.tag,
+                                          size: context.ri(9),
+                                          color: Colors.white,
+                                        ),
+                                        SizedBox(width: context.rw(3)),
+                                        Text(
+                                          '-${formatCurrency(product.discountPercent)}%',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: context.rsp(9),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -523,13 +572,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        formatGhs(product.effectivePrice),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: context.rsp(13),
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              formatGhs(product.effectivePrice),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: context.rsp(13),
+                                                color: product.isDiscountActive
+                                                    ? AppTheme.destructive
+                                                    : AppTheme.charcoalInk,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (product.isDiscountActive) ...[
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              formatGhs(product.price),
+                                              style: TextStyle(
+                                                fontSize: context.rsp(9.5),
+                                                color: AppTheme.mutedSteel,
+                                                decoration: TextDecoration.lineThrough,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
                                     const SizedBox(width: 4),

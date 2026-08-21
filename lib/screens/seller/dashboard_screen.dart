@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -9,6 +10,7 @@ import '../../models/product_model.dart';
 import '../../models/draft_listing_model.dart';
 import '../../models/seller_review_model.dart';
 import '../../services/business_profile_service.dart';
+import '../../services/product_service.dart';
 import '../../models/institution_model.dart';
 import '../../services/institution_service.dart';
 import '../../utils/responsive.dart';
@@ -26,23 +28,36 @@ class SellerDashboardScreen extends ConsumerStatefulWidget {
 
 class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
   List<Institution> _institutions = [];
+  int _totalListingViews = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
-      _loadInstitutions();
+      unawaited(_loadData());
+      unawaited(_loadInstitutions());
     });
   }
 
-  void _loadData() {
+  Future<void> _loadData() async {
     final user = ref.read(authProvider).user;
     if (user != null) {
-      ref.read(sellerProvider).ensureInitialized(user.id);
-      ref.read(productProvider).loadUserListings(user.id, silent: ref.read(productProvider).userListings.isNotEmpty);
+      unawaited(ref.read(sellerProvider).ensureInitialized(user.id));
+      await ref.read(productProvider).loadUserListings(user.id, silent: ref.read(productProvider).userListings.isNotEmpty);
+      unawaited(_loadViewCounts());
     }
-    ref.read(productProvider).loadPublishingDraft();
+    unawaited(ref.read(productProvider).loadPublishingDraft());
+  }
+
+  /// Total views across the seller's listings (per-user / per-IP deduped).
+  Future<void> _loadViewCounts() async {
+    final listings = ref.read(productProvider).userListings;
+    if (listings.isEmpty) return;
+    final counts = await ProductService.getViewCounts(
+      listings.map((p) => p.id).toList(),
+    );
+    final total = counts.values.fold<int>(0, (sum, c) => sum + c);
+    if (mounted) setState(() => _totalListingViews = total);
   }
 
   Future<void> _loadInstitutions() async {
@@ -183,6 +198,18 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                       _StatCard(label: 'Sold', value: '$soldCount', compact: true),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  // Total views across all listings
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatCard(
+                          label: 'Total Views (all listings)',
+                          value: '$_totalListingViews',
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   // Edit profile + Add product
                   Row(
@@ -209,7 +236,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                   AppButton.outline(
                     onPressed: () async {
                       final result = await Navigator.of(context).pushNamed('/edit-business-profile');
-                      if (result == true) _loadData();
+                      if (result == true) unawaited(_loadData());
                     },
                     leading: const Icon(LucideIcons.store, size: 18),
                     child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Build Business Profile')),

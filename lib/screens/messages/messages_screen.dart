@@ -631,14 +631,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   Future<Uint8List?> _readFileBytes(String path) => RecordingHelper.readFileBytes(path);
 
-  // Helper to calculate dynamic bottom padding for ListView based on visible conditional widgets
-  double _listBottomPadding() {
-    double padding = 16; // base
-    if (_replyToMessage != null) padding += 60; // Reply preview card
-    if (_productReference != null) padding += 70; // Product reference card
-    if (_pendingMediaList.isNotEmpty) padding += 90; // Media preview
-    return padding;
-  }
+  // Helper to calculate bottom padding for ListView
+  double _listBottomPadding() => 16;
 
   // WhatsApp-style presence label under the user's name in the chat header.
   String _presenceLabel() {
@@ -1421,395 +1415,497 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                 ),
               ],
             ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: Stack(
+          // Full-bleed Chat background layer
+          Positioned.fill(
+            child: _buildChatBackground(),
+          ),
+          Positioned.fill(
+            child: Column(
               children: [
-                // Chat background layer
-                Positioned.fill(
-                  child: _buildChatBackground(),
-                ),
-                msgProv.isLoading && msgProv.messages.isEmpty
-                    ? Positioned.fill(
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                MessageBubbleSkeleton(isMe: false),
-                                const SizedBox(height: 8),
-                                MessageBubbleSkeleton(isMe: true),
-                                const SizedBox(height: 8),
-                                MessageBubbleSkeleton(isMe: false),
-                                const SizedBox(height: 8),
-                                MessageBubbleSkeleton(isMe: true),
-                              ],
-                            ),
-                          ),
-                        ),
-                      )
-                    : msgProv.messages.isEmpty
-                        ? const Center(
-                            child: Text('Start a conversation',
-                                style: TextStyle(color: AppTheme.mutedSteel)),
-                          )
-                        : Positioned.fill(
-                          child: Column(
-                            children: [
-                              if (msgProv.themeChangeNotice != null)
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                                  child: Row(
+                Expanded(
+                  child: Stack(
+                    children: [
+                      msgProv.isLoading && msgProv.messages.isEmpty
+                          ? Positioned.fill(
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: _chatColor.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(LucideIcons.palette, size: 12, color: _chatColor),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              msgProv.themeChangeNotice!,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                                color: _chatColor,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                      MessageBubbleSkeleton(isMe: false),
+                                      const SizedBox(height: 8),
+                                      MessageBubbleSkeleton(isMe: true),
+                                      const SizedBox(height: 8),
+                                      MessageBubbleSkeleton(isMe: false),
+                                      const SizedBox(height: 8),
+                                      MessageBubbleSkeleton(isMe: true),
                                     ],
                                   ),
                                 ),
-                              Expanded(
-                                child: ListView.builder(
-                            controller: _scrollCtrl,
-                            padding: EdgeInsets.fromLTRB(
-                              16,
-                              MediaQuery.paddingOf(context).top + kToolbarHeight + 16,
-                              16,
-                              _listBottomPadding(),
-                            ),
-                            itemCount: msgProv.messages.length + (msgProv.hasMoreMessages ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (index == 0 && msgProv.hasMoreMessages) {
-                                return const Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                  ),
-                                );
-                              }
-                              final msgIndex = msgProv.hasMoreMessages ? index - 1 : index;
-                              final msg = msgProv.messages[msgIndex];
-                              final isMe = msg.senderId == userId;
-                              final isFirstUnread = _firstUnreadMessageId == msg.id;
-
-                              final child = _MessageBubble(
-                                message: msg,
-                                isMe: isMe,
-                                isSelected: _selectedMessageIds.contains(msg.id),
-                                isSelectionMode: _isSelectionMode,
-                                isHighlighted: _highlightedMessageId == msg.id,
-                                chatColor: _chatColor,
-                                onLongPress: () => isMe ? _enterSelectionMode(msg.id) : null,
-                                onTap: () {
-                                  if (_isSelectionMode && isMe) {
-                                    _toggleSelection(msg.id);
-                                  }
-                                },
-                                onSwipeReply: () => _setReplyTo(msg),
-                                onReplyTap: msg.isReply ? () => _scrollToMessage(msg.replyToMessageId!) : null,
-                              );
-
-                              if (isFirstUnread) {
-                                return Column(
+                              ),
+                            )
+                          : msgProv.messages.isEmpty
+                              ? const Center(
+                                  child: Text('Start a conversation',
+                                      style: TextStyle(color: AppTheme.mutedSteel)),
+                                )
+                              : Column(
                                   children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
-                                      child: Row(
-                                        children: [
-                                          const Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: _chatColor.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Text(
-                                              'Unread Messages',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                                color: _chatColor,
+                                    if (msgProv.themeChangeNotice != null)
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                                        child: Row(
+                                          children: [
+                                            Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: _chatColor.withValues(alpha: 0.1),
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(LucideIcons.palette, size: 12, color: _chatColor),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    msgProv.themeChangeNotice!,
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: _chatColor,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ),
-                                          const Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
-                                        ],
+                                            Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                          ],
+                                        ),
+                                      ),
+                                    Expanded(
+                                      child: ListView.builder(
+                                        controller: _scrollCtrl,
+                                        padding: EdgeInsets.fromLTRB(
+                                          16,
+                                          MediaQuery.paddingOf(context).top + kToolbarHeight + 16,
+                                          16,
+                                          _listBottomPadding(),
+                                        ),
+                                        itemCount: msgProv.messages.length + (msgProv.hasMoreMessages ? 1 : 0),
+                                        itemBuilder: (context, index) {
+                                          if (index == 0 && msgProv.hasMoreMessages) {
+                                            return const Padding(
+                                              padding: EdgeInsets.all(8),
+                                              child: Center(
+                                                child: SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          final msgIndex = msgProv.hasMoreMessages ? index - 1 : index;
+                                          final msg = msgProv.messages[msgIndex];
+                                          final isMe = msg.senderId == userId;
+                                          final isFirstUnread = _firstUnreadMessageId == msg.id;
+
+                                          final child = _MessageBubble(
+                                            message: msg,
+                                            isMe: isMe,
+                                            isSelected: _selectedMessageIds.contains(msg.id),
+                                            isSelectionMode: _isSelectionMode,
+                                            isHighlighted: _highlightedMessageId == msg.id,
+                                            chatColor: _chatColor,
+                                            onLongPress: () => isMe ? _enterSelectionMode(msg.id) : null,
+                                            onTap: () {
+                                              if (_isSelectionMode && isMe) {
+                                                _toggleSelection(msg.id);
+                                              }
+                                            },
+                                            onSwipeReply: () => _setReplyTo(msg),
+                                            onReplyTap: msg.isReply ? () => _scrollToMessage(msg.replyToMessageId!) : null,
+                                          );
+
+                                          if (isFirstUnread) {
+                                            return Column(
+                                              children: [
+                                                Padding(
+                                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                                  child: Row(
+                                                    children: [
+                                                      const Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                                        decoration: BoxDecoration(
+                                                          color: _chatColor.withValues(alpha: 0.1),
+                                                          borderRadius: BorderRadius.circular(12),
+                                                        ),
+                                                        child: Text(
+                                                          'Unread Messages',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w600,
+                                                            color: _chatColor,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const Expanded(child: Divider(color: AppTheme.whisperBorder, thickness: 1)),
+                                                    ],
+                                                  ),
+                                                ),
+                                                child,
+                                              ],
+                                            );
+                                          }
+                                          return child;
+                                        },
                                       ),
                                     ),
-                                    child,
                                   ],
-                                );
-                              }
-                              return child;
+                                ),
+                      if (_showScrollDownButton)
+                        Positioned(
+                          bottom: 16,
+                          right: 16,
+                          child: AnimatedOpacity(
+                            opacity: _showScrollDownButton ? 1.0 : 0.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: FloatingActionButton.small(
+                              backgroundColor: AppTheme.pureSurface,
+                              foregroundColor: AppTheme.charcoalInk,
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: BorderSide(color: AppTheme.whisperBorder),
+                              ),
+                              onPressed: _scrollToBottom,
+                              child: const Icon(LucideIcons.chevronDown, size: 20),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (_replyToMessage != null)
+                  _ReplyPreviewCard(
+                    message: _replyToMessage!,
+                    currentUserId: userId ?? '',
+                    otherUserName: widget.conversation.otherUserName ?? '',
+                    otherUserVerified: widget.conversation.otherUserVerified,
+                    otherBusinessName: widget.conversation.otherBusinessName ?? '',
+                    chatColor: _chatColor,
+                    onRemove: _clearReply,
+                  ),
+                if (_productReference != null)
+                  _ProductReferenceCard(
+                    reference: _productReference!,
+                    chatColor: _chatColor,
+                    onRemove: _removeReference,
+                  ),
+                // Media preview
+                if (_pendingMediaList.isNotEmpty)
+                  Container(
+                    height: 86,
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.pureSurface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.whisperBorder),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _pendingMediaList.length,
+                            itemExtent: 78,
+                            itemBuilder: (context, idx) {
+                              final file = _pendingMediaList[idx];
+                              final isVideo = _pendingIsVideoList[idx];
+                              return Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                width: 70,
+                                height: 70,
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: isVideo
+                                          ? Container(
+                                              width: 70,
+                                              height: 70,
+                                              color: AppTheme.charcoalInk,
+                                              child: const Center(
+                                                child: Icon(LucideIcons.play, size: 20, color: Colors.white),
+                                              ),
+                                            )
+                                          : Image.file(
+                                              file,
+                                              width: 70,
+                                              height: 70,
+                                              fit: BoxFit.cover,
+                                            ),
+                                    ),
+                                    Positioned(
+                                      top: -2,
+                                      right: -2,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _pendingMediaList.removeAt(idx);
+                                            _pendingIsVideoList.removeAt(idx);
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(2),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(LucideIcons.x, size: 14, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
                             },
                           ),
-                              ),
-                            ],
-                          ),
                         ),
-                if (_showScrollDownButton)
-                  Positioned(
-                    bottom: 16,
-                    right: 16,
-                    child: AnimatedOpacity(
-                      opacity: _showScrollDownButton ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: FloatingActionButton.small(
-                        backgroundColor: AppTheme.pureSurface,
-                        foregroundColor: AppTheme.charcoalInk,
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(color: AppTheme.whisperBorder),
-                        ),
-                        onPressed: _scrollToBottom,
-                        child: const Icon(LucideIcons.chevronDown, size: 20),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (_replyToMessage != null)
-            _ReplyPreviewCard(
-              message: _replyToMessage!,
-              currentUserId: userId ?? '',
-              otherUserName: widget.conversation.otherUserName ?? '',
-              otherUserVerified: widget.conversation.otherUserVerified,
-              otherBusinessName: widget.conversation.otherBusinessName ?? '',
-              chatColor: _chatColor,
-              onRemove: _clearReply,
-            ),
-          if (_productReference != null)
-            _ProductReferenceCard(
-              reference: _productReference!,
-              chatColor: _chatColor,
-              onRemove: _removeReference,
-            ),
-          // Media preview
-          if (_pendingMediaList.isNotEmpty)
-            Container(
-              height: 90,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.pureSurface,
-                border: Border(top: BorderSide(color: AppTheme.whisperBorder)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _pendingMediaList.length,
-                      itemExtent: 82,
-                      itemBuilder: (context, idx) {
-                        final file = _pendingMediaList[idx];
-                        final isVideo = _pendingIsVideoList[idx];
-                        return Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          width: 70,
-                          height: 70,
-                          child: Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: isVideo
-                                    ? Container(
-                                        width: 70,
-                                        height: 70,
-                                        color: AppTheme.charcoalInk,
-                                        child: const Center(
-                                          child: Icon(LucideIcons.play, size: 20, color: Colors.white),
-                                        ),
-                                      )
-                                    : Image.file(
-                                        file,
-                                        width: 70,
-                                        height: 70,
-                                        fit: BoxFit.cover,
-                                      ),
-                              ),
-                              Positioned(
-                                top: -2,
-                                right: -2,
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _pendingMediaList.removeAt(idx);
-                                      _pendingIsVideoList.removeAt(idx);
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(LucideIcons.x, size: 14, color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  ShadIconButton.ghost(
-                    icon: const Icon(LucideIcons.plus, size: 20),
-                    foregroundColor: _chatColor,
-                    onPressed: _pickMedia,
-                  ),
-                ],
-              ),
-            ),
-          ClipRRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
-              child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.glassHeaderBottom,
-              border: const Border(top: BorderSide(color: AppTheme.subtleBorder)),
-              boxShadow: const [
-                BoxShadow(color: AppTheme.glassHeaderShadow, blurRadius: 12, offset: Offset(0, -4)),
-              ],
-            ),
-            child: SafeArea(
-              child: _isRecording
-                  ? Row(
-                      children: [
                         ShadIconButton.ghost(
-                          icon: const Icon(LucideIcons.trash2, color: AppTheme.destructive),
-                          onPressed: _cancelRecording,
+                          icon: const Icon(LucideIcons.plus, size: 20),
+                          foregroundColor: _chatColor,
+                          onPressed: _pickMedia,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Container(
-                            height: 42,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ],
+                    ),
+                  ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+                    child: _isRecording
+                        ? Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
                             decoration: BoxDecoration(
-                              color: AppTheme.destructive.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
+                              color: AppTheme.pureSurface,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: AppTheme.whisperBorder),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
                             child: Row(
                               children: [
-                                const _BlinkingRedDot(),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _formatDuration(_recordDurationSeconds),
-                                  style: const TextStyle(
-                                    color: AppTheme.destructive,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
+                                IconButton(
+                                  icon: const Icon(LucideIcons.trash2, color: AppTheme.destructive, size: 20),
+                                  onPressed: _cancelRecording,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Container(
+                                    height: 36,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.destructive.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const _BlinkingRedDot(),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _formatDuration(_recordDurationSeconds),
+                                          style: const TextStyle(
+                                            color: AppTheme.destructive,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        const Expanded(
+                                          child: Center(
+                                            child: _VoiceRecordingWave(),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                const Expanded(
-                                  child: Center(
-                                    child: _VoiceRecordingWave(),
+                                const SizedBox(width: 4),
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: _chatColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(LucideIcons.send, size: 18, color: Colors.white),
+                                    onPressed: _stopAndSendRecording,
+                                    padding: EdgeInsets.zero,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ShadIconButton.ghost(
-                          icon: const Icon(LucideIcons.send),
-                          foregroundColor: _chatColor,
-                          onPressed: _stopAndSendRecording,
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        ShadIconButton.ghost(
-                          icon: const Icon(LucideIcons.paperclip),
-                          foregroundColor: AppTheme.mutedSteel,
-                          onPressed: _isSendingMedia ? null : _pickMedia,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ShadInput(
-                            controller: _messageCtrl,
-                            focusNode: _messageFocusNode,
-                            placeholder: Text(_pendingMediaList.isNotEmpty ? 'Add a caption...' : 'Type a message...'),
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _sendMessage(),
-                            trailing: ShadIconButton.ghost(
-                              icon: const Icon(LucideIcons.smile, size: 20),
-                              foregroundColor: AppTheme.mutedSteel,
-                              onPressed: _openGifPicker,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Builder(
-                          builder: (context) {
-                            final hasInput = _messageCtrl.text.trim().isNotEmpty ||
-                                _pendingMediaList.isNotEmpty ||
-                                _productReference != null;
-
-                            if (_isSendingMedia) {
-                              return const SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.pureSurface,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppTheme.whisperBorder),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.06),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: IconButton(
+                                  icon: const Icon(LucideIcons.paperclip, size: 20),
+                                  color: AppTheme.mutedSteel,
+                                  onPressed: _isSendingMedia ? null : _pickMedia,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.pureSurface,
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(color: AppTheme.whisperBorder),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.06),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  padding: const EdgeInsets.only(left: 14, right: 6),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _messageCtrl,
+                                          focusNode: _messageFocusNode,
+                                          decoration: InputDecoration(
+                                            hintText: _pendingMediaList.isNotEmpty ? 'Add a caption...' : 'Type a message...',
+                                            hintStyle: const TextStyle(
+                                              color: AppTheme.mutedSteel,
+                                              fontSize: 14,
+                                            ),
+                                            border: InputBorder.none,
+                                            isDense: true,
+                                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                                          ),
+                                          style: TextStyle(fontSize: context.rsp(14), color: AppTheme.charcoalInk),
+                                          textInputAction: TextInputAction.send,
+                                          onSubmitted: (_) => _sendMessage(),
+                                          minLines: 1,
+                                          maxLines: 5,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(LucideIcons.smile, size: 20, color: AppTheme.mutedSteel),
+                                        onPressed: _openGifPicker,
+                                        splashRadius: 18,
+                                        padding: const EdgeInsets.all(8),
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            }
+                              ),
+                              const SizedBox(width: 8),
+                              Builder(
+                                builder: (context) {
+                                  final hasInput = _messageCtrl.text.trim().isNotEmpty ||
+                                      _pendingMediaList.isNotEmpty ||
+                                      _productReference != null;
 
-                            if (hasInput) {
-                              return ShadIconButton.ghost(
-                                icon: const Icon(LucideIcons.send),
-                                foregroundColor: _chatColor,
-                                onPressed: _sendMessage,
-                              );
-                            } else {
-                              return ShadIconButton.ghost(
-                                icon: const Icon(LucideIcons.mic),
-                                foregroundColor: AppTheme.mutedSteel,
-                                onPressed: _startRecording,
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-            ),
-              ),
+                                  if (_isSendingMedia) {
+                                    return Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.pureSurface,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: AppTheme.whisperBorder),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.06),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  return Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: hasInput ? _chatColor : AppTheme.pureSurface,
+                                      shape: BoxShape.circle,
+                                      border: hasInput ? null : Border.all(color: AppTheme.whisperBorder),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: hasInput
+                                              ? _chatColor.withValues(alpha: 0.35)
+                                              : Colors.black.withValues(alpha: 0.06),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                        hasInput ? LucideIcons.send : LucideIcons.mic,
+                                        size: 20,
+                                        color: hasInput ? Colors.white : AppTheme.mutedSteel,
+                                      ),
+                                      onPressed: hasInput ? _sendMessage : _startRecording,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1856,83 +1952,90 @@ class _ReplyPreviewCard extends StatelessWidget {
     final isVideo = message.mediaType == 'video';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      color: AppTheme.pureSurface,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AppTheme.warmMist,
-          borderRadius: BorderRadius.circular(10),
-          border: Border(
-            left: BorderSide(color: chatColor, width: 3),
-          ),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border(
+          left: BorderSide(color: chatColor, width: 3.5),
+          top: const BorderSide(color: AppTheme.whisperBorder),
+          right: const BorderSide(color: AppTheme.whisperBorder),
+          bottom: const BorderSide(color: AppTheme.whisperBorder),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          displayName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: chatColor,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        displayName,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: chatColor,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (!isMe && otherUserVerified) ...[
-                        const SizedBox(width: 3),
-                        VerificationBadge(size: 12),
-                      ],
+                    ),
+                    if (!isMe && otherUserVerified) ...[
+                      const SizedBox(width: 3),
+                      VerificationBadge(size: 12),
                     ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    hasMedia
-                        ? (isVideo ? '\u{1F4F9} Video' : '\u{1F4F7} Photo')
-                        : message.content,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasMedia
+                      ? (isVideo ? '\u{1F4F9} Video' : '\u{1F4F7} Photo')
+                      : message.content,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
+                ),
+              ],
             ),
-            if (hasMedia && message.mediaUrl != null) ...[
-              const SizedBox(width: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: isVideo
-                    ? Container(
-                        width: 40,
-                        height: 40,
-                        color: AppTheme.charcoalInk,
-                        child: const Center(child: Icon(LucideIcons.play, size: 16, color: Colors.white)),
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: message.mediaUrl!,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 40,
-                      ),
-              ),
-            ],
+          ),
+          if (hasMedia && message.mediaUrl != null) ...[
             const SizedBox(width: 8),
-            GestureDetector(
-              onTap: onRemove,
-              child: const Icon(LucideIcons.x, size: 18, color: AppTheme.mutedSteel),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: isVideo
+                  ? Container(
+                      width: 40,
+                      height: 40,
+                      color: AppTheme.charcoalInk,
+                      child: const Center(child: Icon(LucideIcons.play, size: 16, color: Colors.white)),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: message.mediaUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 40,
+                    ),
             ),
           ],
-        ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(LucideIcons.x, size: 18, color: AppTheme.mutedSteel),
+          ),
+        ],
       ),
     );
   }
@@ -1956,16 +2059,25 @@ class _ProductReferenceCard extends StatelessWidget {
     final price = (reference['price'] as num?)?.toDouble() ?? 0;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppTheme.pureSurface,
-        border: Border(top: BorderSide(color: AppTheme.whisperBorder)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.whisperBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
             width: 4,
-            height: 56,
+            height: 48,
             decoration: BoxDecoration(
               color: chatColor,
               borderRadius: BorderRadius.circular(2),

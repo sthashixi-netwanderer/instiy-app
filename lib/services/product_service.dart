@@ -1,4 +1,5 @@
 import 'dart:isolate';
+import 'package:http/http.dart' as http;
 import '../models/product_model.dart';
 import '../models/category_model.dart';
 import 'supabase_service.dart';
@@ -32,6 +33,60 @@ List<Product> _parseProductList(List<dynamic> rawList) {
 }
 
 class ProductService {
+  // ─── Product Views ──────────────────────────────────────────────────────
+
+  /// Cached public IP for anonymous view dedup (fetched once per session).
+  static String? _cachedPublicIp;
+
+  static Future<String?> _getPublicIp() async {
+    if (_cachedPublicIp != null) return _cachedPublicIp;
+    try {
+      final response = await http
+          .get(Uri.parse('https://api.ipify.org'))
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200 && response.body.trim().isNotEmpty) {
+        _cachedPublicIp = response.body.trim();
+      }
+    } catch (_) {}
+    return _cachedPublicIp;
+  }
+
+  /// Records a view for [productId] (deduped per user, or per IP when not
+  /// signed in) and returns the product's total view count.
+  static Future<int> recordProductView(String productId) async {
+    try {
+      final isAuthed = SupabaseService.client.auth.currentUser != null;
+      final viewerIp = isAuthed ? null : await _getPublicIp();
+      final response = await SupabaseService.client.rpc(
+        'record_product_view',
+        params: {'p_product_id': productId, 'p_viewer_ip': viewerIp},
+      );
+      return (response as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Fetches view counts for a batch of product ids (seller lists, grids).
+  static Future<Map<String, int>> getViewCounts(List<String> productIds) async {
+    if (productIds.isEmpty) return {};
+    try {
+      final response = await SupabaseService.client.rpc(
+        'get_product_view_counts',
+        params: {'p_product_ids': productIds},
+      );
+      final counts = <String, int>{};
+      for (final row in (response as List)) {
+        final map = row as Map<String, dynamic>;
+        counts[map['product_id'] as String] =
+            (map['view_count'] as num?)?.toInt() ?? 0;
+      }
+      return counts;
+    } catch (_) {
+      return {};
+    }
+  }
+
   // Get all products with optional filters
   static Future<List<Product>> getProducts({
     String? categoryId,

@@ -76,7 +76,7 @@ export const Verifications: React.FC = () => {
           v.id === id ? { ...v, status: 'approved', admin_notes: adminNotes || v.admin_notes } : v
         )
       );
-      setSelectedVerification((prev) =>
+      setSelectedVerification((prev: any) =>
         prev?.id === id ? { ...prev, status: 'approved', admin_notes: adminNotes || prev.admin_notes } : null
       );
       setShowNotesModal(null);
@@ -109,7 +109,7 @@ export const Verifications: React.FC = () => {
           v.id === id ? { ...v, status: 'rejected', admin_notes: adminNotes || v.admin_notes } : v
         )
       );
-      setSelectedVerification((prev) =>
+      setSelectedVerification((prev: any) =>
         prev?.id === id ? { ...prev, status: 'rejected', admin_notes: adminNotes || prev.admin_notes } : null
       );
       setShowNotesModal(null);
@@ -142,7 +142,7 @@ export const Verifications: React.FC = () => {
           v.id === id ? { ...v, status: 'revoked', admin_notes: adminNotes || v.admin_notes } : v
         )
       );
-      setSelectedVerification((prev) =>
+      setSelectedVerification((prev: any) =>
         prev?.id === id ? { ...prev, status: 'revoked', admin_notes: adminNotes || prev.admin_notes } : null
       );
       setShowNotesModal(null);
