@@ -49,7 +49,10 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     // user pages forward, so swiping to the next video starts instantly.
     _productsSub = ref.listenManual(
       videoProvider.select((v) => v.products),
-      (previous, next) => _prefetchUpcomingClips(),
+      (previous, next) {
+        _syncPageAfterClipRemoval(previous, next);
+        _prefetchUpcomingClips();
+      },
     );
     _focusedIndexSub = ref.listenManual(
       videoProvider.select((v) => v.focusedIndex),
@@ -75,6 +78,18 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
       if (url != null && url.isNotEmpty) {
         MediaCacheService.precache(url); // ignore: unawaited_futures
       }
+    }
+  }
+
+  /// When a clip is deleted in realtime, the provider removes it and shifts
+  /// the focused index so it keeps pointing at the video the user is watching.
+  /// The PageController still sits on the old page, so nudge it to match.
+  void _syncPageAfterClipRemoval(List<Product>? previous, List<Product> next) {
+    if (next.length >= (previous?.length ?? next.length)) return;
+    if (!_pageController.hasClients) return;
+    final focused = ref.read(videoProvider).focusedIndex;
+    if (_pageController.page?.round() != focused) {
+      _pageController.jumpToPage(focused);
     }
   }
 
@@ -827,41 +842,63 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
               const SizedBox(height: 8),
 
               // Product Info
-              Text(
-                widget.product.title,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: context.rsp(14),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: () => setState(() => _isDescriptionExpanded = !_isDescriptionExpanded),
-                child: Text(
-                  _isDescriptionExpanded
-                      ? widget.product.description
-                      : widget.product.description,
-                  maxLines: _isDescriptionExpanded ? null : 2,
-                  overflow: _isDescriptionExpanded ? null : TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: context.rsp(13),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.85),
+                      Colors.black.withValues(alpha: 0.65),
+                      Colors.black.withValues(alpha: 0.35),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.3, 0.7, 1.0],
                   ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              if (!_isDescriptionExpanded && widget.product.description.length > 80)
-                GestureDetector(
-                  onTap: () => setState(() => _isDescriptionExpanded = true),
-                  child: Text(
-                    'more',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: context.rsp(12),
-                      fontWeight: FontWeight.w600,
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.product.title,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: context.rsp(14),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: () => setState(() => _isDescriptionExpanded = !_isDescriptionExpanded),
+                      child: Text(
+                        _isDescriptionExpanded
+                            ? widget.product.description
+                            : widget.product.description,
+                        maxLines: _isDescriptionExpanded ? null : 2,
+                        overflow: _isDescriptionExpanded ? null : TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: context.rsp(13),
+                        ),
+                      ),
+                    ),
+                    if (!_isDescriptionExpanded && widget.product.description.length > 80)
+                      GestureDetector(
+                        onTap: () => setState(() => _isDescriptionExpanded = true),
+                        child: Text(
+                          'more',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: context.rsp(12),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
               const SizedBox(height: 12),
 
               // Price & CTA Row

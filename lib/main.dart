@@ -262,6 +262,16 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
   StreamSubscription<Uri>? _linkSubscription;
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
 
+  /// Deep link that arrived while the app was not yet resumed (backgrounded
+  /// app opened via a link — the URI fires before the lifecycle reaches
+  /// `resumed`). Flushed in didChangeAppLifecycleState once it does.
+  Uri? _deferredDeepLink;
+  DateTime? _deferredDeepLinkAt;
+
+  /// A deferred link older than this when the app resumes is treated as a
+  /// stale re-emission (Activity recreation) rather than a genuine tap.
+  static const _deferredLinkMaxAge = Duration(seconds: 5);
+
   @override
   void initState() {
     super.initState();
@@ -280,8 +290,26 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
     // Check suspension on resume — catches cases where the admin suspended
     // the user while the app was backgrounded (Realtime events are missed).
     if (state == AppLifecycleState.resumed) {
+      _flushDeferredDeepLink();
       _checkSuspensionOnResume();
     }
+  }
+
+  /// Handles a deep link deferred while the app was not in the foreground.
+  /// Stale re-emissions from Activity recreation are skipped via the max-age
+  /// check; NavigationService's own dedup and resume grace period cover the
+  /// rest, so deferring never reintroduces spurious navigation.
+  void _flushDeferredDeepLink() {
+    final link = _deferredDeepLink;
+    final receivedAt = _deferredDeepLinkAt;
+    _deferredDeepLink = null;
+    _deferredDeepLinkAt = null;
+    if (link == null || receivedAt == null) return;
+    if (DateTime.now().difference(receivedAt) > _deferredLinkMaxAge) {
+      debugPrint('Deferred deep link discarded (stale): $link');
+      return;
+    }
+    NavigationService.handleDeepLink(link);
   }
 
   void _checkSuspensionOnResume() {
@@ -298,15 +326,18 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
     _appLinks = AppLinks();
 
     // Handle incoming links when app is in foreground / background.
-    // Guard against background emissions — Android may re-emit the initial
-    // URI when the activity is recreated (keyboard open, locale change, etc.).
+    // A link that arrives while the app is not yet resumed (tapping a shared
+    // link brings the backgrounded app forward, and the URI fires before the
+    // lifecycle transition completes) is deferred and flushed on resume.
+    // Direct foreground emissions are handled immediately; stale re-emissions
+    // from Activity recreation are filtered by NavigationService's dedup,
+    // its resume grace period, and the deferral max-age above.
     _linkSubscription = _appLinks.uriLinkStream.listen(
       (uri) {
-        // Only handle deep links when the app is in the foreground.
-        // Background emissions cause spurious navigation (e.g. keyboard open
-        // triggers activity recreation → uriLinkStream fires → stack cleared).
         if (_lifecycleState != AppLifecycleState.resumed) {
-          debugPrint('Deep link ignored (app not in foreground): $uri');
+          debugPrint('Deep link deferred (app not in foreground): $uri');
+          _deferredDeepLink = uri;
+          _deferredDeepLinkAt = DateTime.now();
           return;
         }
         NavigationService.handleDeepLink(uri);
@@ -323,8 +354,13 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
     _appLinks
         .getInitialLink()
         .then((uri) {
-          if (uri != null) {
-            debugPrint('Deep link (cold start), stored for splash: $uri');
+          if (uri == null) return;
+          debugPrint('Deep link (cold start), stored for splash: $uri');
+          if (NavigationService.splashCompleted) {
+            // Splash already navigated away — a late-resolving initial link
+            // would be stranded in pendingDeepLink with no consumer.
+            NavigationService.handleDeepLink(uri);
+          } else {
             NavigationService.pendingDeepLink = uri;
           }
         })

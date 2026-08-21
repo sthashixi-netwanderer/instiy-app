@@ -53,8 +53,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   final _searchFocusNode = FocusNode();
+  final _overlayKey = GlobalKey();
+
+  /// Top gap between the screen top and the product grid. Measured from the
+  /// floating header/search overlay so cards never sit under the search bar.
+  double _gridTopPadding = 120;
 
   List<Product> _searchSuggestions = [];
+  final Map<String, int> _viewCounts = {};
   bool _showSuggestions = false;
   bool _showScrollToTop = false;
   Timer? _searchDebounce;
@@ -76,6 +82,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         setState(() => _showSuggestions = false);
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateGridTopPadding());
     // React to realtime product/category changes pushed by productProvider
     // so the grid updates without leaving and re-entering the screen.
     _providerProductsSub = ref.listenManual(
@@ -105,6 +112,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         }
       });
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-measure when status bar / text scale / orientation changes.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateGridTopPadding());
+  }
+
+  /// Measures the floating header/search overlay and keeps the grid padding
+  /// below it (plus a small gap).
+  void _updateGridTopPadding() {
+    final overlayHeight = _overlayKey.currentContext?.size?.height ?? 0;
+    if (overlayHeight <= 0 || !mounted) return;
+    final newPadding = overlayHeight + 12;
+    if ((newPadding - _gridTopPadding).abs() > 0.5) {
+      setState(() => _gridTopPadding = newPadding);
+    }
   }
 
   Future<void> _loadCategories() async {
@@ -277,6 +302,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           _hasMore = result.length >= 20;
           if (!silent) _isLoading = false;
         });
+        unawaited(_loadViewCounts());
       }
     } catch (e) {
       if (mounted && !silent) setState(() => _isLoading = false);
@@ -289,6 +315,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final copy = List<Product>.from(items);
     copy.shuffle();
     return copy;
+  }
+
+  /// Fetches total views for the loaded products (same source as the
+  /// product detail page).
+  Future<void> _loadViewCounts() async {
+    final ids = _products.map((p) => p.id).toList();
+    if (ids.isEmpty) return;
+    final counts = await ProductService.getViewCounts(ids);
+    if (!mounted || counts.isEmpty) return;
+    setState(() => _viewCounts.addAll(counts));
   }
 
   void _applyFilters() {
@@ -462,20 +498,20 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           // Scrollable product grid that extends behind the header/search
           Positioned.fill(
             child: _isLoading && _products.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.fromLTRB(12, 120, 12, 100),
-                    child: ProductGridSkeleton(count: 6),
+                ? Padding(
+                    padding: EdgeInsets.fromLTRB(12, _gridTopPadding, 12, 100),
+                    child: const ProductGridSkeleton(count: 6),
                   )
                 : _products.isEmpty
                     ? Padding(
-                        padding: const EdgeInsets.only(top: 120),
+                        padding: EdgeInsets.only(top: _gridTopPadding),
                         child: _buildEmptyState(),
                       )
                     : RefreshIndicator(
                         onRefresh: () => _loadProducts(reset: true),
                         child: GridView.builder(
                           controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(12, 120, 12, 100),
+                          padding: EdgeInsets.fromLTRB(12, _gridTopPadding, 12, 100),
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: context.isDesktop
@@ -501,6 +537,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             left: 0,
             right: 0,
             child: Column(
+              key: _overlayKey,
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Floating glass header
@@ -756,7 +793,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             Positioned(
               left: 12,
               right: 12,
-              top: 120,
+              top: _gridTopPadding,
               child: Material(
                 elevation: 4,
                 borderRadius: BorderRadius.circular(12),
@@ -813,6 +850,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final inCart = cart.isInCart(product.id);
     final hasDiscount = product.isDiscountActive;
     final isFavorited = productProv.isFavorited(product.id);
+    final viewCount = _viewCounts[product.id] ?? 0;
 
     return AnimatedPress(
       onTap: () => Navigator.of(context).pushNamed('/product', arguments: product.id),
@@ -1062,38 +1100,54 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       ),
                     ),
                     const Spacer(),
-                    // Price
-                    if (hasDiscount)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    // Price + total views
+                    Row(
+                      children: [
+                        Expanded(
+                          child: hasDiscount
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'GH\u00a2 ${product.effectivePrice.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: context.rsp(14),
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.destructive,
+                                      ),
+                                    ),
+                                    Text(
+                                      'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: context.rsp(10),
+                                        color: AppTheme.mutedSteel,
+                                        decoration: TextDecoration.lineThrough,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: context.rsp(14),
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.charcoalInk,
+                                  ),
+                                ),
+                        ),
+                        if (viewCount > 0) ...[
+                          Icon(LucideIcons.eye, size: context.ri(11), color: AppTheme.mutedSteel),
+                          SizedBox(width: context.rw(3)),
                           Text(
-                            'GH\u00a2 ${product.effectivePrice.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontSize: context.rsp(14),
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.destructive,
-                            ),
-                          ),
-                          Text(
-                            'GH\u00a2 ${product.price.toStringAsFixed(2)}',
+                            '$viewCount',
                             style: TextStyle(
                               fontSize: context.rsp(10),
                               color: AppTheme.mutedSteel,
-                              decoration: TextDecoration.lineThrough,
                             ),
                           ),
                         ],
-                      )
-                    else
-                      Text(
-                        'GH\u00a2 ${product.price.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: context.rsp(14),
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.charcoalInk,
-                        ),
-                      ),
+                      ],
+                    ),
                     SizedBox(height: context.rh(2)),
                     // Seller info
                     if (product.sellerName != null)

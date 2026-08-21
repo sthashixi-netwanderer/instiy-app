@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
@@ -23,7 +22,10 @@ import '../../widgets/review_section.dart';
 import '../../widgets/product_card.dart';
 import '../../utils/maps_helper.dart';
 import '../../widgets/media_viewer.dart';
+import '../../widgets/share_bottom_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../utils/bold_text.dart';
+import 'package:instiy/utils/formatters.dart';
 import '../../widgets/verification_badge.dart';
 import '../../models/institution_model.dart';
 import '../../services/institution_service.dart';
@@ -385,10 +387,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   void _shareProduct(BuildContext context) {
     final product = _product;
     if (product == null) return;
-    final text = 'Check out "${product.title}" on Instiy - GH\u00a2 ${product.price.toStringAsFixed(2)}';
-    Clipboard.setData(ClipboardData(text: text));
-    ShadToaster.of(context).show(
-      const ShadToast(title: Text('Product link copied to clipboard!')),
+    ShareBottomSheet.show(
+      context,
+      shareText: 'Check out "${BoldText.convert(product.title)}" on Instiy - ${formatGhs(product.effectivePrice)}\n\nLink: https://instiy.com/products/${product.slug}-${product.id}',
+      analyticsId: product.id,
     );
   }
 

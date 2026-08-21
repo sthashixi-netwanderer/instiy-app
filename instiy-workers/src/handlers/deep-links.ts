@@ -6,18 +6,24 @@ const corsHeaders: Record<string, string> = {
 
 // Android App Links verification
 // https://developer.android.com/training/app-links/verify-android-applinks
-function getAssetLinks(): object[] {
+// Set the ANDROID_CERT_SHA256 var (comma-separated for multiple fingerprints,
+// e.g. upload + play signing keys) to enable verified app links:
+//   wrangler secret put ANDROID_CERT_SHA256   (or add to [vars] in wrangler.toml)
+// Get it with: keytool -list -v -keystore your-key.keystore -alias your-alias
+// Or from Google Play Console → Setup → App signing.
+function getAssetLinks(env: Env): object[] {
+  const fingerprints = (env.ANDROID_CERT_SHA256 || '')
+    .split(',')
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0);
+
   return [
     {
       relation: ['delegate_permission/common.handle_all_urls'],
       target: {
         namespace: 'android_app',
         package_name: 'com.instiy',
-        sha256_cert_fingerprints: [
-          // TODO: Replace with your app's SHA-256 signing certificate fingerprint
-          // Get it with: keytool -list -v -keystore your-key.keystore -alias your-alias
-          // Or from Google Play Console → Setup → App signing
-        ],
+        ...(fingerprints.length > 0 ? { sha256_cert_fingerprints: fingerprints } : {}),
       },
     },
   ];
@@ -25,13 +31,17 @@ function getAssetLinks(): object[] {
 
 // iOS Universal Links verification
 // https://developer.apple.com/documentation/xcode/supporting-associated-domains
-function getAppleAppSiteAssociation(): object {
+// Set the APPLE_TEAM_ID var to your Apple Developer Team ID to enable
+// universal links. The app also needs the applinks:instiy.com associated
+// domain entitlement in Xcode.
+function getAppleAppSiteAssociation(env: Env): object {
+  const teamId = env.APPLE_TEAM_ID || 'TEAM_ID';
   return {
     applinks: {
       apps: [],
       details: [
         {
-          appID: 'TEAM_ID.com.instiy', // TODO: Replace TEAM_ID with your Apple Developer Team ID
+          appID: `${teamId}.com.instiy`,
           paths: ['/product/*', '/products/*', '/store/*'],
         },
       ],
@@ -216,14 +226,14 @@ export async function handleDeepLinks(request: Request, env: Env): Promise<Respo
 
   // Android assetlinks.json
   if (path === '/.well-known/assetlinks.json') {
-    return new Response(JSON.stringify(getAssetLinks(), null, 2), {
+    return new Response(JSON.stringify(getAssetLinks(env), null, 2), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
     });
   }
 
   // iOS apple-app-site-association
   if (path === '/.well-known/apple-app-site-association' || path === '/apple-app-site-association') {
-    return new Response(JSON.stringify(getAppleAppSiteAssociation(), null, 2), {
+    return new Response(JSON.stringify(getAppleAppSiteAssociation(env), null, 2), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
     });
   }

@@ -18,6 +18,7 @@ import '../../models/seller_review_model.dart';
 import '../../providers/business_profile_provider.dart';
 import '../../providers/providers.dart';
 import '../../services/institution_service.dart';
+import '../../services/product_service.dart';
 import '../../services/review_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/share_bottom_sheet.dart';
@@ -43,6 +44,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
   late TabController _tabController;
   final _reviewsScrollController = ScrollController();
   List<Institution> _institutions = [];
+  final Map<String, int> _viewCounts = {};
 
   @override
   void initState() {
@@ -57,7 +59,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
           Navigator.of(context).pushNamed('/business-profile', arguments: widget.sellerId);
           return;
         }
-        ref.read(businessProfileProvider).loadStore(widget.sellerId);
+        ref.read(businessProfileProvider).loadStore(widget.sellerId).then((_) => _loadViewCounts());
         _loadInstitutions();
       }
     });
@@ -68,6 +70,20 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
       final institutions = await InstitutionService.getInstitutions();
       if (mounted) setState(() => _institutions = institutions);
     } catch (_) {}
+  }
+
+  /// Fetches total views for the store's products (same source as the
+  /// product detail page).
+  Future<void> _loadViewCounts() async {
+    final ids = ref
+        .read(businessProfileProvider)
+        .products
+        .map((p) => p.id)
+        .toList();
+    if (ids.isEmpty) return;
+    final counts = await ProductService.getViewCounts(ids);
+    if (!mounted || counts.isEmpty) return;
+    setState(() => _viewCounts.addAll(counts));
   }
 
   Institution? _findInstitution(String? name) {
@@ -186,7 +202,10 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
       body: RefreshIndicator(
-        onRefresh: () => prov.loadStore(widget.sellerId),
+        onRefresh: () async {
+          await prov.loadStore(widget.sellerId);
+          await _loadViewCounts();
+        },
         child: NestedScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -1097,6 +1116,7 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
         return ProductCard(
           product: product,
           showSeller: false,
+          viewCount: _viewCounts[product.id],
           onTap: () => Navigator.of(context).pushNamed(
             '/product',
             arguments: product.id,

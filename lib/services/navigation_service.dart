@@ -9,6 +9,12 @@ class NavigationService {
   /// Buffer for a deep link received during cold start (before navigator is ready).
   static Uri? pendingDeepLink;
 
+  /// Set once the splash screen has finished navigating. Lets the
+  /// getInitialLink() callback in main detect a cold-start link that
+  /// resolved too late for the splash to consume, and handle it directly
+  /// instead of stranding it in [pendingDeepLink].
+  static bool splashCompleted = false;
+
   /// Set of deep link URIs already handled in the current foreground session.
   /// Prevents duplicate navigation when Android recreates the Activity
   /// (e.g. keyboard open on some OEM devices), which causes app_links

@@ -63,6 +63,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     if (!mounted || _navigated) return;
     _navigated = true;
+    // Signals main.dart's getInitialLink() callback that this screen will
+    // no longer read pendingDeepLink, so a late-resolving cold-start link
+    // is handled immediately instead of being stranded.
+    NavigationService.splashCompleted = true;
 
     final pending = NavigationService.pendingDeepLink;
     if (pending != null) {

@@ -15,12 +15,14 @@ class ProductCard extends ConsumerStatefulWidget {
   final Product product;
   final VoidCallback onTap;
   final bool showSeller;
+  final int? viewCount;
 
   const ProductCard({
     super.key,
     required this.product,
     required this.onTap,
     this.showSeller = true,
+    this.viewCount,
   });
 
   @override
@@ -298,38 +300,55 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       ),
                     ),
                   SizedBox(height: context.rh(6)),
-                    // Price
-                    if (hasDiscount)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    // Price + total views
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: hasDiscount
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      formatGhs(product.effectivePrice),
+                                      style: TextStyle(
+                                        fontSize: context.rsp(16),
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.destructive,
+                                      ),
+                                    ),
+                                    Text(
+                                      formatGhs(product.effectivePrice),
+                                      style: TextStyle(
+                                        fontSize: context.rsp(12),
+                                        color: AppTheme.mutedSteel,
+                                        decoration: TextDecoration.lineThrough,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  formatGhs(product.effectivePrice),
+                                  style: TextStyle(
+                                    fontSize: context.rsp(16),
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.charcoalInk,
+                                  ),
+                                ),
+                        ),
+                        if ((widget.viewCount ?? 0) > 0) ...[
+                          Icon(LucideIcons.eye, size: context.ri(11), color: AppTheme.mutedSteel),
+                          SizedBox(width: context.rw(3)),
                           Text(
-                            formatGhs(product.effectivePrice),
+                            '${widget.viewCount}',
                             style: TextStyle(
-                              fontSize: context.rsp(16),
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.destructive,
-                            ),
-                          ),
-                          Text(
-                            formatGhs(product.effectivePrice),
-                            style: TextStyle(
-                              fontSize: context.rsp(12),
+                              fontSize: context.rsp(10),
                               color: AppTheme.mutedSteel,
-                              decoration: TextDecoration.lineThrough,
                             ),
                           ),
                         ],
-                      )
-                    else
-                      Text(
-                        formatGhs(product.effectivePrice),
-                        style: TextStyle(
-                          fontSize: context.rsp(16),
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.charcoalInk,
-                        ),
-                      ),
+                      ],
+                    ),
                     SizedBox(height: context.rh(2)),
                     // Seller info
                     if (widget.showSeller && product.sellerName != null)

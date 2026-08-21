@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product_model.dart';
+import '../services/media_cache_service.dart';
 import '../services/product_service.dart';
 import '../services/supabase_service.dart';
 import '../providers/block_provider.dart';
@@ -69,17 +70,71 @@ class VideoProvider extends ChangeNotifier {
           },
         )
         .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'products',
+          callback: (payload) => _handleProductUpdate(payload),
+        )
+        .onPostgresChanges(
           event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'products',
           callback: (payload) {
             final deletedId = payload.oldRecord['id'] as String?;
             if (deletedId == null) return;
-            _products.removeWhere((p) => p.id == deletedId);
-            notifyListeners();
+            _removeClip(deletedId);
           },
         )
         .subscribe();
+  }
+
+  /// Drops a clip whose product was updated so it no longer qualifies for the
+  /// clips feed (unavailable, out of stock, removed from clips, video removed).
+  void _handleProductUpdate(PostgresChangePayload payload) {
+    final record = payload.newRecord;
+    final productId = record['id'] as String?;
+    if (productId == null) return;
+    if (!_products.any((p) => p.id == productId)) return;
+
+    final videoUrls = record['video_urls'];
+    final stillQualifies = record['status'] == 'available' &&
+        record['stock_quantity'] != null &&
+        record['stock_quantity'] > 0 &&
+        record['show_on_clips'] == true &&
+        videoUrls != null &&
+        (videoUrls as List).isNotEmpty;
+
+    if (!stillQualifies) {
+      _removeClip(productId);
+    }
+  }
+
+  /// Removes a clip from the feed, keeps the focused index pointing at the
+  /// video the user is currently watching, and evicts the clip's cached video
+  /// files so a deleted product doesn't linger on disk or in the feed.
+  void _removeClip(String productId) {
+    final index = _products.indexWhere((p) => p.id == productId);
+    if (index == -1) return;
+
+    final removed = _products[index];
+    // A new list instance (not an in-place mutation) so `select` listeners
+    // like the feed screen's prefetch subscription actually fire.
+    _products = List.of(_products)..removeAt(index);
+
+    if (index < _focusedIndex) {
+      _focusedIndex--;
+    }
+    if (_products.isNotEmpty && _focusedIndex >= _products.length) {
+      _focusedIndex = _products.length - 1;
+    }
+
+    for (final url in [removed.clipVideoUrl, ...removed.videoUrls]) {
+      if (url != null && url.isNotEmpty) {
+        MediaCacheService.removeFile(url); // ignore: unawaited_futures
+      }
+    }
+
+    notifyListeners();
   }
 
   void _unsubscribeFromRealtime() {

@@ -8,6 +8,7 @@ import '../../models/product_model.dart';
 import '../../models/draft_listing_model.dart';
 import '../../services/draft_service.dart';
 import '../../services/business_profile_service.dart';
+import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/app_button.dart';
@@ -23,6 +24,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String _searchQuery = '';
   String _filter = 'all';
+  final Map<String, int> _viewCounts = {};
 
   @override
   void initState() {
@@ -30,11 +32,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = ref.read(authProvider);
       if (auth.user != null) {
-        ref.read(productProvider).loadUserListings(auth.user!.id);
+        ref
+            .read(productProvider)
+            .loadUserListings(auth.user!.id)
+            .then((_) => _loadViewCounts());
         ref.read(sellerProvider).loadDashboardStats(auth.user!.id);
       }
       ref.read(productProvider).loadPublishingDraft();
     });
+  }
+
+  /// Fetches total views for the user's listings (same source as the
+  /// product detail page).
+  Future<void> _loadViewCounts() async {
+    if (!mounted) return;
+    final ids = ref
+        .read(productProvider)
+        .userListings
+        .map((p) => p.id)
+        .toList();
+    if (ids.isEmpty) return;
+    final counts = await ProductService.getViewCounts(ids);
+    if (!mounted || counts.isEmpty) return;
+    setState(() => _viewCounts.addAll(counts));
   }
 
   Future<void> _addProduct() async {
@@ -309,6 +329,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ref.read(productProvider).loadUserListings(user.id),
               ref.read(sellerProvider).loadDashboardStats(user.id),
             ]);
+            await _loadViewCounts();
           }
           await ref.read(productProvider).loadPublishingDraft();
         },
@@ -607,6 +628,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                                 fontSize: context.rsp(9.5),
                                                 color: AppTheme.mutedSteel,
                                                 decoration: TextDecoration.lineThrough,
+                                              ),
+                                            ),
+                                          ],
+                                          if ((_viewCounts[product.id] ?? 0) > 0) ...[
+                                            SizedBox(width: context.rw(4)),
+                                            Icon(
+                                              LucideIcons.eye,
+                                              size: context.ri(10),
+                                              color: AppTheme.mutedSteel,
+                                            ),
+                                            SizedBox(width: context.rw(2)),
+                                            Text(
+                                              '${_viewCounts[product.id]}',
+                                              style: TextStyle(
+                                                fontSize: context.rsp(9),
+                                                color: AppTheme.mutedSteel,
                                               ),
                                             ),
                                           ],

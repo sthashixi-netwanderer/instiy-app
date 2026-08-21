@@ -25,6 +25,12 @@ R2_BUCKET_NAME = "instiy"
 # GIPHY_API_KEY
 # REDIRECT_URL
 # APP_VERSION
+# ANDROID_CERT_SHA256 — SHA-256 signing cert fingerprint(s), comma-separated
+#   (upload keystore + Play signing key). Enables verified Android App Links
+#   so instiy.com links open the app directly instead of via the browser.
+#   keytool -list -v -keystore your-key.keystore -alias your-alias
+# APPLE_TEAM_ID — Apple Developer Team ID, enables iOS Universal Links
+#   (also add the applinks:instiy.com associated-domain entitlement in Xcode).
 
 [[r2_buckets]]
 binding = "R2_BUCKET"

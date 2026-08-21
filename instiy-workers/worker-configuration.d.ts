@@ -18,4 +18,6 @@ interface Env {
 	GIPHY_API_KEY?: string;
 	REDIRECT_URL?: string;
 	APP_VERSION?: string;
+	ANDROID_CERT_SHA256?: string;
+	APPLE_TEAM_ID?: string;
 }

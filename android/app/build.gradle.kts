@@ -8,7 +8,9 @@ plugins {
 
 android {
     namespace = "com.instiy"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned above flutter.compileSdkVersion (36): permission_handler_android
+    // 14.x compiles against SDK 37. Higher compileSdk is backward compatible.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
