@@ -51,6 +51,7 @@ This file provides AI agents with a comprehensive reference of all packages used
 | image_picker | ^1.1.2 | https://pub.dev/packages/image_picker | Camera/gallery image selection |
 | image_cropper | ^8.1.0 | https://pub.dev/packages/image_cropper | Image cropping |
 | cached_network_image | ^3.4.1 | https://pub.dev/packages/cached_network_image | Network image caching |
+| flutter_cache_manager | ^3.4.2 | https://pub.dev/packages/flutter_cache_manager | Persistent file cache backend (`CategoryImageCacheManager` for category artwork) |
 | image | ^4.3.0 | https://pub.dev/packages/image | Image manipulation |
 | photo_view | ^0.15.0 | https://pub.dev/packages/photo_view | Zoomable image viewer |
 | giphy_get | ^3.5.0 | https://pub.dev/packages/giphy_get | GIF/sticker support |
@@ -160,6 +161,34 @@ gh search repos "package_name flutter example" --sort stars --limit 5
 
 ---
 
+## Supabase MCP (Database Operations)
+
+The Supabase MCP server is configured for this project via mcporter (project-local, gitignored):
+
+- **Config**: `config/mcporter.json` (contains the access token — **never commit this file**)
+- **Project ref**: `wqasatrxqinkfaafgnli` (matches `SUPABASE_URL` in `lib/config/app_config.dart`)
+- **Server name**: `supabase-instiy` (stdio, `@supabase/mcp-server-supabase@0.10.0`)
+
+```bash
+# List available tools
+mcporter list supabase-instiy
+
+# Call a tool (scalars as key=value; arrays must be JSON-encoded)
+mcporter call supabase-instiy.list_tables 'project_id=wqasatrxqinkfaafgnli' 'schemas=["public"]'
+
+# Apply a SQL migration to the hosted database
+mcporter call supabase-instiy.apply_migration 'project_id=wqasatrxqinkfaafgnli' 'name=my_migration' 'query=<sql>'
+```
+
+Notes:
+- v0.11.0 is a broken publish (missing dependency) — pinned to 0.10.0.
+- `NPM_CONFIG_LEGACY_PEER_DEPS=false` is set in the server env because the global `~/.npmrc` sets
+  `legacy-peer-deps=true`, which otherwise skips the `@modelcontextprotocol/sdk` peer dependency.
+- Schema changes must ALSO be committed as versioned files under `supabase/migrations/`, and applied
+  through the MCP (`apply_migration`) so the remote migration history stays in sync.
+
+---
+
 ## Common Patterns by Package
 
 ### Supabase Flutter
@@ -194,5 +223,5 @@ gh search repos "package_name flutter example" --sort stars --limit 5
 
 ---
 
-*Last updated: 2026-08-19*
+*Last updated: 2026-08-22*
 *This file should be updated when packages are added, removed, or significantly upgraded.*

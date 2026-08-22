@@ -37,16 +37,19 @@ class _StoreMapPreviewState extends State<StoreMapPreview> {
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.white)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
             if (mounted) setState(() => _loaded = true);
           },
           onNavigationRequest: (request) {
+            // The wrapper document itself loads as about:blank (empty host).
             // Keep the WebView on the map embed — external links are opened
             // by the dedicated buttons next to the preview.
-            final host = Uri.parse(request.url).host;
-            final isMapsRelated = host.endsWith('google.com') ||
+            final host = Uri.tryParse(request.url)?.host ?? '';
+            final isMapsRelated = host.isEmpty ||
+                host.endsWith('google.com') ||
                 host.endsWith('gstatic.com') ||
                 host.endsWith('googleapis.com') ||
                 host.endsWith('googleusercontent.com') ||
@@ -58,7 +61,38 @@ class _StoreMapPreviewState extends State<StoreMapPreview> {
           },
         ),
       )
-      ..loadRequest(Uri.parse(_embedUrl));
+      // Load a minimal HTML page whose <iframe> points at the embed URL —
+      // NOT the embed URL directly. Google's Maps Embed endpoint refuses to
+      // render as a top-level document ("The Google Maps Embed API must be
+      // used in an iframe"); it only works inside a real iframe element,
+      // which is exactly how the admin panel's GPS settings page embeds it.
+      ..loadHtmlString(_buildEmbedHtml(_embedUrl));
+  }
+
+  /// Mirrors the admin panel's GPS settings iframe markup (GPSConfig.tsx):
+  /// a full-viewport, borderless iframe over a zero-margin body.
+  String _buildEmbedHtml(String embedUrl) {
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Store Map Preview</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #ffffff; }
+    iframe { border: 0; width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <iframe
+    src="$embedUrl"
+    loading="lazy"
+    referrerpolicy="no-referrer-when-downgrade"
+    allowfullscreen
+  ></iframe>
+</body>
+</html>
+''';
   }
 
   @override

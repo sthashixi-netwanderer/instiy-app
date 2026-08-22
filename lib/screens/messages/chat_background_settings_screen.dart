@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:ui';
 
 import '../../config/app_theme.dart';
@@ -28,6 +29,7 @@ class _ChatBackgroundSettingsScreenState
   String? _selectedGradient;
   dynamic _localImageFile;
   String? _existingImagePath;
+  String? _existingImageUrl;
   double _blurIntensity = 0.0;
   bool _isSaving = false;
 
@@ -63,6 +65,7 @@ class _ChatBackgroundSettingsScreenState
         _bgType = bg.backgroundType;
         _selectedGradient = bg.gradientName;
         _existingImagePath = bg.localImagePath;
+        _existingImageUrl = bg.imageUrl;
         _blurIntensity = bg.blurIntensity;
       });
     }
@@ -333,11 +336,20 @@ class _ChatBackgroundSettingsScreenState
           _localImageFile,
           fit: BoxFit.cover,
         );
-      } else if (_existingImagePath != null) {
+      } else if (_existingImagePath != null &&
+          File(_existingImagePath!).existsSync()) {
         return Image.file(
           File(_existingImagePath!),
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(color: AppTheme.canvasWhite),
+        );
+      } else if (_existingImageUrl != null) {
+        // Local cache is gone (fresh install / cleared data) — the persisted
+        // R2 copy still has us covered.
+        return CachedNetworkImage(
+          imageUrl: _existingImageUrl!,
+          fit: BoxFit.cover,
+          errorWidget: (context, url, error) => Container(color: AppTheme.canvasWhite),
         );
       }
     }
@@ -532,14 +544,12 @@ class _ChatBackgroundSettingsScreenState
               child: ShadButton.outline(
                 onPressed: _pickAndCropImage,
                 leading: const Icon(LucideIcons.imagePlus, size: 16),
-                child: Text(_localImageFile != null || _existingImagePath != null
-                    ? 'Change Custom Image'
-                    : 'Choose from Gallery'),
+                child: Text(_hasAnyImage ? 'Change Custom Image' : 'Choose from Gallery'),
               ),
             ),
           ],
         ),
-        if (_localImageFile != null || _existingImagePath != null) ...[
+        if (_hasAnyImage) ...[
           const SizedBox(height: 8),
           const Text(
             'Image will be automatically cropped to a 9:16 aspect ratio to fit the chat layout perfectly.',
@@ -549,6 +559,11 @@ class _ChatBackgroundSettingsScreenState
       ],
     );
   }
+
+  bool get _hasAnyImage =>
+      _localImageFile != null ||
+      _existingImagePath != null ||
+      _existingImageUrl != null;
 
   Widget _buildBlurSettings() {
     return Column(

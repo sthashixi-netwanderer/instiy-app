@@ -21,7 +21,7 @@ import '../../services/institution_service.dart';
 import '../../services/product_service.dart';
 import '../../services/review_service.dart';
 import '../../utils/responsive.dart';
-import '../../widgets/share_bottom_sheet.dart';
+import '../../utils/share_helper.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/media_viewer.dart';
 import '../../widgets/verification_badge.dart';
@@ -345,12 +345,10 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
             icon: Icon(LucideIcons.share2, color: Colors.white, size: context.ri(18)),
             onPressed: () {
               final businessName = profile?.businessName ?? 'Seller';
-              ShareBottomSheet.show(
-                context,
-                shareText: 'Check out "$businessName" on Instiy\n\nLink: https://instiy.com/store/${widget.sellerId}',
-                analyticsId: widget.sellerId,
-                analyticsType: 'store',
-              );
+              ShareHelper.shareText(
+                'Check out "$businessName" on Instiy\n\nLink: https://instiy.com/store/${widget.sellerId}',
+                context: context,
+              ); // ignore: unawaited_futures
             },
           ),
         ),

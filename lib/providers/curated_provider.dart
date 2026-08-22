@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/curated_collection_model.dart';
 import '../services/curated_collection_service.dart';
+import '../services/category_image_cache_service.dart';
 import '../services/supabase_service.dart';
 import '../providers/block_provider.dart';
 
@@ -106,6 +107,7 @@ class CuratedProvider extends ChangeNotifier {
           isVisible: s.isVisible, items: filteredItems,
         );
       }).where((s) => s.items.isNotEmpty).toList();
+      _warmCategoryArtwork(filtered);
       if (!_sectionsEqual(_sections, filtered)) {
         _sections = filtered;
         notifyListeners();
@@ -127,6 +129,16 @@ class CuratedProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Pre-warm the persistent category image cache for all artwork referenced
+  /// by the given sections so future cold starts read from disk only.
+  void _warmCategoryArtwork(List<CuratedCollection> sections) {
+    CategoryImageCacheService.warm([
+      for (final s in sections)
+        for (final item in s.items)
+          if (item.category != null) item.category!,
+    ]);
+  }
+
   Future<void> loadSections() async {
     _isLoading = true;
     _error = null;
@@ -134,6 +146,8 @@ class CuratedProvider extends ChangeNotifier {
 
     try {
       final raw = await CuratedCollectionService.getHomeSections();
+      // ignore: avoid_print
+      print('CURATED_DEBUG raw=${raw.map((s) => '${s.title}|${s.displayMode}|${s.contentType}|${s.items.length}').join(' ;; ')}');
       final blockProv = BlockProvider.instance;
       _sections = raw.map((s) {
         final filteredItems = s.items.where((item) {
@@ -150,6 +164,7 @@ class CuratedProvider extends ChangeNotifier {
           isVisible: s.isVisible, items: filteredItems,
         );
       }).where((s) => s.items.isNotEmpty).toList();
+      _warmCategoryArtwork(_sections);
     } catch (e) {
       // Clean up common Supabase error messages
       var msg = e.toString();

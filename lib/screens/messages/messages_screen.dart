@@ -500,6 +500,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   // Voice recording state
   bool _isRecording = false;
+  bool _isRecordingPaused = false;
   String? _recordPath;
   int _recordDurationSeconds = 0;
   Timer? _recordTimer;
@@ -549,15 +550,27 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           ),
         ),
       );
-    } else if (bg.backgroundType == 'image' && bg.localImagePath != null) {
-      if (kIsWeb) {
+    } else if (bg.backgroundType == 'image' &&
+        (bg.localImagePath != null || bg.imageUrl != null)) {
+      // Prefer the locally cached copy; fall back to the R2 URL when the
+      // cache is missing (fresh install / cleared app data).
+      final useLocal = !kIsWeb &&
+          bg.localImagePath != null &&
+          File(bg.localImagePath!).existsSync();
+      if (!useLocal && bg.imageUrl == null) {
         return const SizedBox.shrink();
       }
-      bgWidget = Image.file(
-        File(bg.localImagePath!),
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => const SizedBox.shrink(),
-      );
+      bgWidget = useLocal
+          ? Image.file(
+              File(bg.localImagePath!),
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            )
+          : CachedNetworkImage(
+              imageUrl: bg.imageUrl!,
+              fit: BoxFit.cover,
+              errorWidget: (_, _, _) => const SizedBox.shrink(),
+            );
     } else {
       return const SizedBox.shrink();
     }
@@ -1155,17 +1168,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
       setState(() {
         _isRecording = true;
+        _isRecordingPaused = false;
         _recordPath = path;
         _recordDurationSeconds = 0;
       });
 
-      _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (mounted) {
-          setState(() {
-            _recordDurationSeconds++;
-          });
-        }
-      });
+      _startRecordDurationTimer();
     } catch (e) {
       debugPrint('Error starting recording: $e');
       if (mounted) {
@@ -1173,6 +1181,43 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           ShadToast(title: Text('Could not start recording: $e')),
         );
       }
+    }
+  }
+
+  /// Ticks the visible recording duration once per second while active.
+  void _startRecordDurationTimer() {
+    _recordTimer?.cancel();
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _recordDurationSeconds++;
+        });
+      }
+    });
+  }
+
+  /// Pauses the in-progress voice note. The mic session stays open and the
+  /// file keeps everything recorded so far — [ _resumeRecording] continues
+  /// the same take.
+  Future<void> _pauseRecording() async {
+    try {
+      await RecordingHelper.pauseRecording();
+      _recordTimer?.cancel(); // Freeze the duration counter while paused.
+      if (mounted) setState(() => _isRecordingPaused = true);
+    } catch (e) {
+      debugPrint('Error pausing recording: $e');
+    }
+  }
+
+  /// Resumes the paused voice note — same session, same file.
+  Future<void> _resumeRecording() async {
+    try {
+      await RecordingHelper.resumeRecording();
+      if (!mounted) return;
+      setState(() => _isRecordingPaused = false);
+      _startRecordDurationTimer();
+    } catch (e) {
+      debugPrint('Error resuming recording: $e');
     }
   }
 
@@ -1185,6 +1230,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       }
       setState(() {
         _isRecording = false;
+        _isRecordingPaused = false;
         _recordPath = null;
         _recordDurationSeconds = 0;
       });
@@ -1196,9 +1242,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   Future<void> _stopAndSendRecording() async {
     try {
       _recordTimer?.cancel();
+      // Safe to call from a paused state too — stop() finalizes the file
+      // with only the audio captured before the pause.
       final path = await RecordingHelper.stopRecording();
       setState(() {
         _isRecording = false;
+        _isRecordingPaused = false;
       });
 
       if (path == null) return;
@@ -1761,31 +1810,55 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                   icon: const Icon(LucideIcons.trash2, color: AppTheme.destructive, size: 20),
                                   onPressed: _cancelRecording,
                                 ),
+                                // Pause / resume — pauses the mic session in
+                                // place; resuming continues the same take.
+                                IconButton(
+                                  icon: Icon(
+                                    _isRecordingPaused ? LucideIcons.play : LucideIcons.pause,
+                                    color: AppTheme.charcoalInk,
+                                    size: 20,
+                                  ),
+                                  tooltip: _isRecordingPaused ? 'Resume' : 'Pause',
+                                  onPressed: _isRecordingPaused ? _resumeRecording : _pauseRecording,
+                                ),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Container(
                                     height: 36,
                                     padding: const EdgeInsets.symmetric(horizontal: 10),
                                     decoration: BoxDecoration(
-                                      color: AppTheme.destructive.withValues(alpha: 0.1),
+                                      color: _isRecordingPaused
+                                          ? AppTheme.mutedSteel.withValues(alpha: 0.12)
+                                          : AppTheme.destructive.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(18),
                                     ),
                                     child: Row(
                                       children: [
-                                        const _BlinkingRedDot(),
+                                        _BlinkingRedDot(paused: _isRecordingPaused),
                                         const SizedBox(width: 8),
                                         Text(
                                           _formatDuration(_recordDurationSeconds),
-                                          style: const TextStyle(
-                                            color: AppTheme.destructive,
+                                          style: TextStyle(
+                                            color: _isRecordingPaused ? AppTheme.mutedSteel : AppTheme.destructive,
                                             fontWeight: FontWeight.w600,
                                             fontSize: 13,
                                           ),
                                         ),
+                                        if (_isRecordingPaused) ...[
+                                          const SizedBox(width: 6),
+                                          const Text(
+                                            'Paused',
+                                            style: TextStyle(
+                                              color: AppTheme.mutedSteel,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(width: 10),
-                                        const Expanded(
+                                        Expanded(
                                           child: Center(
-                                            child: _VoiceRecordingWave(),
+                                            child: _VoiceRecordingWave(paused: _isRecordingPaused),
                                           ),
                                         ),
                                       ],
@@ -2841,7 +2914,9 @@ class _MediaOption extends StatelessWidget {
 }
 
 class _BlinkingRedDot extends StatefulWidget {
-  const _BlinkingRedDot();
+  final bool paused;
+
+  const _BlinkingRedDot({this.paused = false});
 
   @override
   State<_BlinkingRedDot> createState() => _BlinkingRedDotState();
@@ -2856,7 +2931,25 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot> with SingleTickerProvi
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-    )..repeat(reverse: true);
+      value: widget.paused ? 1.0 : 0.0,
+    );
+    if (!widget.paused) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_BlinkingRedDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.paused != oldWidget.paused) {
+      if (widget.paused) {
+        // Solid dot while paused instead of freezing mid-fade.
+        _controller.stop();
+        _controller.value = 1.0;
+      } else {
+        _controller.repeat(reverse: true);
+      }
+    }
   }
 
   @override
@@ -3203,7 +3296,9 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
 }
 
 class _VoiceRecordingWave extends StatefulWidget {
-  const _VoiceRecordingWave();
+  final bool paused;
+
+  const _VoiceRecordingWave({this.paused = false});
 
   @override
   State<_VoiceRecordingWave> createState() => _VoiceRecordingWaveState();
@@ -3223,7 +3318,24 @@ class _VoiceRecordingWaveState extends State<_VoiceRecordingWave> with SingleTic
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat();
+    );
+    if (!widget.paused) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_VoiceRecordingWave oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.paused != oldWidget.paused) {
+      // Freezing mid-cycle keeps the bars at their current shape while
+      // paused — reads as "frozen", then springs back to life on resume.
+      if (widget.paused) {
+        _controller.stop();
+      } else {
+        _controller.repeat();
+      }
+    }
   }
 
   @override
@@ -3250,7 +3362,9 @@ class _VoiceRecordingWaveState extends State<_VoiceRecordingWave> with SingleTic
               height: height,
               margin: const EdgeInsets.symmetric(horizontal: 1.0),
               decoration: BoxDecoration(
-                color: AppTheme.destructive.withValues(alpha: 0.8),
+                color: widget.paused
+                    ? AppTheme.mutedSteel.withValues(alpha: 0.5)
+                    : AppTheme.destructive.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(1.25),
               ),
             );

@@ -26,7 +26,7 @@ export async function handleR2UploadProxy(request: Request, env: Env, corsHeader
     const folder = request.headers.get('X-R2-Folder') || 'uploads';
     const extension = request.headers.get('X-R2-Extension') || 'jpg';
 
-    const allowedFolderPrefixes = ['uploads', 'verifications', 'reviews', 'avatars', 'products', 'banners', 'chat-media'];
+    const allowedFolderPrefixes = ['uploads', 'verifications', 'reviews', 'avatars', 'products', 'banners', 'chat-media', 'chat-backgrounds', 'carousel', 'categories', 'curated', 'institutions'];
     const folderPrefix = folder.split('/')[0];
     if (!allowedFolderPrefixes.includes(folderPrefix)) {
       return new Response(JSON.stringify({ error: 'Invalid folder' }), {

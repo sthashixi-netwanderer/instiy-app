@@ -139,19 +139,17 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
       if (choice == null) return;
 
       if (choice == 'scan') {
-        String? scannedCode;
         if (!mounted) return;
-        await Navigator.of(context).push(
+        // Auto-close pops the scanner with the scanned code as the route
+        // result, so verification (and its confirmation toast) starts
+        // immediately after the read instead of waiting for a manual back.
+        final scannedCode = await Navigator.of(context).push<String>(
           MaterialPageRoute(
-            builder: (_) => ScannerScreen(
-              onDetect: (code) {
-                scannedCode = code;
-              },
-            ),
+            builder: (_) => const ScannerScreen(autoClose: true),
           ),
         );
-        if (scannedCode == null || scannedCode!.isEmpty) return;
-        await _verifyAndComplete(item, scannedCode!);
+        if (scannedCode == null || scannedCode.isEmpty) return;
+        await _verifyAndComplete(item, scannedCode);
       } else {
         final code = await _showCodeInputDialog(item);
         if (code == null || code.isEmpty) return;

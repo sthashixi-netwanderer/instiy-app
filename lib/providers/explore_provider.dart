@@ -4,6 +4,7 @@ import '../models/product_model.dart';
 import '../models/category_model.dart';
 import '../models/institution_model.dart';
 import '../services/product_service.dart';
+import '../services/category_image_cache_service.dart';
 import '../services/institution_service.dart';
 import '../services/supabase_service.dart';
 import '../providers/block_provider.dart';
@@ -172,6 +173,9 @@ class ExploreState extends ChangeNotifier {
       final categories = await ProductService.getCategories();
       _categories = categories;
       notifyListeners();
+      // Persist artwork into the dedicated disk cache so future cold starts
+      // don't re-download category images from the server.
+      CategoryImageCacheService.warm(categories);
     } catch (_) {}
   }
 

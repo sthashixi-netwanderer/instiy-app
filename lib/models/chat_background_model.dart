@@ -4,10 +4,14 @@ class ChatBackground {
   final String? conversationId;
   final String backgroundType; // 'none', 'gradient', 'image'
   final String? gradientName;
-  /// Local file path to the custom background image stored in the app's
-  /// documents directory. This is intentionally NOT uploaded to the cloud —
-  /// it is cleared when the user clears the app data.
+  /// Local cached copy of the custom background image in the app's
+  /// documents directory. Used for fast/offline rendering; the canonical
+  /// copy lives in R2 storage ([imageUrl]).
   final String? localImagePath;
+  /// Public R2 URL of the custom background image. Persisted in the
+  /// chat_backgrounds table so the setting survives reinstalls, app-data
+  /// clears and new devices.
+  final String? imageUrl;
   final double blurIntensity;
 
   ChatBackground({
@@ -17,6 +21,7 @@ class ChatBackground {
     required this.backgroundType,
     this.gradientName,
     this.localImagePath,
+    this.imageUrl,
     this.blurIntensity = 0.0,
   });
 
@@ -28,6 +33,7 @@ class ChatBackground {
       backgroundType: json['background_type'] as String? ?? 'none',
       gradientName: json['gradient_name'] as String?,
       localImagePath: json['local_image_path'] as String?,
+      imageUrl: json['image_url'] as String?,
       blurIntensity: (json['blur_intensity'] as num?)?.toDouble() ?? 0.0,
     );
   }
@@ -40,24 +46,8 @@ class ChatBackground {
       'background_type': backgroundType,
       'gradient_name': gradientName,
       'local_image_path': localImagePath,
+      'image_url': imageUrl,
       'blur_intensity': blurIntensity,
     };
-  }
-
-  ChatBackground copyWith({
-    String? backgroundType,
-    String? gradientName,
-    String? localImagePath,
-    double? blurIntensity,
-  }) {
-    return ChatBackground(
-      id: id,
-      userId: userId,
-      conversationId: conversationId,
-      backgroundType: backgroundType ?? this.backgroundType,
-      gradientName: gradientName ?? this.gradientName,
-      localImagePath: localImagePath ?? this.localImagePath,
-      blurIntensity: blurIntensity ?? this.blurIntensity,
-    );
   }
 }

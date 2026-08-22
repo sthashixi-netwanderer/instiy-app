@@ -22,9 +22,9 @@ import '../../widgets/review_section.dart';
 import '../../widgets/product_card.dart';
 import '../../utils/maps_helper.dart';
 import '../../widgets/media_viewer.dart';
-import '../../widgets/share_bottom_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/bold_text.dart';
+import '../../utils/share_helper.dart';
 import 'package:instiy/utils/formatters.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/video_watermark_overlay.dart';
@@ -391,14 +391,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     }
   }
 
-  void _shareProduct(BuildContext context) {
+  Future<void> _shareProduct(BuildContext context) async {
     final product = _product;
     if (product == null) return;
-    ShareBottomSheet.show(
-      context,
-      shareText: 'Check out "${BoldText.convert(product.title)}" on Instiy - ${formatGhs(product.effectivePrice)}\n\nLink: https://instiy.com/products/${product.slug}-${product.id}',
-      analyticsId: product.id,
-    );
+    try {
+      await ShareHelper.shareText(
+        'Check out "${BoldText.convert(product.title)}" on Instiy - ${formatGhs(product.effectivePrice)}\n\nLink: https://instiy.com/products/${product.slug}-${product.id}',
+        context: context,
+      );
+    } catch (_) {
+      // System share sheet unavailable/cancelled — nothing to recover.
+    }
   }
 
   /// Whether the current buyer is from a different institution than the
@@ -470,6 +473,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
       // Re-check permission status — the request is now pending.
       await _checkPermissionStatus();
+
+      if (!mounted) return;
 
       await showDialog(
         context: context,
@@ -886,13 +891,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     ),
                   ),
                 const SizedBox(width: 8),
+                // Share button — styled identically to the store profile
+                // banner's share button for visual consistency.
                 Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.3),
                     shape: BoxShape.circle,
                   ),
                   child: ShadIconButton.ghost(
-                    icon: const Icon(LucideIcons.share, color: Colors.white),
+                    icon: Icon(LucideIcons.share2, color: Colors.white, size: context.ri(18)),
                     onPressed: () => _shareProduct(context),
                   ),
                 ),

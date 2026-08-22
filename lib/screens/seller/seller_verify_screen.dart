@@ -102,14 +102,17 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
     );
   }
 
-  void _scanCode(OrderItem item) {
-    Navigator.of(context).push(
+  Future<void> _scanCode(OrderItem item) async {
+    // Auto-close pops the scanner with the scanned value as the route
+    // result, so verification (and its success/failure toast) runs right
+    // after the read instead of leaving the camera open with no feedback.
+    final code = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => ScannerScreen(
-          onDetect: (code) => _verifyCode(item, code),
-        ),
+        builder: (_) => const ScannerScreen(autoClose: true),
       ),
     );
+    if (!mounted || code == null || code.trim().isEmpty) return;
+    await _verifyCode(item, code);
   }
 
   @override

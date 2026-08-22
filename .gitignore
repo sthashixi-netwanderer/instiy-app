@@ -49,3 +49,6 @@ app.*.map.json
 node_modules/
 
 
+
+# Local MCP config (contains Supabase PAT - never commit)
+config/mcporter.json

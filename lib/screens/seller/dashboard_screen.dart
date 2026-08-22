@@ -295,17 +295,9 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // Edit profile + Add product
+                  // Add product
                   Row(
                     children: [
-                      Expanded(
-                        child: ShadButton(
-                          onPressed: () => Navigator.of(context).pushNamed('/edit-profile'),
-                          leading: const Icon(LucideIcons.pencil, size: 18),
-                          child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Edit Profile')),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
                       Expanded(
                         child: ShadButton.outline(
                           onPressed: _addProduct,
@@ -584,7 +576,18 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                 child: _ActionButton(
                   icon: LucideIcons.key,
                   label: 'Permissions',
-                  onTap: () => Navigator.of(context).pushNamed('/seller-permissions'),
+                  badge: (stats != null && stats.pendingPermissions > 0)
+                      ? '${stats.pendingPermissions}'
+                      : null,
+                  badgeColor: AppTheme.warningAmber,
+                  onTap: () async {
+                    await Navigator.of(context).pushNamed('/seller-permissions');
+                    // Refresh the pending badge after granting/declining.
+                    final userId = ref.read(authProvider).user?.id;
+                    if (userId != null) {
+                      unawaited(ref.read(sellerProvider).loadDashboardStats(userId));
+                    }
+                  },
                 ),
               ),
             ],

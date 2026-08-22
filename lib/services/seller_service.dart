@@ -24,6 +24,7 @@ class SellerService {
         followersCount: (data['followersCount'] as num?)?.toInt() ?? 0,
         pendingOrders: (data['pendingOrders'] as num?)?.toInt() ?? 0,
         newReviews: (data['newReviews'] as num?)?.toInt() ?? 0,
+        pendingPermissions: await getPendingPermissionsCount(userId),
         totalSold: (data['totalSold'] as num?)?.toInt() ?? 0,
         activeListings: (data['activeListings'] as num?)?.toInt() ?? 0,
         totalRevenue: (data['totalRevenue'] as num?)?.toDouble() ?? 0,
@@ -31,6 +32,21 @@ class SellerService {
     } catch (_) {
       // Fallback to legacy implementation if RPC not yet deployed
       return _getDashboardStatsLegacy(userId);
+    }
+  }
+
+  /// Counts a seller's pending purchase-permission requests (dashboard badge).
+  static Future<int> getPendingPermissionsCount(String sellerId) async {
+    try {
+      final response = await SupabaseService.client
+          .from('purchase_permissions')
+          .select('id')
+          .eq('seller_id', sellerId)
+          .eq('status', 'pending')
+          .count();
+      return response.count;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -131,6 +147,7 @@ class SellerService {
       followersCount: followersCount,
       pendingOrders: pendingOrders,
       newReviews: newReviews,
+      pendingPermissions: await getPendingPermissionsCount(userId),
       totalSold: totalSold,
       activeListings: activeListings,
       totalRevenue: totalRevenue,

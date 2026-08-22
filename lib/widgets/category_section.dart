@@ -1,7 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
 import '../models/category_model.dart';
+import '../services/category_image_cache_service.dart';
 import 'animated_press.dart';
 
 class CategorySection extends StatelessWidget {
@@ -179,24 +181,34 @@ class CategoryGrid extends StatelessWidget {
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.8,
-            ),
-            itemCount: displayCategories.length,
-            itemBuilder: (context, index) {
-              final category = displayCategories[index];
-              return _GridCategoryCard(
-                category: category,
-                onTap: () => onTap(category),
-              );
-            },
-          ),
+          child: Builder(builder: (context) {
+            // ignore: avoid_print
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final box = context.findRenderObject();
+              if (box is RenderBox) {
+                // ignore: avoid_print
+                print('CATGRID_DEBUG gridView=${box.size}');
+              }
+            });
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 2.8,
+              ),
+              itemCount: displayCategories.length,
+              itemBuilder: (context, index) {
+                final category = displayCategories[index];
+                return _GridCategoryCard(
+                  category: category,
+                  onTap: () => onTap(category),
+                );
+              },
+            );
+          }),
         ),
       ],
     );
@@ -230,10 +242,13 @@ class _HorizontalCategoryCard extends StatelessWidget {
             ? Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    category.imageUrl!,
+                  CachedNetworkImage(
+                    imageUrl: category.imageUrl!,
+                    cacheManager: CategoryImageCacheManager(),
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _buildIconFallback(),
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    placeholder: (_, _) => _buildIconFallback(),
+                    errorWidget: (_, _, _) => _buildIconFallback(),
                   ),
                   // Dark overlay for text readability
                   Container(
@@ -341,10 +356,13 @@ class _GridCategoryCard extends StatelessWidget {
             ? Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    category.imageUrl!,
+                  CachedNetworkImage(
+                    imageUrl: category.imageUrl!,
+                    cacheManager: CategoryImageCacheManager(),
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _buildIconFallback(context),
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    placeholder: (_, _) => _buildIconFallback(context),
+                    errorWidget: (_, _, _) => _buildIconFallback(context),
                   ),
                   Container(
                     decoration: BoxDecoration(

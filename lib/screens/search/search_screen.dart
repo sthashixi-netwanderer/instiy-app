@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../models/category_model.dart';
 import '../../models/product_model.dart';
+import '../../services/category_image_cache_service.dart';
 import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/empty_state.dart';
@@ -433,10 +435,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                           ? Stack(
                               fit: StackFit.expand,
                               children: [
-                                Image.network(
-                                  category.imageUrl!,
+                                CachedNetworkImage(
+                                  imageUrl: category.imageUrl!,
+                                  cacheManager: CategoryImageCacheManager(),
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => _buildCategoryFallback(category, color),
+                                  fadeInDuration: const Duration(milliseconds: 150),
+                                  placeholder: (_, _) =>
+                                      _buildCategoryFallback(category, color),
+                                  errorWidget: (_, _, _) =>
+                                      _buildCategoryFallback(category, color),
                                 ),
                                 Container(
                                   decoration: BoxDecoration(

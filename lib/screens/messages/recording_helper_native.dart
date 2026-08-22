@@ -21,6 +21,17 @@ class RecordingHelper {
 
   static Future<String?> stopRecording() => _audioRecorder.stop();
 
+  /// Pauses the active recording session. Audio captured so far is kept and
+  /// [resumeRecording] continues writing to the same file.
+  static Future<void> pauseRecording() => _audioRecorder.pause();
+
+  /// Resumes a session paused by [pauseRecording] — the same file keeps
+  /// growing, nothing recorded before the pause is lost.
+  static Future<void> resumeRecording() => _audioRecorder.resume();
+
+  /// Whether the current session is paused (false when idle/recording).
+  static Future<bool> isPaused() => _audioRecorder.isPaused();
+
   static void dispose() => _audioRecorder.dispose();
 
   static Future<void> deleteFile(String path) async {

@@ -115,6 +115,7 @@ class DashboardStats {
   final int followersCount;
   final int pendingOrders;
   final int newReviews;
+  final int pendingPermissions;
   final int totalSold;
   final int activeListings;
   final double totalRevenue;
@@ -126,6 +127,7 @@ class DashboardStats {
     this.followersCount = 0,
     this.pendingOrders = 0,
     this.newReviews = 0,
+    this.pendingPermissions = 0,
     this.totalSold = 0,
     this.activeListings = 0,
     this.totalRevenue = 0,

@@ -31,9 +31,6 @@ class AppBottomNav extends ConsumerWidget {
             Navigator.of(context).pushNamed('/clips');
             break;
           case 3:
-            Navigator.of(context).pushNamed('/login');
-            break;
-          case 4:
             Navigator.of(context).pushNamed('/about-legal');
             break;
         }
@@ -53,9 +50,6 @@ class AppBottomNav extends ConsumerWidget {
           Navigator.of(context).pushNamed('/messages');
           break;
         case 4:
-          Navigator.of(context).pushNamed('/sell');
-          break;
-        case 5:
           Navigator.of(context).pushNamed('/seller-dashboard');
           break;
       }
@@ -69,9 +63,11 @@ class AppBottomNav extends ConsumerWidget {
     IconData icon,
     String label, {
     int badgeCount = 0,
+    String? svgAsset,
   }) {
     return _NavButton(
       icon: icon,
+      svgAsset: svgAsset,
       label: label,
       selected: currentIndex == index,
       badgeCount: badgeCount,
@@ -123,16 +119,16 @@ class AppBottomNav extends ConsumerWidget {
                           _navButton(context, isAuth, 0, LucideIcons.home, 'Home'),
                           _navButton(context, isAuth, 1, LucideIcons.search, 'Explore'),
                           _navButton(context, isAuth, 2, LucideIcons.video, 'Clips'),
-                          _navButton(context, isAuth, 3, LucideIcons.messageSquare, 'Messages', badgeCount: unreadCount),
-                          _navButton(context, isAuth, 4, LucideIcons.plus, 'Sell'),
-                          _navButton(context, isAuth, 5, LucideIcons.layoutDashboard, 'Dashboard'),
+                          _navButton(context, isAuth, 3, LucideIcons.messageSquare, 'Messages',
+                              badgeCount: unreadCount,
+                              svgAsset: 'assets/message-2-pending-svgrepo-com.svg'),
+                          _navButton(context, isAuth, 4, LucideIcons.layoutDashboard, 'Dashboard'),
                         ]
                       : [
                           _navButton(context, isAuth, 0, LucideIcons.home, 'Home'),
                           _navButton(context, isAuth, 1, LucideIcons.search, 'Explore'),
                           _navButton(context, isAuth, 2, LucideIcons.video, 'Clips'),
-                          _navButton(context, isAuth, 3, LucideIcons.plus, 'Sell'),
-                          _navButton(context, isAuth, 4, LucideIcons.info, 'Info'),
+                          _navButton(context, isAuth, 3, LucideIcons.info, 'Info'),
                         ],
                 ),
               ),
@@ -149,6 +145,7 @@ class AppBottomNav extends ConsumerWidget {
 /// beneath — the column is centered both vertically and horizontally.
 class _NavButton extends StatelessWidget {
   final IconData icon;
+  final String? svgAsset;
   final String label;
   final bool selected;
   final int badgeCount;
@@ -156,11 +153,27 @@ class _NavButton extends StatelessWidget {
 
   const _NavButton({
     required this.icon,
+    this.svgAsset,
     required this.label,
     required this.selected,
     required this.badgeCount,
     required this.onTap,
   });
+
+  /// Renders the custom SVG when one is provided, tinting it to match the
+  /// [Icon] states; otherwise falls back to the material icon.
+  Widget _buildIcon(Color color) {
+    if (svgAsset != null) {
+      return SvgPicture.asset(
+        svgAsset!,
+        width: 20,
+        height: 20,
+        fit: BoxFit.contain,
+        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      );
+    }
+    return Icon(icon, size: 20, color: color);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -177,13 +190,13 @@ class _NavButton extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: _buildIcon(Colors.white),
           )
         : SizedBox(
             width: 34,
             height: 34,
             child: Center(
-              child: Icon(icon, size: 20, color: AppTheme.mutedSteel),
+              child: _buildIcon(AppTheme.mutedSteel),
             ),
           );
 

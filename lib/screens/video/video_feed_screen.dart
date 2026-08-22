@@ -20,7 +20,7 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/instiy_logo_placeholder.dart';
 import '../../widgets/review_section.dart';
 import '../../widgets/verification_badge.dart';
-import '../../widgets/share_bottom_sheet.dart';
+import '../../utils/share_helper.dart';
 import '../../widgets/video_init_helper.dart';
 import '../../widgets/video_watermark_overlay.dart';
 import '../../utils/bold_text.dart';
@@ -761,11 +761,10 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
                 color: Colors.white,
                 label: 'Share',
                 onTap: () {
-                  ShareBottomSheet.show(
-                    context,
-                    shareText: _shareText,
-                    analyticsId: widget.product.id,
-                  );
+                  ShareHelper.shareText(
+                    _shareText,
+                    context: context,
+                  ); // ignore: unawaited_futures
                 },
               ),
             ],

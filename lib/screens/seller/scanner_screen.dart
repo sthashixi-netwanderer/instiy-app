@@ -3,9 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/universal_scanner.dart';
 
 class ScannerScreen extends ConsumerWidget {
-  final void Function(String code) onDetect;
+  /// Called with the raw scanned value. Omit it together with [autoClose]
+  /// and read the value from the route result instead
+  /// (`final code = await Navigator.push<String>(...)`).
+  final void Function(String code)? onDetect;
 
-  const ScannerScreen({super.key, required this.onDetect});
+  /// Pops the scanner by itself right after a code is read, returning the
+  /// value as the route result.
+  final bool autoClose;
+
+  const ScannerScreen({
+    super.key,
+    this.onDetect,
+    this.autoClose = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,9 +30,8 @@ class ScannerScreen extends ConsumerWidget {
       body: UniversalScanner(
         title: 'Scan Delivery Code',
         subtitle: 'Point camera at the QR code to verify delivery',
-        onDetect: (code) {
-          onDetect(code);
-        },
+        autoClose: autoClose,
+        onDetect: onDetect,
       ),
     );
   }

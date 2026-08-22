@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -9,17 +10,29 @@ import '../utils/responsive.dart';
 import 'scanner_overlay.dart';
 
 class UniversalScanner extends StatefulWidget {
-  final void Function(String code) onDetect;
+  /// Called with the raw string value of each detected QR code.
+  ///
+  /// Optional when [autoClose] is true — the scanned value is then handed
+  /// back as the popped route result instead
+  /// (`final code = await Navigator.push<String>(...)`).
+  final void Function(String code)? onDetect;
   final String title;
   final String subtitle;
   final double cutOutSize;
 
+  /// Closes the scanner automatically shortly after a successful read:
+  /// freezes the preview and pops the route with the scanned code as its
+  /// result. Only enable this when the scanner owns a full-screen route —
+  /// embedded usages (e.g. wallet tabs) must leave it false.
+  final bool autoClose;
+
   const UniversalScanner({
     super.key,
-    required this.onDetect,
+    this.onDetect,
     this.title = 'Scan QR Code',
     this.subtitle = 'Align the QR code within the frame',
     this.cutOutSize = 250,
+    this.autoClose = false,
   });
 
   @override
@@ -33,6 +46,7 @@ class _UniversalScannerState extends State<UniversalScanner>
   late final MobileScannerController _scannerController;
   late final AnimationController _scanLineController;
   bool _hasDetected = false;
+  bool _showDetectedFlash = false;
   _CameraState _cameraState = _CameraState.checking;
   Timer? _inactivityTimer;
 
@@ -129,7 +143,7 @@ class _UniversalScannerState extends State<UniversalScanner>
     super.dispose();
   }
 
-  void _onDetect(BarcodeCapture capture) {
+  Future<void> _onDetect(BarcodeCapture capture) async {
     if (_hasDetected || !mounted) return;
     final barcode = capture.barcodes.firstOrNull;
     final value = barcode?.rawValue;
@@ -139,13 +153,73 @@ class _UniversalScannerState extends State<UniversalScanner>
 
     // Lock immediately so duplicate frames in the same burst don't double-fire.
     _hasDetected = true;
-    widget.onDetect(value);
 
-    // Re-arm only if this widget is still mounted (i.e. the caller didn't
-    // navigate away). Prevents a stray timer firing on a disposed state.
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) _hasDetected = false;
+    // Unmistakable capture feedback: haptic tick + green checkmark flash,
+    // so the user knows the camera registered the code even before any
+    // follow-up screen appears.
+    unawaited(HapticFeedback.mediumImpact());
+    if (mounted) setState(() => _showDetectedFlash = true);
+
+    widget.onDetect?.call(value);
+
+    if (widget.autoClose) {
+      // Hold the flash long enough to register, freeze the preview, then
+      // hand the scanned value back to the pushing route as its result.
+      await Future.delayed(const Duration(milliseconds: 700));
+      if (!mounted) return;
+      await _scannerController.stop();
+      if (!mounted) return;
+      Navigator.of(context).pop(value);
+      return;
+    }
+
+    // Embedded mode: fade the flash out and re-arm shortly so another code
+    // can be scanned in place (e.g. wallet send tab).
+    Future.delayed(const Duration(milliseconds: 1300), () {
+      if (!mounted) return;
+      setState(() => _showDetectedFlash = false);
+      _hasDetected = false;
     });
+  }
+
+  // ── Capture-confirmed flash ───────────────────────────────────────────────
+  Widget _buildDetectedFlash() {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.35),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: const BoxDecoration(
+                  color: AppTheme.successMoss,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(LucideIcons.check, color: Colors.white, size: 40),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Text(
+                  'QR Code Detected',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ── Permission-denied UI ──────────────────────────────────────────────────
@@ -333,6 +407,9 @@ class _UniversalScannerState extends State<UniversalScanner>
           cutOutSize: widget.cutOutSize,
           scanLineAnimation: _scanLineController,
         ),
+        // Capture confirmation — flashes above everything for a moment so
+        // the seller clearly sees the camera registered the QR code.
+        if (_showDetectedFlash) _buildDetectedFlash(),
         // Header
         Positioned(
           top: context.rh(50),

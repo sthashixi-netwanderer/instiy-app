@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product_model.dart';
 import '../models/category_model.dart';
 import '../models/draft_listing_model.dart';
+import '../services/category_image_cache_service.dart';
 import '../services/draft_service.dart';
 import '../providers/block_provider.dart';
 import '../services/follow_service.dart';
@@ -179,6 +180,7 @@ class ProductProvider extends ChangeNotifier {
     try {
       _categories = await ProductService.getCategories();
       notifyListeners();
+      CategoryImageCacheService.warm(_categories);
     } catch (_) {}
   }
 
@@ -244,6 +246,9 @@ class ProductProvider extends ChangeNotifier {
     try {
       _categories = await ProductService.getCategories();
       notifyListeners();
+      // Persist artwork into the dedicated disk cache so future cold starts
+      // don't re-download category images from the server.
+      CategoryImageCacheService.warm(_categories);
     } catch (e) {
       _error = e.toString();
     }
