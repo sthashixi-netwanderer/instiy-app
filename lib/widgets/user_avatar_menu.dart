@@ -115,10 +115,19 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
     required String label,
     required VoidCallback onTap,
     bool destructive = false,
+    bool highlight = false,
   }) {
     final theme = ShadTheme.of(context);
-    final textColor = destructive ? AppTheme.destructive : theme.colorScheme.popoverForeground;
-    final iconColor = destructive ? AppTheme.destructive : theme.colorScheme.mutedForeground;
+    final textColor = destructive
+        ? AppTheme.destructive
+        : highlight
+            ? AppTheme.accent
+            : theme.colorScheme.popoverForeground;
+    final iconColor = destructive
+        ? AppTheme.destructive
+        : highlight
+            ? AppTheme.accent
+            : theme.colorScheme.mutedForeground;
 
     return InkWell(
       onTap: () {
@@ -129,6 +138,15 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
       child: Container(
         constraints: const BoxConstraints(minHeight: 44),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: highlight
+            ? BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.accent.withValues(alpha: 0.35),
+                ),
+              )
+            : null,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -138,7 +156,7 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
               label,
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
                 color: textColor,
               ),
             ),
@@ -203,6 +221,7 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
                 icon: LucideIcons.store,
                 label: 'Become a Seller',
                 onTap: widget.onBecomeSellerTap,
+                highlight: true,
               ),
             _buildMenuItem(
               icon: LucideIcons.settings,
