@@ -649,6 +649,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   onOrdersTap: () => Navigator.of(context).pushNamed('/orders'),
                                   onWalletTap: () => Navigator.of(context).pushNamed('/wallet'),
                                   onFollowingTap: () => Navigator.of(context).pushNamed('/following'),
+                                  onBecomeSellerTap: () => Navigator.of(context).pushNamed('/become-seller'),
                                   onSettingsTap: () => Navigator.of(context).pushNamed('/account'),
                                   onSignOut: () async {
                                     await auth.signOut();

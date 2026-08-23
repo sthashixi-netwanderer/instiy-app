@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
+import '../providers/providers.dart';
 import 'verification_badge.dart';
 
 /// Generic icon button with a count badge (cart, bell, etc.)
@@ -62,7 +63,8 @@ class BadgeIconButton extends StatelessWidget {
 
 /// Reusable avatar with popover dropdown menu.
 /// Shows a user icon for unauthenticated users, or the profile avatar
-/// with a popover menu (Wishlist, Orders, Wallet, Following, Settings, Sign Out) when authenticated.
+/// with a popover menu (Wishlist, Orders, Wallet, Following,
+/// Become a Seller [non-sellers only], Settings, Sign Out) when authenticated.
 class UserAvatarMenu extends ConsumerStatefulWidget {
   final String? avatarUrl;
   final String? fullName;
@@ -74,6 +76,7 @@ class UserAvatarMenu extends ConsumerStatefulWidget {
   final VoidCallback onOrdersTap;
   final VoidCallback onWalletTap;
   final VoidCallback onFollowingTap;
+  final VoidCallback onBecomeSellerTap;
   final VoidCallback onSettingsTap;
   final VoidCallback onSignOut;
 
@@ -89,6 +92,7 @@ class UserAvatarMenu extends ConsumerStatefulWidget {
     required this.onOrdersTap,
     required this.onWalletTap,
     required this.onFollowingTap,
+    required this.onBecomeSellerTap,
     required this.onSettingsTap,
     required this.onSignOut,
   });
@@ -158,6 +162,8 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
       );
     }
 
+    final isSeller = ref.watch(authProvider).user?.isSeller == true;
+
     return ShadPopover(
       controller: _popoverController,
       anchor: const ShadAnchor(
@@ -167,7 +173,7 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
       ),
       padding: const EdgeInsets.all(8),
       popover: (context) => SizedBox(
-        width: 140,
+        width: 164,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -192,6 +198,12 @@ class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
               label: 'Following',
               onTap: widget.onFollowingTap,
             ),
+            if (!isSeller)
+              _buildMenuItem(
+                icon: LucideIcons.store,
+                label: 'Become a Seller',
+                onTap: widget.onBecomeSellerTap,
+              ),
             _buildMenuItem(
               icon: LucideIcons.settings,
               label: 'Settings',

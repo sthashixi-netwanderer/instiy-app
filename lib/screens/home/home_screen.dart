@@ -187,6 +187,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             onOrdersTap: () => Navigator.of(context).pushNamed('/orders'),
             onWalletTap: () => Navigator.of(context).pushNamed('/wallet'),
             onFollowingTap: () => Navigator.of(context).pushNamed('/following'),
+            onBecomeSellerTap: () => Navigator.of(context).pushNamed('/become-seller'),
             onSettingsTap: () => Navigator.of(context).pushNamed('/account'),
             onSignOut: () async {
               await auth.signOut();
@@ -479,6 +480,7 @@ class _HomeGlassHeader extends ConsumerWidget {
   final VoidCallback onOrdersTap;
   final VoidCallback onWalletTap;
   final VoidCallback onFollowingTap;
+  final VoidCallback onBecomeSellerTap;
   final VoidCallback onSettingsTap;
   final VoidCallback onSignOut;
 
@@ -496,6 +498,7 @@ class _HomeGlassHeader extends ConsumerWidget {
     required this.onOrdersTap,
     required this.onWalletTap,
     required this.onFollowingTap,
+    required this.onBecomeSellerTap,
     required this.onSettingsTap,
     required this.onSignOut,
   });
@@ -552,6 +555,7 @@ class _HomeGlassHeader extends ConsumerWidget {
                   onOrdersTap: onOrdersTap,
                   onWalletTap: onWalletTap,
                   onFollowingTap: onFollowingTap,
+                  onBecomeSellerTap: onBecomeSellerTap,
                   onSettingsTap: onSettingsTap,
                   onSignOut: onSignOut,
                 ),
