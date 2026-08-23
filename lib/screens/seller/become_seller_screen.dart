@@ -122,102 +122,38 @@ class _BecomeSellerScreenState extends ConsumerState<BecomeSellerScreen> {
       extendBody: true,
       appBar: AppTheme.glassAppBar(
         context: context,
-        title: const Text('Become a Seller'),
-      ),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                MediaQuery.of(context).padding.top + kToolbarHeight + 70,
-                16,
-                MediaQuery.of(context).padding.bottom + 90,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Become a Seller',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.charcoalInk,
               ),
-              child: _buildCurrentStep(),
             ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + kToolbarHeight + 8,
-            left: 10,
-            right: 10,
-            child: _buildStepIndicator(),
-          ),
-        ],
+            Text(
+              'Step ${_currentStep + 1} of ${_steps.length}',
+              style: const TextStyle(
+                fontSize: 10.5,
+                height: 1.2,
+                color: AppTheme.mutedSteel,
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          MediaQuery.of(context).padding.top + kToolbarHeight + 16,
+          16,
+          MediaQuery.of(context).padding.bottom + 90,
+        ),
+        child: _buildCurrentStep(),
       ),
       bottomNavigationBar: _buildNavigationButtons(),
-    );
-  }
-
-  // ─── Step Indicator ────────────────────────────────────────────
-
-  Widget _buildStepIndicator() {
-    return AppTheme.frosted(
-      radius: 14,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: context.rw(16),
-          vertical: context.rh(12),
-        ),
-        child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(_steps.length, (index) {
-              final isActive = index == _currentStep;
-              final isDone = index < _currentStep;
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: context.rw(28),
-                    height: context.rh(28),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isDone
-                          ? AppTheme.successMoss
-                          : isActive
-                              ? AppTheme.accent
-                              : AppTheme.warmMist,
-                      border: Border.all(
-                        color: isDone
-                            ? AppTheme.successMoss
-                            : isActive
-                                ? AppTheme.accent
-                                : AppTheme.whisperBorder,
-                      ),
-                    ),
-                    child: Center(
-                      child: isDone
-                          ? Icon(LucideIcons.check,
-                              size: context.ri(14), color: Colors.white)
-                          : Text(
-                              '${index + 1}',
-                              style: TextStyle(
-                                fontSize: context.rsp(12),
-                                fontWeight: FontWeight.w600,
-                                color: isActive
-                                    ? Colors.white
-                                    : AppTheme.mutedSteel,
-                              ),
-                            ),
-                    ),
-                  ),
-                  if (index < _steps.length - 1)
-                    Container(
-                      width: context.rw(32),
-                      height: context.rh(2),
-                      margin:
-                          EdgeInsets.symmetric(horizontal: context.rw(4)),
-                      color: isDone
-                          ? AppTheme.successMoss
-                          : AppTheme.whisperBorder,
-                    ),
-                ],
-              );
-            }),
-          ),
-        ),
-      ),
     );
   }
 
@@ -720,7 +656,10 @@ class _BecomeSellerScreenState extends ConsumerState<BecomeSellerScreen> {
                 Expanded(
                   child: ShadButton.outline(
                     onPressed: () => setState(() => _showSuccess = true),
-                    child: const Text('Skip for now'),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Skip for now'),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -728,7 +667,10 @@ class _BecomeSellerScreenState extends ConsumerState<BecomeSellerScreen> {
                   flex: 2,
                   child: ShadButton(
                     onPressed: _startVerification,
-                    child: const Text('Start Verification'),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Start Verification'),
+                    ),
                   ),
                 ),
               ],
@@ -774,14 +716,20 @@ class _BecomeSellerScreenState extends ConsumerState<BecomeSellerScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text('Become a Seller'),
+                            : const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text('Become a Seller'),
+                              ),
                       )
                     : ShadButton(
                         enabled: _canProceed(),
                         onPressed: _canProceed()
                             ? () => setState(() => _currentStep++)
                             : null,
-                        child: const Text('Continue'),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Continue'),
+                        ),
                       ),
               ),
             ],
