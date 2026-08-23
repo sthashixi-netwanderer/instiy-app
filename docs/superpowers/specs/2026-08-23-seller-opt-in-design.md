@@ -107,6 +107,8 @@ GRANT EXECUTE ON FUNCTION public.become_seller(text, text) TO authenticated;
 
 Properties: atomic (single transaction), idempotent (re-running updates the profile only; the flag UPDATE is a no-op once true), bypasses RLS via SECURITY DEFINER so a not-yet-seller can create their first business profile. Existing `phone_numbers` (and other profile columns) are preserved by the upsert.
 
+**Notifications on transition** (`20260823120000_become_seller_notifications.sql`): the RPC additionally fires three notifications, only on the actual false→true transition — (1) an in-app row in `notifications` (type `system`, data `{"kind":"become_seller"}`) which the `trigger_send_push_notification` trigger fans out as a push; (2) an SMS via the `send-sms` Edge Function when the user has a phone number, using the same pg_net + `_push_trigger_config` (supabase_url/anon_key) pattern as the wallet-transaction SMS trigger; (3) a branded welcome email via the `send-email` Edge Function. All three are fire-and-forget `net.http_post` calls and cannot fail the RPC.
+
 ### 4. Lock the flag against self-service updates
 
 Users can already UPDATE their own `users` row (`"Users can update own profile"` policy, no column restrictions), so without this they could set `is_seller = true` directly and skip the wizard. RLS policy expressions cannot compare OLD vs NEW values, and per-column REVOKEs are no-ops while a table-level grant exists — so the table-level UPDATE/INSERT grants for `authenticated` are revoked and re-granted per column, excluding `is_seller`:
