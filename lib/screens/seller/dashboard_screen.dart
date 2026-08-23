@@ -179,7 +179,11 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     if (_checkingLock) {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
-        appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('Seller Dashboard'),
+          automaticallyImplyLeading: false,
+        ),
         body: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
@@ -188,7 +192,11 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
-        appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('Seller Dashboard'),
+          automaticallyImplyLeading: false,
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -249,7 +257,11 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
       extendBody: true,
-      appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
+      appBar: AppTheme.glassAppBar(
+        context: context,
+        title: const Text('Seller Dashboard'),
+        automaticallyImplyLeading: false,
+      ),
       bottomNavigationBar: const AdaptiveNav(currentIndex: 4),
       body: sellerP.isLoading && stats == null
           ? Padding(
