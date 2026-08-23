@@ -69,8 +69,7 @@ $$;
 ```sql
 CREATE OR REPLACE FUNCTION public.become_seller(
   p_business_name text,
-  p_description text,
-  p_phone_numbers jsonb
+  p_description text DEFAULT NULL
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -86,16 +85,14 @@ BEGIN
   END IF;
 
   INSERT INTO public.business_profiles
-    (seller_id, business_name, description, phone_numbers)
+    (seller_id, business_name, description)
   VALUES
     (auth.uid(),
      btrim(p_business_name),
-     NULLIF(btrim(COALESCE(p_description, '')), ''),
-     COALESCE(p_phone_numbers, '[]'::jsonb))
+     NULLIF(btrim(COALESCE(p_description, '')), ''))
   ON CONFLICT (seller_id) DO UPDATE
     SET business_name    = EXCLUDED.business_name,
         description      = EXCLUDED.description,
-        phone_numbers    = EXCLUDED.phone_numbers,
         updated_at       = now();
 
   UPDATE public.users
@@ -104,13 +101,25 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.become_seller(text, text, jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.become_seller(text, text, jsonb) TO authenticated;
+REVOKE ALL ON FUNCTION public.become_seller(text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.become_seller(text, text) TO authenticated;
 ```
 
-Properties: atomic (single transaction), idempotent (re-running updates the profile only; the flag UPDATE is a no-op once true), bypasses RLS via SECURITY DEFINER so a not-yet-seller can create their first business profile.
+Properties: atomic (single transaction), idempotent (re-running updates the profile only; the flag UPDATE is a no-op once true), bypasses RLS via SECURITY DEFINER so a not-yet-seller can create their first business profile. Existing `phone_numbers` (and other profile columns) are preserved by the upsert.
 
-### 4. One-way ratchet trigger
+### 4. Lock the flag against self-service updates
+
+Users can already UPDATE their own `users` row (`"Users can update own profile"` policy, no column restrictions), so without this they could set `is_seller = true` directly and skip the wizard. The policy gains a `WITH CHECK` that freezes the column:
+
+```sql
+DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
+CREATE POLICY "Users can update own profile"
+  ON public.users FOR UPDATE TO authenticated
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id AND NEW.is_seller = OLD.is_seller);
+```
+
+### 5. One-way ratchet trigger (defense in depth)
 
 Users can already UPDATE their own `users` row (`"Users can update own profile"` policy, no column restrictions), so the flag must be protected by a trigger, not just by the client never sending `false`:
 
@@ -138,7 +147,7 @@ CREATE TRIGGER trigger_users_seller_ratchet
 
 The service role (`auth.uid() IS NULL`) and admins (`public.is_admin`) can still clear the flag for support/abuse cases — same escape-hatch pattern as the `is_verified` revoke flow.
 
-### 5. RLS tightening (INSERT paths only)
+### 6. RLS tightening (INSERT paths only)
 
 Existing UPDATE/SELECT policies stay unchanged — sellers editing their own rows keep working.
 
@@ -177,14 +186,13 @@ The wizard never hits these policies — it goes through the SECURITY DEFINER RP
 
 - `lib/models/user_model.dart` — `AppUser` gains `final bool isSeller;` parsed from `is_seller`, wired through `fromJson` and `copyWith`.
 - `lib/services/auth_service.dart` — `getCurrentUserProfile` selects `is_seller` too.
-- `lib/services/seller_onboarding_service.dart` (new) — thin wrapper: validates inputs client-side, calls `Supabase.instance.client.rpc('become_seller', ...)`; caller then reloads `AuthProvider.loadUserProfile()`.
-- No new provider: `AuthProvider` already re-syncs the signed-in user's own `users` row over Realtime (`auth_provider.dart` realtime resubscribe), so a flipped flag propagates to the UI automatically; the wizard also refreshes locally on success for instant feedback.
+- `lib/services/seller_onboarding_service.dart` (new) — thin wrapper: validates inputs client-side, calls `Supabase.instance.client.rpc('become_seller', ...)`; caller then reloads `AuthProvider.loadUserProfile()`.- No new provider: `AuthProvider` already re-syncs the signed-in user's own `users` row over Realtime (`auth_provider.dart` realtime resubscribe), so a flipped flag propagates to the UI automatically; the wizard also refreshes locally on success for instant feedback.
 
 ### Navigation gating
 
 - `lib/widgets/app_bottom_nav.dart` — in the authed branch, the Dashboard `_navButton` renders only when `isSeller`. It stays **last** in the list so `_handleNavTap` indices (0–4) and each screen's hardcoded `AdaptiveNav(currentIndex:)` remain valid for non-sellers.
 - `lib/widgets/app_top_nav.dart` (desktop) — "Sell" and "Dashboard" items render only for sellers; unauthenticated and non-seller layouts otherwise unchanged. Since screens pass a hardcoded `currentIndex`, the hidden items must not shift the position of Home/Explore/Clips/Messages (keep seller items last, same as the bottom nav).
-- Route guards in `lib/main.dart` `onGenerateRoute`: `/seller-dashboard`, `/sell`, `/create-listing`, `/edit-business-profile` redirect non-sellers to `/become-seller` (covers deep links and stale installs hitting dead ends). Guards read `authProvider.user.isSeller`; unauthenticated users follow existing auth behavior.
+- Route guards in `lib/main.dart` `onGenerateRoute`: `/seller-dashboard`, `/sell`, `/create-listing`, and `/edit-business-profile` are wrapped in a `SellerGate` widget (a small ConsumerWidget that watches `authProvider`): unauthenticated users are redirected to `/login`, authenticated non-sellers to `/become-seller` (covers deep links and stale installs hitting dead ends). A wrapper widget is used because the `onGenerateRoute` closure sits above the `ProviderScope` and has no provider access.
 
 ### "Become a Seller" menu item
 
@@ -196,7 +204,7 @@ New route `/become-seller`, deferred-loaded via the `_DeferredLoader` pattern. M
 
 - **Step 1 — "Sell on Instiy":** what sellers get (product/service listings, wallet payouts, dashboard analytics, clips with reviews) and what's expected (fulfil orders, respond to buyers, follow policies).
 - **Step 2 — "Before you continue":** prominent "This cannot be undone" callout; required checkbox acknowledging permanence; note that the verified badge is a separate, optional step.
-- **Step 3 — "Your business profile":** business name (required, ≥2 chars), description (optional), phone numbers (same field semantics as `EditBusinessProfileScreen` core fields, stored as JSONB array).
+- **Step 3 — "Your business profile":** business name (required, ≥2 chars) and description (optional). Contact numbers, banner, and location are deliberately not collected here — store phone numbers go through the existing OTP-verified flow in `EditBusinessProfileScreen`, which the seller reaches from the dashboard after onboarding; the wizard shows a note saying so.
 - **Finish:** "Become a Seller" button → loading state → RPC → success view (checkmark, "Go to Dashboard" → `pushNamedAndRemoveUntil('/seller-dashboard')`). `AuthProvider` refresh makes the Dashboard tab appear immediately.
 
 Behavior rules:
@@ -213,7 +221,7 @@ Behavior rules:
 | User backs out / closes wizard | Nothing persisted anywhere |
 | Non-seller inserts product/service/profile (old client, tampered client) | Rejected by RLS with 42501; app surfaces the existing error path |
 | Non-seller deep-links to seller routes | Guard redirects to `/become-seller` |
-| User attempts `is_seller = false` on own row | Silently re-ratcheted to `true` by trigger |
+| User changes `is_seller` on own row (either direction) | Blocked by the `WITH CHECK` on the profile-update policy; the ratchet trigger is defense in depth for `true → false` |
 | Wallet | Unchanged — every user already gets a wallet on signup |
 
 ## Testing & verification
