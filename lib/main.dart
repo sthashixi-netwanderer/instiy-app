@@ -50,6 +50,7 @@ import 'screens/seller/reviews_screen.dart';
 import 'screens/seller/business_profile_screen.dart';
 import 'screens/orders/order_detail_screen.dart';
 import 'screens/curated/curated_collection_screen.dart';
+import 'widgets/seller_gate.dart';
 import 'services/hive_cache_service.dart';
 
 // ── Deferred imports: rarely-used screens loaded on demand to reduce
@@ -70,6 +71,8 @@ import 'screens/seller/seller_profile_verification_screen.dart'
     deferred as deferred_seller_profile_verification;
 import 'screens/seller/seller_permissions_screen.dart'
     deferred as deferred_seller_permissions;
+import 'screens/seller/become_seller_screen.dart'
+    deferred as deferred_become_seller;
 
 /// Top-level initialization future. Assigned in main() BEFORE runApp()
 /// but never awaited in main() — the splash screen awaits it instead.
@@ -532,7 +535,7 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
               final initialTab = settings.arguments is int ? settings.arguments as int : 0;
               return route(AccountSettingsScreen(initialTab: initialTab));
             case '/sell':
-              return route(const SellScreen());
+              return route(const SellerGate(child: SellScreen()));
             case '/curated-collection':
               final collectionId = settings.arguments as String;
               return route(CuratedCollectionScreen(collectionId: collectionId));
@@ -580,8 +583,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                   builder: () => deferred_faq.FaqScreen(),
                 ),
               );
+            case '/become-seller':
+              return route(
+                _DeferredLoader(
+                  loadLibrary: deferred_become_seller.loadLibrary,
+                  builder: () => deferred_become_seller.BecomeSellerScreen(),
+                ),
+              );
             case '/seller-dashboard':
-              return route(const SellerDashboardScreen());
+              return route(const SellerGate(child: SellerDashboardScreen()));
             case '/seller-reviews':
               return route(const SellerReviewsScreen());
             case '/seller-analytics':
@@ -613,7 +623,9 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                 product = settings.arguments as Product?;
               }
               return route(
-                CreateListingScreen(existingProduct: product, source: source),
+                SellerGate(
+                  child: CreateListingScreen(existingProduct: product, source: source),
+                ),
               );
             case '/profile':
               return route(const ProfileScreen());
@@ -656,10 +668,11 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
               return route(
                 _DeferredLoader(
                   loadLibrary: deferred_edit_business.loadLibrary,
-                  builder: () =>
-                      deferred_edit_business.EditBusinessProfileScreen(
-                        existingProfile: existingProfile,
-                      ),
+                  builder: () => SellerGate(
+                    child: deferred_edit_business.EditBusinessProfileScreen(
+                      existingProfile: existingProfile,
+                    ),
+                  ),
                 ),
               );
             default:
