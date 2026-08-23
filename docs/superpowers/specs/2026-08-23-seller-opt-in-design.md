@@ -208,7 +208,7 @@ New route `/become-seller`, deferred-loaded via the `_DeferredLoader` pattern. M
 - **Step 1 — "Sell on Instiy":** what sellers get (product/service listings, wallet payouts, dashboard analytics, clips with reviews) and what's expected (fulfil orders, respond to buyers, follow policies).
 - **Step 2 — "Before you continue":** prominent "This cannot be undone" callout; required checkbox acknowledging permanence; note that the verified badge is a separate, optional step.
 - **Step 3 — "Your business profile":** business name (required, ≥2 chars) and description (optional). Contact numbers, banner, and location are deliberately not collected here — store phone numbers go through the existing OTP-verified flow in `EditBusinessProfileScreen`, which the seller reaches from the dashboard after onboarding; the wizard shows a note saying so.
-- **Finish:** "Become a Seller" button → loading state → RPC → success view (checkmark, "Go to Dashboard" → `pushNamedAndRemoveUntil('/seller-dashboard')`). `AuthProvider` refresh makes the Dashboard tab appear immediately.
+- **Finish:** "Become a Seller" button → loading state → RPC → **Step 4 — "Get Verified" (optional, skippable):** explains the verified badge (trust on profile/listings, reviewed by admins) with "Start Verification" opening the existing `/seller-profile-verification` flow and a "Skip for now" button; either path lands on the success view (checkmark, "Go to Dashboard" → `pushNamedAndRemoveUntil('/seller-dashboard')`). `AuthProvider` refresh makes the Dashboard tab appear immediately.
 
 Behavior rules:
 
