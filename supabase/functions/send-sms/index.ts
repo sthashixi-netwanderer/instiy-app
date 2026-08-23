@@ -95,44 +95,37 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Hubtel "Regular Send" per https://developers.hubtel.com (SMS docs):
+    // POST https://smsc.hubtel.com/v1/messages/send with
+    // Authorization: Basic base64(clientid:clientsecret) and lowercase
+    // from/to/content JSON fields. `to` must be E.164, `from` an approved
+    // sender ID (<= 11 alphanumeric chars).
     const basicAuth = 'Basic ' + btoa(`${clientId}:${clientSecret}`);
+    const response = await fetch('https://smsc.hubtel.com/v1/messages/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': basicAuth,
+      },
+      body: JSON.stringify({
+        from,
+        to: cleanTo,
+        content,
+      }),
+    });
 
-    // Try primary Hubtel API endpoint first, fall back to legacy smsc endpoint
-    const endpoints = [
-      'https://api.hubtel.com/v1/messages/send',
-      'https://smsc.hubtel.com/v1/messages/send',
-    ];
-
-    let lastError = '';
-    for (const endpoint of endpoints) {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': basicAuth,
-        },
-        body: JSON.stringify({
-          From: from,
-          To: cleanTo,
-          Content: content,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return new Response(
-          JSON.stringify({ success: true, data }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const errorText = await response.text();
-      lastError = `${endpoint} → ${response.status}: ${errorText}`;
-      console.error(`Hubtel SMS failed: ${lastError}`);
+    if (response.ok) {
+      const data = await response.json();
+      return new Response(
+        JSON.stringify({ success: true, data }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    const errorText = await response.text();
+    console.error(`Hubtel SMS failed (${response.status}): ${errorText}`);
     return new Response(
-      JSON.stringify({ error: 'Failed to send SMS', detail: lastError }),
+      JSON.stringify({ error: 'Failed to send SMS', detail: `${response.status}: ${errorText}` }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

@@ -32,21 +32,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    // Two auth paths:
+    //  1. Server-to-server (pg_net triggers): publishable key for the
+    //     gateway + x-notify-secret, which must match the RLS-locked
+    //     _push_trigger_config.notify_secret row (read via the
+    //     auto-injected service-role client).
+    //  2. App clients: a user JWT, verified via getUser().
+    const notifySecret = req.headers.get("x-notify-secret");
+    let authorized = false;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (notifySecret) {
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
       );
+      const { data: secretRow } = await admin
+        .from("_push_trigger_config")
+        .select("value")
+        .eq("key", "notify_secret")
+        .maybeSingle();
+      authorized = !!secretRow && notifySecret === secretRow.value;
+
+      if (!authorized) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     const body = await req.json();
