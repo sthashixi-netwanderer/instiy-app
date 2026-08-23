@@ -95,7 +95,9 @@ class OrderService {
   }
 
   static Future<bool> cancelOrder(String orderId) async {
-    final result = await SupabaseService.client.rpc('cancel_order', params: {'order_id': orderId});
+    // Live DB signature is cancel_order(p_order_id uuid) — the param name
+    // must match or PostgREST returns "function not found".
+    final result = await SupabaseService.client.rpc('cancel_order', params: {'p_order_id': orderId});
     return result == true;
   }
 }

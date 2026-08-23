@@ -6,6 +6,7 @@ import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/video_analytics_service.dart';
 import '../../widgets/skeleton.dart';
+import '../product/product_detail_screen.dart';
 
 class VideoAnalyticsScreen extends ConsumerStatefulWidget {
   const VideoAnalyticsScreen({super.key});
@@ -200,6 +201,7 @@ class _VideoAnalyticsScreenState extends ConsumerState<VideoAnalyticsScreen> {
     final engagement = views > 0 ? ((likes + shares) / views * 100).toStringAsFixed(1) : '0.0';
     final thumbnail = product['product_thumbnail'] as String?;
     final title = product['product_title'] as String? ?? 'Untitled';
+    final productId = product['product_id'] as String?;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -240,16 +242,47 @@ class _VideoAnalyticsScreenState extends ConsumerState<VideoAnalyticsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.charcoalInk,
+                // Product title opens the product detail screen.
+                if (productId != null && productId.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProductDetailScreen(productId: productId),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.accent,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppTheme.accent.withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(LucideIcons.chevronRight,
+                            size: 14, color: AppTheme.accent.withValues(alpha: 0.6)),
+                      ],
+                    ),
+                  )
+                else
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.charcoalInk,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 6),
                 Row(
                   children: [

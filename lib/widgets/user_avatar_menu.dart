@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
-import '../utils/responsive.dart';
 import 'verification_badge.dart';
 
 /// Generic icon button with a count badge (cart, bell, etc.)
+///
+/// The badge mirrors the app bottom navigation's unread badge exactly —
+/// same pill metrics, same corner offset — so badge buttons look identical
+/// wherever they appear.
 class BadgeIconButton extends StatelessWidget {
   final IconData icon;
   final int count;
@@ -29,21 +32,21 @@ class BadgeIconButton extends StatelessWidget {
           Icon(icon, color: count > 0 ? activeColor : AppTheme.mutedSteel),
           if (count > 0)
             Positioned(
-              top: context.rh(-4),
-              right: context.rw(-8),
+              top: -4,
+              right: -4,
               child: Container(
-                padding: context.rPadding(horizontal: 5, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
                   color: AppTheme.destructive,
-                  borderRadius: BorderRadius.circular(context.rr(10)),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                constraints: BoxConstraints(minWidth: context.rw(16), minHeight: context.rh(16)),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                 alignment: Alignment.center,
                 child: Text(
                   '$count',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
-                    fontSize: context.rsp(10),
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,

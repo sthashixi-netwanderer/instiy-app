@@ -5,6 +5,7 @@ import '../../config/app_theme.dart';
 import '../../models/curated_collection_model.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
+import '../../utils/purchase_access.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/adaptive_nav.dart';
 import '../../widgets/empty_state.dart';
@@ -408,7 +409,14 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                         ),
                       ),
                     ),
-                  if (product.status == ProductStatus.available && !inCart)
+                  if (product.status == ProductStatus.available &&
+                      !inCart &&
+                      // Cross-institution listings the buyer has no access
+                      // to can't be added from curated collections.
+                      !PurchaseAccess.isRestrictedForBuyer(
+                        campuses: product.campuses,
+                        userUniversity: ref.read(authProvider).user?.university,
+                      ))
                     Positioned(
                       bottom: context.rh(8),
                       right: context.rw(8),
@@ -421,6 +429,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
                             thumbnail: product.effectiveThumbnail,
                             sellerId: product.sellerId,
                             sellerName: product.sellerName,
+                            campuses: product.campuses,
                           );
                         },
                         child: Container(

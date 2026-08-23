@@ -16,6 +16,11 @@ class ProductSection extends StatelessWidget {
   final ValueChanged<Product>? onAddToCart;
   final VoidCallback? onSeeAll;
 
+  /// Per-product gate for the add-to-cart button. Products from another
+  /// institution (cross-institution listings) hide their button when this
+  /// returns false. Null keeps the button for every product.
+  final bool Function(Product product)? canAddToCart;
+
   const ProductSection({
     super.key,
     required this.title,
@@ -24,6 +29,7 @@ class ProductSection extends StatelessWidget {
     required this.onTap,
     this.onAddToCart,
     this.onSeeAll,
+    this.canAddToCart,
   });
 
   @override
@@ -85,6 +91,7 @@ class ProductSection extends StatelessWidget {
                 product: product,
                 onTap: () => onTap(product),
                 onAddToCart: onAddToCart != null ? () => onAddToCart!(product) : null,
+                showAddButton: canAddToCart?.call(product) ?? true,
               );
             },
           ),
@@ -98,11 +105,13 @@ class _HorizontalProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
   final VoidCallback? onAddToCart;
+  final bool showAddButton;
 
   const _HorizontalProductCard({
     required this.product,
     required this.onTap,
     this.onAddToCart,
+    this.showAddButton = true,
   });
 
   @override
@@ -220,7 +229,7 @@ class _HorizontalProductCard extends StatelessWidget {
                       ),
                     ),
                   // Add to cart button
-                  if (product.status == ProductStatus.available)
+                  if (product.status == ProductStatus.available && showAddButton)
                     Positioned(
                       bottom: context.rh(6),
                       right: context.rw(6),

@@ -23,6 +23,7 @@ import '../../utils/responsive.dart';
 import '../../models/message_model.dart';
 import '../../models/chat_background_model.dart';
 import '../../providers/providers.dart';
+import '../../providers/chat_background_provider.dart';
 import '../../widgets/verification_badge.dart';
 import '../../providers/message_provider.dart';
 import '../../utils/formatters.dart';
@@ -485,6 +486,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   List<Uint8List?> _pendingVideoThumbList = [];
   String? _firstUnreadMessageId;
   bool _hasSetInitialScroll = false;
+
+  // In-chat keyword search (WhatsApp-style).
+  final TextEditingController _chatSearchCtrl = TextEditingController();
+  bool _isSearchActive = false;
+  List<String> _searchMatchIds = [];
+  int _searchMatchIndex = -1;
   bool _showScrollDownButton = false;
   late final MessageProvider _messageProvider;
 
@@ -507,6 +514,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   // Chat background state
   ChatBackground? _chatBackground;
+  ProviderSubscription<ChatBackgroundProvider>? _chatBackgroundSub;
 
   final FocusNode _messageFocusNode = FocusNode();
 
@@ -601,6 +609,13 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     });
     _scrollCtrl.addListener(_scrollListener);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadChatBackground());
+    // React to background changes made on the settings screen (which updates
+    // the shared provider and calls notifyListeners) so the new image shows
+    // immediately without popping back / re-entering the chat.
+    _chatBackgroundSub = ref.listenManual<ChatBackgroundProvider>(
+      chatBackgroundProvider,
+      (_, _) => _adoptProviderBackground(),
+    );
   }
 
   Future<void> _loadChatBackground() async {
@@ -615,6 +630,21 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         _chatBackground = bgProv.background;
       });
     }
+  }
+
+  /// Adopts the shared provider's background into local render state when a
+  /// save happens while this chat is open. Only backgrounds scoped to this
+  /// conversation — or globals when this chat itself resolved to the global
+  /// fallback — are applied, so a background saved for another chat can't
+  /// leak in through the shared single-slot provider.
+  void _adoptProviderBackground() {
+    final bg = ref.read(chatBackgroundProvider).background;
+    if (bg == null || !mounted) return;
+    final appliesHere = bg.conversationId == widget.conversation.id ||
+        (bg.conversationId == null &&
+            _chatBackground?.conversationId == null);
+    if (!appliesHere) return;
+    setState(() => _chatBackground = bg);
   }
 
   void _scrollListener() {
@@ -637,6 +667,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   @override
   void dispose() {
+    _chatBackgroundSub?.close();
+    _chatSearchCtrl.dispose();
     _messageCtrl.dispose();
     _captionCtrl.dispose();
     _scrollCtrl.dispose();
@@ -675,6 +707,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   void _handleMenuAction(String action, String otherUserId, bool isBlocked) {
     switch (action) {
+      case 'search':
+        _startChatSearch();
+        break;
       case 'block':
         _showBlockConfirmation(otherUserId);
         break;
@@ -885,7 +920,36 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     });
   }
 
-  void _scrollToMessage(String messageId) {
+  /// Rough per-bubble height estimate used to land near a target message
+  /// when jumping/scrolling to it. Exact pixel positions aren't available
+  /// without building the widgets, so this heuristic gets the viewport close
+  /// enough that the highlight + divider are visible.
+  double _estimateMessageHeight(Message m) {
+    double h = 40; // bubble padding + timestamp row
+    if (m.mediaType == 'image' || m.mediaType == 'video') {
+      h += 220;
+    } else if (m.mediaType == 'audio') {
+      h += 64;
+    }
+    if (m.isReply) h += 44;
+    if (m.productReference != null) h += 64;
+    final text = m.content.trim();
+    if (text.isNotEmpty) {
+      h += (text.length / 36).ceil().clamp(1, 15) * 18;
+    }
+    return h + 8; // spacing between bubbles
+  }
+
+  double _estimatedOffsetBefore(int index) {
+    final messages = _messageProvider.messages;
+    var offset = 0.0;
+    for (var i = 0; i < index && i < messages.length; i++) {
+      offset += _estimateMessageHeight(messages[i]);
+    }
+    return offset;
+  }
+
+  void _scrollToMessage(String messageId, {bool jump = false}) {
     final messages = _messageProvider.messages;
     final index = messages.indexWhere((m) => m.id == messageId);
     if (index == -1) return;
@@ -893,16 +957,20 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     // Using Future.delayed to ensure the ScrollController has registered clients and correct scroll extent
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted || !_scrollCtrl.hasClients) return;
-      final targetOffset = (index * 75.0).clamp(
+      final targetOffset = _estimatedOffsetBefore(index).clamp(
         0.0,
         _scrollCtrl.position.maxScrollExtent,
       );
 
-      _scrollCtrl.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      if (jump) {
+        _scrollCtrl.jumpTo(targetOffset);
+      } else {
+        _scrollCtrl.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
 
     // Highlight the message
@@ -912,6 +980,124 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         setState(() => _highlightedMessageId = null);
       }
     });
+  }
+
+  /// Positions the chat at the first unread incoming message (WhatsApp-style),
+  /// falling back to the bottom when everything is read. When the unread
+  /// block is older than the most recent page, older pages are fetched
+  /// (bounded) until the first unread message is in the loaded window.
+  Future<void> _setInitialScrollPosition() async {
+    final userId = ref.read(authProvider).user?.id;
+    bool isUnread(Message m) => m.senderId != userId && !m.isRead;
+
+    const maxPages = 10;
+    for (var page = 0;
+        page < maxPages &&
+            widget.conversation.unreadCount > 0 &&
+            _messageProvider.hasMoreMessages &&
+            !_messageProvider.messages.any(isUnread);
+        page++) {
+      await _messageProvider.loadMoreMessages(widget.conversation.id);
+    }
+
+    if (!mounted) return;
+    final unreadIndex = _messageProvider.messages.indexWhere(isUnread);
+
+    // Wait for the (possibly freshly loaded) items to lay out before jumping.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      if (unreadIndex != -1) {
+        setState(
+            () => _firstUnreadMessageId = _messageProvider.messages[unreadIndex].id);
+        _scrollToMessage(_firstUnreadMessageId!, jump: true);
+      } else {
+        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      }
+    });
+  }
+
+  // ─── In-chat search (WhatsApp-style) ─────────────────────────────
+
+  void _startChatSearch() {
+    setState(() {
+      _isSearchActive = true;
+      _searchMatchIds = [];
+      _searchMatchIndex = -1;
+    });
+  }
+
+  void _closeChatSearch() {
+    _chatSearchCtrl.clear();
+    setState(() {
+      _isSearchActive = false;
+      _searchMatchIds = [];
+      _searchMatchIndex = -1;
+    });
+  }
+
+  void _runChatSearch(String query) {
+    final q = query.trim().toLowerCase();
+    final matches = q.isEmpty
+        ? <String>[]
+        : _messageProvider.messages
+            .where((m) => m.content.toLowerCase().contains(q))
+            .map((m) => m.id)
+            .toList();
+    setState(() {
+      _searchMatchIds = matches;
+      // Start at the most recent match, like WhatsApp.
+      _searchMatchIndex = matches.isEmpty ? -1 : matches.length - 1;
+    });
+    if (_searchMatchIndex != -1) {
+      _scrollToMessage(_searchMatchIds[_searchMatchIndex]);
+    }
+  }
+
+  void _stepSearchMatch(int delta) {
+    if (_searchMatchIds.isEmpty || _searchMatchIndex == -1) return;
+    final next = (_searchMatchIndex + delta).clamp(0, _searchMatchIds.length - 1);
+    if (next == _searchMatchIndex) return;
+    setState(() => _searchMatchIndex = next);
+    _scrollToMessage(_searchMatchIds[next]);
+  }
+
+  PreferredSizeWidget _buildChatSearchAppBar(BuildContext context) {
+    return AppTheme.glassAppBar(
+      context: context,
+      title: ShadInput(
+        controller: _chatSearchCtrl,
+        placeholder: const Text('Search messages'),
+        autofocus: true,
+        keyboardType: TextInputType.text,
+        style: const TextStyle(fontSize: 14),
+        onChanged: _runChatSearch,
+      ),
+      actions: [
+        if (_searchMatchIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Center(
+              child: Text(
+                '${_searchMatchIndex + 1}/${_searchMatchIds.length}',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedSteel),
+              ),
+            ),
+          ),
+        IconButton(
+          icon: const Icon(LucideIcons.chevronUp, size: 20),
+          onPressed: _searchMatchIds.isEmpty ? null : () => _stepSearchMatch(-1),
+        ),
+        IconButton(
+          icon: const Icon(LucideIcons.chevronDown, size: 20),
+          onPressed: _searchMatchIds.isEmpty ? null : () => _stepSearchMatch(1),
+        ),
+        IconButton(
+          icon: const Icon(LucideIcons.x, size: 20),
+          onPressed: _closeChatSearch,
+        ),
+      ],
+    );
   }
 
   Future<void> _sendMessage() async {
@@ -1356,17 +1542,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     // Set initial scroll position when messages are first loaded
     if (!msgProv.isLoading && msgProv.messages.isNotEmpty && !_hasSetInitialScroll) {
       _hasSetInitialScroll = true;
-      final unreadIndex = msgProv.messages.indexWhere((m) => m.senderId != userId && !m.isRead);
-      if (unreadIndex != -1) {
-        _firstUnreadMessageId = msgProv.messages[unreadIndex].id;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToMessage(_firstUnreadMessageId!);
-        });
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setInitialScrollPosition();
+      });
     }
 
     final blockProv = ref.watch(blockProvider);
@@ -1392,7 +1570,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                 ),
               ],
             )
-          : AppTheme.glassAppBar(
+          : _isSearchActive
+              ? _buildChatSearchAppBar(context)
+              : AppTheme.glassAppBar(
               context: context,
               title: GestureDetector(
                 onTap: () {
@@ -1464,6 +1644,16 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                   icon: const Icon(LucideIcons.ellipsis, size: 20),
                   onSelected: (value) => _handleMenuAction(value, otherUserId, isBlocked),
                   itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'search',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.search, size: 18, color: AppTheme.mutedSteel),
+                          SizedBox(width: 10),
+                          Text('Search Messages'),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'chat_background',
                       child: Row(

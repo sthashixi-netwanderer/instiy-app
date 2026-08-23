@@ -22,6 +22,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/store_map_preview.dart';
 
 class EditBusinessProfileScreen extends ConsumerStatefulWidget {
   final BusinessProfile? existingProfile;
@@ -1166,17 +1167,21 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
         ],
         const SizedBox(height: 12),
         if (_locationUrlController.text.isNotEmpty) ...[
-          Row(
-            children: [
-              Expanded(
-                child: ShadButton.outline(
-                  onPressed: _previewLocation,
-                  leading: const Icon(LucideIcons.eye, size: 16),
-                  child: const Text('Preview Store Map Location'),
-                ),
-              ),
-            ],
-          ),
+          // Same inline map embed the public store screen renders — the
+          // Maps Embed API only works inside a real iframe, so launching
+          // the stored `output=embed` URL externally shows a Google error
+          // page instead of the map.
+          if (_previewQuery() != null)
+            StoreMapPreview(
+              key: ValueKey(_previewQuery()),
+              query: _previewQuery(),
+            )
+          else
+            ShadButton.outline(
+              onPressed: _previewLocation,
+              leading: const Icon(LucideIcons.eye, size: 16),
+              child: const Text('Preview Store Map Location'),
+            ),
           const SizedBox(height: 8),
           const Text(
             'Preview the resolved Google Maps location above before saving.',
@@ -1185,6 +1190,15 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
         ],
       ],
     );
+  }
+
+  /// Extracts the `q` parameter (coordinates or address text) from the
+  /// stored maps URL — what the embed needs to plot the pin.
+  String? _previewQuery() {
+    final url = _locationUrlController.text.trim();
+    if (url.isEmpty) return null;
+    final q = Uri.tryParse(url)?.queryParameters['q']?.trim();
+    return (q != null && q.isNotEmpty) ? q : null;
   }
 
   void _previewLocation() async {

@@ -225,6 +225,8 @@ class PurchasePermissionProvider extends ChangeNotifier {
               sellerName: sellerName,
               productTitle: productTitle,
               code: code,
+              duration: expiry,
+              productId: productId ?? '',
             );
           } catch (e) {
             debugPrint('Failed to send email notification: $e');

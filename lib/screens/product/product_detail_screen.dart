@@ -871,8 +871,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 ),
               ),
               actions: [
+                // All header action buttons share the same footprint
+                // (32px circle, 20px icon) and an 8px gap between them.
                 // Wishlist button
-                if (!isOwner)
+                if (!isOwner) ...[
                   GestureDetector(
                     onTap: () => _requireAuth(() {
                       ref.read(productProvider).toggleFavorite(_product!.id);
@@ -890,21 +892,22 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       ),
                     ),
                   ),
-                const SizedBox(width: 8),
-                // Share button — styled identically to the store profile
-                // banner's share button for visual consistency.
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    shape: BoxShape.circle,
-                  ),
-                  child: ShadIconButton.ghost(
-                    icon: Icon(LucideIcons.share2, color: Colors.white, size: context.ri(18)),
-                    onPressed: () => _shareProduct(context),
+                  const SizedBox(width: 8),
+                ],
+                // Share button
+                GestureDetector(
+                  onTap: () => _shareProduct(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(LucideIcons.share2, size: 20, color: Colors.white),
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Cart button
                 GestureDetector(
                   onTap: () {
                     if (!authProv.isAuthenticated) {
@@ -952,6 +955,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 ),
                 if (!isOwner) ...[
                   const SizedBox(width: 8),
+                  // Report button
                   GestureDetector(
                     onTap: () => _requireAuth(() {
                       Navigator.of(context).push(
@@ -974,23 +978,27 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     ),
                   ),
                 ],
-                if (isOwner)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      shape: BoxShape.circle,
-                    ),
-                    child: ShadIconButton.ghost(
-                      icon: const Icon(LucideIcons.pencil, color: Colors.white),
-                      onPressed: () async {
-                        final updated = await Navigator.of(context).pushNamed(
-                          '/create-listing',
-                          arguments: _product,
-                        );
-                        if (updated == true) unawaited(_loadProduct());
-                      },
+                if (isOwner) ...[
+                  const SizedBox(width: 8),
+                  // Edit listing button
+                  GestureDetector(
+                    onTap: () async {
+                      final updated = await Navigator.of(context).pushNamed(
+                        '/create-listing',
+                        arguments: _product,
+                      );
+                      if (updated == true) unawaited(_loadProduct());
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(LucideIcons.pencil, size: 20, color: Colors.white),
                     ),
                   ),
+                ],
               ],
             ),
 
@@ -1867,6 +1875,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               sellerId: _product!.sellerId,
                               sellerName: _product!.sellerName,
                               deliveryFee: _product!.deliveryFee,
+                              campuses: _product!.campuses,
                             );
                             ShadToaster.of(context).show(
                               ShadToast(title: Text('${_product!.title} added to cart')),

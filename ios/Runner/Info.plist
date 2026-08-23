@@ -1,128 +1,130 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
-	<key>CFBundleDisplayName</key>
-	<string>Instiy</string>
-	<key>CFBundleExecutable</key>
-	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>instiy</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>$(FLUTTER_BUILD_NAME)</string>
-	<key>CFBundleSignature</key>
-	<string>????</string>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<!-- Camera — mobile_scanner QR scanning -->
-	<key>NSCameraUsageDescription</key>
-	<string>Instiy needs camera access to scan QR codes for buyer verification.</string>
-	<!-- Photo Library — image_picker, gal save -->
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Instiy needs photo library access to select and save product images.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Instiy needs permission to save images to your photo library.</string>
-	<!-- Microphone — video recording -->
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Instiy needs microphone access for recording product videos.</string>
-	<!-- Face ID / Biometrics — local_auth -->
-	<key>NSFaceIDUsageDescription</key>
-	<string>Instiy uses Face ID to unlock secure screens like wallet and orders.</string>
-	<!-- Location — business profile maps -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Instiy needs your location to show nearby campus stores.</string>
-	<!-- ITMS-90683: permission_handler_apple's binary references the
+	<dict>
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
+		<key>CADisableMinimumFrameDurationOnPhone</key>
+		<true/>
+		<key>CFBundleDevelopmentRegion</key>
+		<string>$(DEVELOPMENT_LANGUAGE)</string>
+		<key>CFBundleDisplayName</key>
+		<string>Instiy</string>
+		<key>CFBundleExecutable</key>
+		<string>$(EXECUTABLE_NAME)</string>
+		<key>CFBundleIdentifier</key>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+		<key>CFBundleInfoDictionaryVersion</key>
+		<string>6.0</string>
+		<key>CFBundleName</key>
+		<string>instiy</string>
+		<key>CFBundlePackageType</key>
+		<string>APPL</string>
+		<key>CFBundleShortVersionString</key>
+		<string>$(FLUTTER_BUILD_NAME)</string>
+		<key>CFBundleSignature</key>
+		<string>????</string>
+		<key>CFBundleVersion</key>
+		<string>$(FLUTTER_BUILD_NUMBER)</string>
+		<key>LSRequiresIPhoneOS</key>
+		<true/>
+		<!-- Camera — mobile_scanner QR scanning -->
+		<key>NSCameraUsageDescription</key>
+		<string>Instiy needs camera access to scan QR codes for buyer verification.</string>
+		<!-- Photo Library — image_picker, gal save -->
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Instiy needs photo library access to select and save product images.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>Instiy needs permission to save images to your photo library.</string>
+		<!-- Microphone — video recording -->
+		<key>NSMicrophoneUsageDescription</key>
+		<string>Instiy needs microphone access for recording product videos.</string>
+		<!-- Face ID / Biometrics — local_auth -->
+		<key>NSFaceIDUsageDescription</key>
+		<string>Instiy uses Face ID to unlock secure screens like wallet and orders.</string>
+		<!-- Location — business profile maps -->
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Instiy needs your location to show nearby campus stores.</string>
+		<!-- ITMS-90683: permission_handler_apple's binary references the
 	     "Always" location APIs even though the app only requests
 	     when-in-use; Apple's scanner requires these strings regardless. -->
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Instiy uses your location to show nearby campus stores. Location is only used while the app is open.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Instiy uses your location to show nearby campus stores. Location is only used while the app is open.</string>
-	<!-- Deep Links — URL schemes -->
-	<key>CFBundleURLTypes</key>
-	<array>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>Instiy uses your location to show nearby campus stores. Location is only used while the app is open.</string>
+		<key>NSLocationAlwaysUsageDescription</key>
+		<string>Instiy uses your location to show nearby campus stores. Location is only used while the app is open.</string>
+		<!-- Deep Links — URL schemes -->
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>io.supabase.instiy</string>
+				</array>
+			</dict>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<!-- REVERSED_CLIENT_ID from GoogleService-Info.plist — required for Google Sign-In -->
+					<string>com.googleusercontent.apps.658847293429-sl27t5lj2ds0ckh77suu6dkrms54ter3</string>
+				</array>
+			</dict>
+		</array>
+		<!-- Google Sign-In -->
+		<key>GIDClientID</key>
+		<!-- Replace with CLIENT_ID from your GoogleService-Info.plist -->
+		<string>658847293429-sl27t5lj2ds0ckh77suu6dkrms54ter3.apps.googleusercontent.com</string>
+		<key>GIDServerClientID</key>
+		<string>658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com</string>
+		<!-- Universal Links — Associated Domains -->
+		<key>com.apple.developer.associated-domains</key>
+		<array>
+			<string>applinks:instiy.com</string>
+		</array>
+		<key>UIApplicationSceneManifest</key>
 		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>io.supabase.instiy</string>
-			</array>
+			<key>UIApplicationSupportsMultipleScenes</key>
+			<false/>
+			<key>UISceneConfigurations</key>
+			<dict>
+				<key>UIWindowSceneSessionRoleApplication</key>
+				<array>
+					<dict>
+						<key>UISceneClassName</key>
+						<string>UIWindowScene</string>
+						<key>UISceneConfigurationName</key>
+						<string>flutter</string>
+						<key>UISceneDelegateClassName</key>
+						<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+						<key>UISceneStoryboardFile</key>
+						<string>Main</string>
+					</dict>
+				</array>
+			</dict>
 		</dict>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<!-- REVERSED_CLIENT_ID from GoogleService-Info.plist — required for Google Sign-In -->
-				<string>com.googleusercontent.apps.658847293429-sl27t5lj2ds0ckh77suu6dkrms54ter3</string>
-			</array>
-		</dict>
-	</array>
-	<!-- Google Sign-In -->
-	<key>GIDClientID</key>
-	<!-- Replace with CLIENT_ID from your GoogleService-Info.plist -->
-	<string>658847293429-sl27t5lj2ds0ckh77suu6dkrms54ter3.apps.googleusercontent.com</string>
-	<key>GIDServerClientID</key>
-	<string>658847293429-2f0sb9nbvrkak2dp9ni87l5pk85ke1tq.apps.googleusercontent.com</string>
-	<!-- Universal Links — Associated Domains -->
-	<key>com.apple.developer.associated-domains</key>
-	<array>
-		<string>applinks:instiy.com</string>
-	</array>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
+		<key>UIApplicationSupportsIndirectInputEvents</key>
+		<true/>
+		<key>UILaunchStoryboardName</key>
+		<string>LaunchScreen</string>
+		<key>UIMainStoryboardFile</key>
+		<string>Main</string>
+		<key>UISupportedInterfaceOrientations</key>
+		<array>
+			<string>UIInterfaceOrientationPortrait</string>
+			<string>UIInterfaceOrientationLandscapeLeft</string>
+			<string>UIInterfaceOrientationLandscapeRight</string>
+		</array>
+		<key>UISupportedInterfaceOrientations~ipad</key>
+		<array>
+			<string>UIInterfaceOrientationPortrait</string>
+			<string>UIInterfaceOrientationPortraitUpsideDown</string>
+			<string>UIInterfaceOrientationLandscapeLeft</string>
+			<string>UIInterfaceOrientationLandscapeRight</string>
+		</array>
+		<key>UIStatusBarHidden</key>
 		<false/>
-		<key>UISceneConfigurations</key>
-		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneClassName</key>
-					<string>UIWindowScene</string>
-					<key>UISceneConfigurationName</key>
-					<string>flutter</string>
-					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-					<key>UISceneStoryboardFile</key>
-					<string>Main</string>
-				</dict>
-			</array>
-		</dict>
 	</dict>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-</dict>
 </plist>

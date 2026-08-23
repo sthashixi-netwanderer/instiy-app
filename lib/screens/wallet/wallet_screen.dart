@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/providers.dart';
+import '../../models/wallet_model.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
 
@@ -15,6 +15,7 @@ import '../../services/wallet_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/wallet_lock_service.dart';
 import 'wallet_tag_screen.dart';
+import 'transaction_detail_screen.dart';
 
 class WalletScreen extends ConsumerStatefulWidget {
   const WalletScreen({super.key});
@@ -1189,70 +1190,11 @@ class _TransactionTile extends StatelessWidget {
 
   const _TransactionTile(this.tx);
 
-  void _showDetails(BuildContext context) {
-    final isCredit = tx.type == 'deposit' || tx.type == 'transfer_in';
-    final color = isCredit ? AppTheme.successMoss : AppTheme.destructive;
-    final typeLabel = tx.type
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '')
-        .join(' ');
-
-    AppTheme.showGlassDialog(
-      context: context,
-      title: const Text('Transaction Details'),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              typeLabel,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '${isCredit ? '+' : '-'}${formatGhs(tx.amount)}',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _DetailRow(label: 'Description', value: tx.description ?? '-'),
-          _DetailRow(label: 'Reference', value: tx.reference ?? '-', copyable: true),
-          _DetailRow(label: 'Source', value: tx.source ?? '-'),
-          _DetailRow(
-            label: 'Balance Before',
-            value: formatGhs(tx.balanceBefore),
-          ),
-          _DetailRow(
-            label: 'Balance After',
-            value: formatGhs(tx.balanceAfter),
-          ),
-          _DetailRow(
-            label: 'Date',
-            value: DateFormat('MMM d, yyyy - h:mm:ss a').format(tx.createdAt),
-          ),
-        ],
+  void _openDetails(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TransactionDetailScreen(tx: tx as WalletTransaction),
       ),
-      actions: [
-        ShadButton.ghost(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-      ],
     );
   }
 
@@ -1308,7 +1250,7 @@ class _TransactionTile extends StatelessWidget {
           ),
           SizedBox(width: context.rw(8)),
           GestureDetector(
-            onTap: () => _showDetails(context),
+            onTap: () => _openDetails(context),
             child: Container(
               padding: context.rAll(6),
               decoration: BoxDecoration(
@@ -1324,71 +1266,3 @@ class _TransactionTile extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool copyable;
-
-  const _DetailRow({
-    required this.label,
-    required this.value,
-    this.copyable = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: context.rh(12)),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: context.rw(120),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: AppTheme.mutedSteel,
-                fontSize: context.rsp(13),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      color: AppTheme.charcoalInk,
-                      fontWeight: FontWeight.w500,
-                      fontSize: context.rsp(13),
-                    ),
-                  ),
-                ),
-                if (copyable && value != '-')
-                  GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: value));
-                      ShadToaster.of(context).show(
-                        ShadToast(
-                          title: Text('$label copied to clipboard!'),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: context.rw(4)),
-                      child: Icon(
-                        LucideIcons.copy,
-                        size: context.ri(14),
-                        color: AppTheme.accent,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

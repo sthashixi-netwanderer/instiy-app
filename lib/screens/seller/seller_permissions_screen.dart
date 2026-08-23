@@ -5,8 +5,55 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
+import '../../services/email_service.dart';
 import 'package:instiy/utils/formatters.dart';
 import '../../utils/responsive.dart';
+import '../product/product_detail_screen.dart';
+
+/// Product title that opens [ProductDetailScreen] when tapped. Falls back to
+/// plain text when no product id is available.
+Widget _tappableProductTitle(
+  BuildContext context,
+  String title,
+  String? productId, {
+  double fontSize = 12,
+}) {
+  if (productId == null || productId.isEmpty || title.isEmpty) {
+    return Text(
+      title,
+      style: TextStyle(fontSize: fontSize, color: AppTheme.mutedSteel),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+  return GestureDetector(
+    onTap: () => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: productId)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.accent,
+              decoration: TextDecoration.underline,
+              decorationColor: AppTheme.accent.withValues(alpha: 0.4),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(LucideIcons.chevronRight,
+            size: fontSize, color: AppTheme.accent.withValues(alpha: 0.6)),
+      ],
+    ),
+  );
+}
 
 class SellerPermissionsScreen extends ConsumerStatefulWidget {
   const SellerPermissionsScreen({super.key});
@@ -107,10 +154,10 @@ class _SellerPermissionsScreenState
     if (mounted) {
       if (success) {
         ShadToaster.of(context).show(
-          const ShadToast(
-            title: Text('Access Granted Successfully'),
+          ShadToast(
+            title: const Text('Access Granted Successfully'),
             description: Text(
-                'The buyer can now purchase the product. This permission will expire in 24 hours.'),
+                'The buyer can now purchase the product. This permission will expire in ${EmailService.formatPermissionDuration(expiry)}.'),
           ),
         );
       } else {
@@ -361,6 +408,7 @@ class _GrantAccessTab extends ConsumerWidget {
                   customerAvatar: customerAvatar,
                   customerInstitution: customerInstitution,
                   productTitle: productTitle,
+                  productId: product?['id'] as String?,
                   productPrice: productPrice,
                   productThumbnail: productThumbnail,
                   permissionStatus: permissionStatus,
@@ -382,6 +430,7 @@ class _PermissionResultCard extends StatefulWidget {
   final String? customerAvatar;
   final String customerInstitution;
   final String productTitle;
+  final String? productId;
   final double productPrice;
   final String? productThumbnail;
   final String? permissionStatus;
@@ -395,6 +444,7 @@ class _PermissionResultCard extends StatefulWidget {
     this.customerAvatar,
     required this.customerInstitution,
     required this.productTitle,
+    this.productId,
     required this.productPrice,
     this.productThumbnail,
     this.permissionStatus,
@@ -571,15 +621,11 @@ class _PermissionResultCardState extends State<_PermissionResultCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    _tappableProductTitle(
+                      context,
                       widget.productTitle,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.charcoalInk,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      widget.productId,
+                      fontSize: 15,
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -986,7 +1032,7 @@ class _PendingPermissionTileState extends State<_PendingPermissionTile> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(customerName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.charcoalInk), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(productTitle, style: const TextStyle(fontSize: 12, color: AppTheme.mutedSteel), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    _tappableProductTitle(context, productTitle, product?['id'] as String?),
                     if (customerInstitution.isNotEmpty)
                       Text(customerInstitution, style: TextStyle(fontSize: 11, color: AppTheme.accent.withValues(alpha: 0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
@@ -1380,15 +1426,8 @@ class _HistoryPermissionTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    Text(
-                      productTitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.mutedSteel,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    _tappableProductTitle(
+                        context, productTitle, product?['id'] as String?),
                   ],
                 ),
               ),

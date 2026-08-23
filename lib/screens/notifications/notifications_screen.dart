@@ -14,6 +14,7 @@ import '../../models/message_model.dart';
 import '../messages/messages_screen.dart';
 import '../../widgets/skeleton.dart';
 import '../seller/seller_orders_screen.dart';
+import '../seller/seller_permissions_screen.dart';
 
 enum NotificationFilter {
   all,
@@ -603,6 +604,31 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       case 'transfer_sent':
       case 'deposit':
       case 'withdrawal':
+        Navigator.of(context).pushNamed('/wallet');
+        break;
+      case 'permission':
+        // Seller-side requests carry `buyer_id` in their data — route the
+        // seller to the Buyer Permissions screen where they can grant or
+        // decline. Buyer-side grant/decline/revoke notifications instead
+        // open the product so they can proceed to purchase.
+        if (data?['buyer_id'] != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SellerPermissionsScreen()),
+          );
+        } else {
+          final productId = data?['product_id'] as String?;
+          if (productId != null) {
+            Navigator.of(context).pushNamed('/product', arguments: productId);
+          }
+        }
+        break;
+      case 'out_of_stock':
+        final productId = data?['product_id'] as String?;
+        if (productId != null) {
+          Navigator.of(context).pushNamed('/product', arguments: productId);
+        }
+        break;
+      case 'wallet':
         Navigator.of(context).pushNamed('/wallet');
         break;
       case 'review':

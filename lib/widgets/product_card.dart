@@ -5,6 +5,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
 import '../models/product_model.dart';
 import '../providers/providers.dart';
+import '../utils/purchase_access.dart';
 import '../utils/responsive.dart';
 import 'animated_press.dart';
 import 'discount_countdown.dart';
@@ -39,15 +40,10 @@ class _ProductCardState extends ConsumerState<ProductCard> {
 
     final authState = ref.watch(authProvider);
     final isOwner = authState.user?.id == product.sellerId;
-    bool needsPermission = false;
-    if (authState.isAuthenticated) {
-      final userUni = authState.user?.university;
-      if (userUni != null && userUni.trim().isNotEmpty && product.campuses.isNotEmpty) {
-        final matches = product.campuses.any((c) =>
-            c.toLowerCase().trim() == userUni.toLowerCase().trim());
-        needsPermission = !matches;
-      }
-    }
+    final needsPermission = PurchaseAccess.isRestrictedForBuyer(
+      campuses: product.campuses,
+      userUniversity: authState.user?.university,
+    );
 
     return AnimatedPress(
       onTap: widget.onTap,
@@ -252,6 +248,7 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                             thumbnail: product.effectiveThumbnail,
                             sellerId: product.sellerId,
                             sellerName: product.sellerName,
+                            campuses: product.campuses,
                           );
                         },
                         child: Container(

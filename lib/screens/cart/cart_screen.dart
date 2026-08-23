@@ -29,6 +29,28 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     });
   }
 
+  Future<void> _confirmClearCart() async {
+    final confirmed = await AppTheme.showGlassDialog<bool>(
+      context: context,
+      title: const Text('Clear Cart'),
+      description: const Text(
+          'Remove all items from your cart? This cannot be undone.'),
+      actions: [
+        ShadButton.ghost(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        ShadButton.destructive(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Clear'),
+        ),
+      ],
+    );
+    if (confirmed == true) {
+      await ref.read(cartProvider).clearCart();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cartProv = ref.watch(cartProvider);
@@ -63,7 +85,19 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
-      appBar: AppTheme.glassAppBar(context: context, title: const Text('Cart')),
+      appBar: AppTheme.glassAppBar(
+        context: context,
+        title: const Text('Cart'),
+        actions: [
+          if (cartProv.cart.items.isNotEmpty)
+            IconButton(
+              icon: const Icon(LucideIcons.trash2,
+                  size: 20, color: AppTheme.destructive),
+              tooltip: 'Clear cart',
+              onPressed: _confirmClearCart,
+            ),
+        ],
+      ),
       bottomNavigationBar: cartProv.isLoading || cartProv.cart.items.isEmpty
           ? const AdaptiveNav(currentIndex: 1)
           : Column(

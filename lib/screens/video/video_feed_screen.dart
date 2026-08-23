@@ -752,7 +752,7 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
               _buildOverlayIconButton(
                 icon: Icons.chat_bubble,
                 color: Colors.white,
-                label: _reviewCount > 0 ? _formatCount(_reviewCount) : 'Comments',
+                label: _reviewCount > 0 ? _formatCount(_reviewCount) : 'Reviews',
                 onTap: _showCommentsSheet,
               ),
               const SizedBox(height: 20),
@@ -1188,20 +1188,11 @@ class _CommentsBottomSheet extends ConsumerStatefulWidget {
 class _CommentsBottomSheetState extends ConsumerState<_CommentsBottomSheet> {
   List<ProductReview> _reviews = [];
   bool _isLoading = true;
-  final _commentController = TextEditingController();
-  int _rating = 5;
-  bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
     _loadReviews();
-  }
-
-  @override
-  void dispose() {
-    _commentController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadReviews() async {
@@ -1210,34 +1201,6 @@ class _CommentsBottomSheetState extends ConsumerState<_CommentsBottomSheet> {
       if (mounted) setState(() { _reviews = reviews; _isLoading = false; });
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _submitReview() async {
-    final user = ref.read(authProvider).user;
-    if (user == null) {
-      Navigator.of(context).pushNamed('/login'); // ignore: unawaited_futures
-      return;
-    }
-    if (_commentController.text.trim().isEmpty) return;
-
-    setState(() => _isSubmitting = true);
-    try {
-      await ReviewService.submitReview(
-        productId: widget.productId,
-        reviewerId: user.id,
-        rating: _rating,
-        comment: _commentController.text.trim(),
-      );
-      _commentController.clear();
-      widget.onReviewAdded();
-      await _loadReviews();
-    } catch (e) {
-      if (mounted) {
-        ShadToaster.of(context).show(ShadToast(title: Text('Error: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -1271,7 +1234,7 @@ class _CommentsBottomSheetState extends ConsumerState<_CommentsBottomSheet> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${_reviews.length} ${_reviews.length == 1 ? 'Comment' : 'Comments'}',
+                    '${_reviews.length} ${_reviews.length == 1 ? 'Review' : 'Reviews'}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1289,12 +1252,12 @@ class _CommentsBottomSheetState extends ConsumerState<_CommentsBottomSheet> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _reviews.isEmpty
-                      ? Center(
+                      : _reviews.isEmpty
+                          ? Center(
                           child: Padding(
                             padding: const EdgeInsets.all(32),
                             child: Text(
-                              'No comments yet. Be the first to comment!',
+                              'No reviews yet. Be the first to review this product!',
                               style: TextStyle(color: AppTheme.mutedSteel, fontSize: 14),
                               textAlign: TextAlign.center,
                             ),
@@ -1314,93 +1277,27 @@ class _CommentsBottomSheetState extends ConsumerState<_CommentsBottomSheet> {
                           },
                         ),
             ),
+            // Review composer — same form the product detail screen uses:
+            // rating starts unselected (required) and supports up to 5
+            // attached photos/videos.
             Container(
-              padding: EdgeInsets.fromLTRB(16, 8, 8, MediaQuery.of(context).viewInsets.bottom + 8),
               decoration: BoxDecoration(
                 color: Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, -2))],
-              ),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: _showRatingPicker,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(5, (i) => Icon(
-                        i < _rating ? Icons.star : Icons.star_border,
-                        color: AppTheme.warningAmber,
-                        size: 20,
-                      )),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _commentController,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _submitReview(),
-                      decoration: InputDecoration(
-                        hintText: 'Add a comment...',
-                        hintStyle: TextStyle(color: AppTheme.mutedSteel),
-                        filled: true,
-                        fillColor: AppTheme.warmMist,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _isSubmitting ? null : _submitReview,
-                    icon: _isSubmitting
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.send, color: AppTheme.accent, size: 22),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      ),
-    );
-  }
-
-  void _showRatingPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Rate this product', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(5, (i) => GestureDetector(
-                onTap: () { setState(() => _rating = i + 1); Navigator.of(ctx).pop(); },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(
-                    i < _rating ? Icons.star : Icons.star_border,
-                    size: 40,
-                    color: i < _rating ? AppTheme.warningAmber : AppTheme.mutedSteel,
-                  ),
+                border: Border(
+                  top: BorderSide(color: AppTheme.whisperBorder),
                 ),
-              )),
+              ),
+              child: ReviewForm(
+                productId: widget.productId,
+                onSubmitted: () {
+                  widget.onReviewAdded();
+                  _loadReviews();
+                },
+              ),
             ),
-            const SizedBox(height: 16),
           ],
         ),
+      ),
       ),
     );
   }
@@ -1521,10 +1418,80 @@ class _CommentItem extends StatelessWidget {
                     style: const TextStyle(fontSize: 13, color: AppTheme.charcoalInk),
                   ),
                 ],
+                // Attached review photos/videos
+                if (review.mediaUrls.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 72,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: review.mediaUrls.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (context, i) {
+                        final url = review.mediaUrls[i];
+                        final isVideo =
+                            url.contains('.mp4') || url.contains('.mov');
+                        return GestureDetector(
+                          onTap: () =>
+                              _showMediaViewer(context, review.mediaUrls, i),
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              color: AppTheme.warmMist,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: isVideo
+                                ? const Center(
+                                    child: Icon(LucideIcons.video,
+                                        size: 24,
+                                        color: AppTheme.mutedSteel),
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl: url,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 160,
+                                  ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showMediaViewer(BuildContext context, List<String> urls, int initialIndex) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black87,
+        insetPadding: const EdgeInsets.all(16),
+        child: PageView.builder(
+          itemCount: urls.length,
+          controller: PageController(initialPage: initialIndex),
+          itemBuilder: (context, i) {
+            final url = urls[i];
+            final isVideo = url.contains('.mp4') || url.contains('.mov');
+            return InteractiveViewer(
+              child: isVideo
+                  ? const Center(
+                      child: Icon(LucideIcons.video,
+                          size: 48, color: Colors.white54),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: url,
+                      fit: BoxFit.contain,
+                    ),
+            );
+          },
+        ),
       ),
     );
   }

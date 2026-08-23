@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/app_theme.dart';
+import '../../utils/purchase_access.dart';
 import '../../utils/responsive.dart';
 import '../../models/carousel_slide_model.dart';
 
@@ -75,6 +76,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   void _navigateToProduct(Product product) {
     Navigator.of(context).pushNamed('/product', arguments: product.id);
+  }
+
+  /// Whether the '+' (add-to-cart) button should show for a home-section
+  /// product. Cross-institution listings the buyer has no access to hide it.
+  bool _canAddToCart(Product product) {
+    return !PurchaseAccess.isRestrictedForBuyer(
+      campuses: product.campuses,
+      userUniversity: ref.read(authProvider).user?.university,
+    );
   }
 
   void _handleCarouselButtonTap(CarouselSlide slide) {
@@ -282,6 +292,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 titleIcon: iconData,
                 products: products,
                 onTap: _navigateToProduct,
+                canAddToCart: _canAddToCart,
                 onAddToCart: (product) => ref.read(cartProvider).addToCart(
                   productId: product.id,
                   title: product.title,
@@ -289,6 +300,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   thumbnail: product.effectiveThumbnail,
                   sellerId: product.sellerId,
                   sellerName: product.sellerName,
+                  campuses: product.campuses,
                 ),
                 onSeeAll: () => Navigator.of(context).pushNamed('/curated-collection', arguments: section.id),
               ),
@@ -330,6 +342,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 titleIcon: iconData,
                 products: products,
                 onTap: _navigateToProduct,
+                canAddToCart: _canAddToCart,
                 onAddToCart: (product) => ref.read(cartProvider).addToCart(
                   productId: product.id,
                   title: product.title,
@@ -337,6 +350,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   thumbnail: product.effectiveThumbnail,
                   sellerId: product.sellerId,
                   sellerName: product.sellerName,
+                  campuses: product.campuses,
                 ),
                 onSeeAll: () => Navigator.of(context).pushNamed('/curated-collection', arguments: section.id),
               ),

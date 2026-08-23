@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../models/cart_model.dart';
 import '../services/cart_service.dart';
+import '../services/purchase_permission_service.dart';
 import '../services/supabase_service.dart';
+import '../utils/purchase_access.dart';
 
 class CartProvider extends ChangeNotifier {
   CartState _cart = CartState();
   bool _isLoading = false;
   String? _error;
+  String? _cachedUserUniversity;
 
   CartState get cart => _cart;
   bool get isLoading => _isLoading;
@@ -90,6 +93,25 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
+  /// Resolves (and caches) the signed-in buyer's institution for the
+  /// cross-institution add-to-cart guard.
+  Future<String?> _currentUserUniversity() async {
+    final cached = _cachedUserUniversity;
+    if (cached != null) return cached;
+    final uid = SupabaseService.auth.currentUser?.id;
+    if (uid == null) return null;
+    try {
+      final row = await SupabaseService.client
+          .from('users')
+          .select('university')
+          .eq('id', uid)
+          .maybeSingle();
+      return _cachedUserUniversity = row?['university'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> addToCart({
     required String productId,
     required String title,
@@ -100,7 +122,28 @@ class CartProvider extends ChangeNotifier {
     int quantity = 1,
     double deliveryFee = 0.0,
     int? stock,
+    List<String>? campuses,
   }) async {
+    // Cross-institution guard: products listed on campuses that don't
+    // include the buyer's institution can only be added when the seller
+    // has granted an active purchase permission. This is the backstop —
+    // list screens additionally hide the add button for these products.
+    if (campuses != null &&
+        PurchaseAccess.isRestrictedForBuyer(
+          campuses: campuses,
+          userUniversity: await _currentUserUniversity(),
+        )) {
+      final allowed = await PurchasePermissionService.hasActivePermission(
+        productId: productId,
+      );
+      if (!allowed) {
+        _error =
+            'This product is listed for another institution. Request purchase permission from the seller first.';
+        notifyListeners();
+        return;
+      }
+    }
+    _error = null;
     try {
       await CartService.addToCart(
         productId: productId,

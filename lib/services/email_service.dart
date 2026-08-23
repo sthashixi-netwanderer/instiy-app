@@ -880,13 +880,31 @@ class EmailService {
 
   // ─── Purchase Permission ─────────────────────────────────────────
 
+  /// Humanizes a permission duration for notification copy, e.g.
+  /// "1 hour", "6 hours", "3 days".
+  static String formatPermissionDuration(Duration d) {
+    if (d.inHours >= 24) {
+      final days = d.inDays;
+      return days == 1 ? '1 day' : '$days days';
+    }
+    if (d.inHours >= 1) {
+      return d.inHours == 1 ? '1 hour' : '${d.inHours} hours';
+    }
+    final mins = d.inMinutes;
+    return mins <= 1 ? '1 minute' : '$mins minutes';
+  }
+
   static Future<void> sendPurchasePermissionGranted({
     required String buyerEmail,
     required String buyerName,
     required String sellerName,
     required String productTitle,
     required String code,
+    required Duration duration,
+    required String productId,
   }) async {
+    final durationText = formatPermissionDuration(duration);
+    final productLink = 'https://instiy.com/product/$productId';
     final htmlBody = '''
 <!DOCTYPE html>
 <html>
@@ -901,6 +919,8 @@ class EmailService {
     .code-box { background: #f5f5f4; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; border: 1px dashed #6c47ff; }
     .code-label { font-size: 12px; text-transform: uppercase; color: #78716c; letter-spacing: 0.5px; display: block; margin-bottom: 6px; font-weight: 600; }
     .code-value { font-size: 28px; color: #6c47ff; letter-spacing: 3.0px; font-family: monospace; font-weight: 700; }
+    .duration-box { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 14px 18px; margin: 16px 0; text-align: center; color: #065f46; font-size: 14px; font-weight: 600; }
+    .cta-btn { display: block; width: 100%; box-sizing: border-box; background: #6c47ff; color: white !important; text-decoration: none; text-align: center; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 700; margin: 24px 0 8px; }
     .warning { color: #dc2626; font-size: 13px; font-weight: 600; text-align: center; margin-top: 16px; }
     .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
     .footer p { margin: 0; }
@@ -915,13 +935,17 @@ class EmailService {
     <div class="content">
       <p>Hi <strong>$buyerName</strong>,</p>
       <p>Good news! The seller <strong>$sellerName</strong> has granted you permission to buy <strong>"$productTitle"</strong> from their institution.</p>
-      
+
       <div class="code-box">
         <span class="code-label">Access Code</span>
         <span class="code-value">$code</span>
       </div>
 
-      <p class="warning">⚠️ This permission is valid for 24 hours only. Please complete your purchase before it expires!</p>
+      <div class="duration-box">⏱️ Permission duration: $durationText</div>
+
+      <a href="$productLink" class="cta-btn">View "$productTitle" →</a>
+
+      <p class="warning">⚠️ This permission is valid for $durationText only. Please complete your purchase before it expires!</p>
     </div>
     <div class="footer">
       <p>Instiy — Automated Access Notification</p>

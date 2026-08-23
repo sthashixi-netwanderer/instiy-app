@@ -12,6 +12,7 @@ import '../../providers/providers.dart';
 import '../../services/institution_service.dart';
 import '../../services/product_service.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/purchase_access.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/adaptive_nav.dart';
 import '../../widgets/animated_press.dart';
@@ -620,74 +621,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                             const SizedBox(width: 8),
                             Row(
                               children: [
-                                ShadIconButton.ghost(
-                                  icon: Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      Icon(
-                                        LucideIcons.shoppingCart,
-                                        color: cartCount > 0 ? AppTheme.accent : AppTheme.mutedSteel,
-                                      ),
-                                      if (cartCount > 0)
-                                        Positioned(
-                                          top: -4,
-                                          right: -8,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.destructive,
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                            alignment: Alignment.center,
-                                            child: Text(
-                                              '$cartCount',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                                BadgeIconButton(
+                                  icon: LucideIcons.shoppingCart,
+                                  count: cartCount,
+                                  activeColor: AppTheme.accent,
                                   onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/cart')),
                                 ),
                                 Builder(
                                   builder: (context) {
                                     final unreadNotifs = ref.watch(messageProvider).unreadNotificationsCount;
-                                    return ShadIconButton.ghost(
-                                      icon: Stack(
-                                        clipBehavior: Clip.none,
-                                        children: [
-                                          Icon(LucideIcons.bell, color: unreadNotifs > 0 ? AppTheme.accent : AppTheme.mutedSteel),
-                                          if (unreadNotifs > 0)
-                                            Positioned(
-                                              top: -4,
-                                              right: -8,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                                decoration: BoxDecoration(
-                                                  color: AppTheme.destructive,
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                                alignment: Alignment.center,
-                                                child: Text(
-                                                  '$unreadNotifs',
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
+                                    return BadgeIconButton(
+                                      icon: LucideIcons.bell,
+                                      count: unreadNotifs,
+                                      activeColor: AppTheme.accent,
                                       onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/notifications')),
                                     );
                                   },
@@ -1049,8 +995,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         ),
                       ),
                     ),
-                  // Add to cart button (hidden for own products)
-                  if (!inCart && product.sellerId != authProv.user?.id && product.status == ProductStatus.available)
+                  // Add to cart button (hidden for own products and for
+                  // cross-institution listings the buyer has no access to)
+                  if (!inCart &&
+                      product.sellerId != authProv.user?.id &&
+                      product.status == ProductStatus.available &&
+                      !PurchaseAccess.isRestrictedForBuyer(
+                        campuses: product.campuses,
+                        userUniversity: authProv.user?.university,
+                      ))
                     Positioned(
                       bottom: context.rh(8),
                       right: context.rw(8),
@@ -1063,6 +1016,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                             thumbnail: product.effectiveThumbnail,
                             sellerId: product.sellerId,
                             sellerName: product.sellerName,
+                            campuses: product.campuses,
                           );
                         },
                         child: Container(

@@ -145,7 +145,10 @@ class ProductService {
     }
 
     if (campuses != null && campuses.isNotEmpty) {
-      final orConditions = campuses.map((c) => 'campus.ilike.%$c%').join(',');
+      // Products with no campus restriction ("All Institutions" listings)
+      // match every institution filter.
+      final orConditions =
+          'campus.is.null,${campuses.map((c) => 'campus.ilike.%$c%').join(',')}';
       query = query.or(orConditions);
     }
 

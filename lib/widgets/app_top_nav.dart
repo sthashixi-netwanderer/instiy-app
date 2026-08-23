@@ -43,7 +43,7 @@ class AppTopNav extends ConsumerWidget {
                 ),
                 if (badgeCount > 0)
                   Positioned(
-                    right: -8,
+                    right: -4,
                     top: -4,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),

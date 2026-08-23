@@ -1040,22 +1040,13 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
             ),
           if (profile.locationUrl?.isNotEmpty == true) ...[
             SizedBox(height: context.rh(12)),
-            Row(
-              children: [
-                Expanded(
-                  child: ShadButton.outline(
-                    onPressed: () => _openMapPreview(profile.locationUrl!),
-                    leading: Icon(LucideIcons.map, size: context.ri(16)),
-                    child: const Text('View on Map'),
-                  ),
-                ),
-                SizedBox(width: context.rw(8)),
-                ShadButton.outline(
-                  onPressed: () => _openInGoogleMaps(profile.locationUrl!),
-                  leading: Icon(LucideIcons.externalLink, size: context.ri(16)),
-                  child: const Text('Open'),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: ShadButton.outline(
+                onPressed: () => _openMapPreview(profile.locationUrl!),
+                leading: Icon(LucideIcons.map, size: context.ri(16)),
+                child: const Text('View on Map'),
+              ),
             ),
           ],
         ],
@@ -1088,16 +1079,6 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       debugPrint('Could not launch map preview: $e');
-    }
-    if (!mounted) return;
-  }
-
-  Future<void> _openInGoogleMaps(String url) async {
-    final uri = _normalizedMapsUri(url);
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('Could not launch Google Maps: $e');
     }
     if (!mounted) return;
   }

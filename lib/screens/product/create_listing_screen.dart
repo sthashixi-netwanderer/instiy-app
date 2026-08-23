@@ -47,6 +47,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   final _priceController = TextEditingController();
   List<String> _selectedCampuses = [];
   Map<String, double> _institutionDeliveryFees = {};
+  // When true the listing is published with no campus restriction — visible
+  // and purchasable by buyers from any institution.
+  bool _allInstitutions = false;
   bool _useSameDeliveryFee = true;
   final _stockController = TextEditingController(text: '1');
   final _deliveryFeeController = TextEditingController(text: '0.00');
@@ -139,7 +142,12 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     _titleController.text = p.title;
     _descriptionController.text = p.description;
     _priceController.text = p.price.toString();
-    _selectedCampuses.addAll(p.campuses);
+    if (p.campuses.isEmpty) {
+      // Previously published for all institutions.
+      _allInstitutions = true;
+    } else {
+      _selectedCampuses.addAll(p.campuses);
+    }
     _selectedCondition = p.condition;
     _selectedCategoryId = p.categoryId;
     _existingImageUrls = List.from(p.imageUrls);
@@ -242,6 +250,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       _selectedCondition = null;
       _selectedCampuses = [];
       _institutionDeliveryFees = {};
+      _allInstitutions = false;
       _useSameDeliveryFee = true;
       _deliveryOption = 'pickup';
       _selectedImages.clear();
@@ -291,7 +300,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     final specCount = _specifications
         .where((s) => s.keyController.text.trim().isNotEmpty)
         .length;
-    final hasCampuses = _selectedCampuses.isNotEmpty;
+    final hasCampuses = _selectedCampuses.isNotEmpty || _allInstitutions;
     return title.isNotEmpty &&
         description.isNotEmpty &&
         priceStr.isNotEmpty &&
@@ -580,10 +589,12 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       return;
     }
 
-    if (_selectedCampuses.isEmpty) {
+    if (_selectedCampuses.isEmpty && !_allInstitutions) {
       ShadToaster.of(context).show(
         const ShadToast(
-          title: Text('Please select at least one campus/location'),
+          title: Text(
+            'Please select at least one campus/location or All Institutions',
+          ),
         ),
       );
       return;
@@ -819,8 +830,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       }
 
       // Background publish — no widget dependency
+      // ignore: unawaited_futures
       _publishInBackground(
-        // ignore: unawaited_futures
         provider: provider,
         draft: publishingDraft,
         titleVal: titleVal,
@@ -2234,19 +2245,98 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
                     const SizedBox(height: 16),
 
-                    // Campus (Required)
-                    MultiInstitutionPicker(
-                      selectedValues: _selectedCampuses,
-                      onChanged: (vals) => setState(() {
-                        _selectedCampuses = vals;
-                        _institutionDeliveryFees = {
-                          for (final c in vals)
-                            c: _institutionDeliveryFees[c] ?? 0.0,
-                        };
+                    // Campus (Required) — or publish for all institutions
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        _allInstitutions = !_allInstitutions;
+                        if (_allInstitutions) {
+                          _selectedCampuses = [];
+                          _institutionDeliveryFees = {};
+                        }
                       }),
-                      label: 'Campuses / Locations *',
-                      hint: 'Select campuses...',
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _allInstitutions
+                              ? AppTheme.accent.withValues(alpha: 0.08)
+                              : AppTheme.pureSurface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _allInstitutions
+                                ? AppTheme.accent
+                                : AppTheme.whisperBorder,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              LucideIcons.globe,
+                              size: 18,
+                              color: _allInstitutions
+                                  ? AppTheme.accent
+                                  : AppTheme.mutedSteel,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'All Institutions',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.charcoalInk,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'Any buyer can view and purchase this product, regardless of their institution.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.mutedSteel,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              _allInstitutions
+                                  ? LucideIcons.checkCircle2
+                                  : LucideIcons.circle,
+                              size: 20,
+                              color: _allInstitutions
+                                  ? AppTheme.accent
+                                  : AppTheme.mutedSteel,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+                    if (!_allInstitutions) ...[
+                      const SizedBox(height: 16),
+                      MultiInstitutionPicker(
+                        selectedValues: _selectedCampuses,
+                        onChanged: (vals) => setState(() {
+                          _selectedCampuses = vals;
+                          _institutionDeliveryFees = {
+                            for (final c in vals)
+                              c: _institutionDeliveryFees[c] ?? 0.0,
+                          };
+                        }),
+                        label: 'Campuses / Locations *',
+                        hint: 'Select campuses...',
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Delivery fee applies to all institutions for this listing.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.mutedSteel,
+                        ),
+                      ),
+                    ],
 
                     const SizedBox(height: 16),
 
@@ -2568,10 +2658,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                                           const Duration(days: 365),
                                         ),
                                       );
-                                      if (picked != null)
+                                      if (picked != null) {
                                         setState(
                                           () => _discountStartDate = picked,
                                         );
+                                      }
                                     },
                                   ),
                                 ),
@@ -2595,10 +2686,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                                           const Duration(days: 365),
                                         ),
                                       );
-                                      if (picked != null)
+                                      if (picked != null) {
                                         setState(
                                           () => _discountEndDate = picked,
                                         );
+                                      }
                                     },
                                   ),
                                 ),

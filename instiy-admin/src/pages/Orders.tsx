@@ -27,7 +27,7 @@ export const Orders: React.FC = () => {
       setFetchError(null);
       let query = supabase
         .from('orders')
-        .select(`*, users:buyer_id ( full_name, email )`)
+        .select(`*, users:buyer_id ( full_name, email, phone_number )`)
         .order('created_at', { ascending: false });
 
       if (selectedStatus) query = query.eq('status', selectedStatus);
@@ -99,38 +99,85 @@ export const Orders: React.FC = () => {
     confirm('Cancel Order', async () => {
       setProcessingAction(true);
       try {
-        const { error } = await supabase.rpc('cancel_order', { order_id: selectedOrder.id });
+        // Live DB signature is cancel_order(p_order_id uuid) — the param
+        // name must match or PostgREST returns "function not found".
+        const { data, error } = await supabase.rpc('cancel_order', { p_order_id: selectedOrder.id });
         if (error) throw error;
-        alert('Success', { description: 'Order cancelled and buyer refunded.', variant: 'success' });
-        setOrders(orders.map(o => o.id === selectedOrder.id ? { ...o, status: 'cancelled' } : o));
-        setSelectedOrder({ ...selectedOrder, status: 'cancelled' });
+        // The RPC returns false when the order can't be cancelled (e.g. any
+        // item is already processing). Surface that instead of a fake success.
+        if (data === false) {
+          alert('Cannot Cancel Order', {
+            description: 'This order can no longer be cancelled — one or more items are already processing or fulfilled.',
+            variant: 'danger',
+          });
+          await fetchOrders();
+          return;
+        }
 
-        // Send cancellation email to buyer
+        // Mirror the server-side refund calculation so notifications state
+        // the exact credited amount: pending item totals, plus the delivery
+        // fee when nothing has been delivered yet.
+        const deliveredExists = orderItems.some(i => i.status === 'delivered');
+        const pendingTotal = orderItems
+          .filter(i => i.status === 'pending')
+          .reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0);
+        const refundAmount = selectedOrder.payment_status === 'paid'
+          ? pendingTotal + (deliveredExists ? 0 : Number(selectedOrder.delivery_fee || 0))
+          : 0;
+        const orderIdShort = selectedOrder.id.substring(0, 8);
+        const buyerName = selectedOrder.users?.full_name || 'there';
+
+        setOrders(orders.map(o => {
+          if (o.id !== selectedOrder.id) return o;
+          const allDone = orderItems.every(i => ['delivered', 'cancelled'].includes(i.status));
+          return {
+            ...o,
+            status: allDone ? 'cancelled' : 'delivered',
+            payment_status: allDone ? 'refunded' : o.payment_status,
+          };
+        }));
+        setSelectedOrder({
+          ...selectedOrder,
+          status: orderItems.every(i => ['delivered', 'cancelled'].includes(i.status)) ? 'cancelled' : 'delivered',
+        });
+        alert('Success', {
+          description: refundAmount > 0
+            ? `Order cancelled and GH¢${refundAmount.toFixed(2)} refunded to the buyer's wallet (email, SMS and in-app notification sent).`
+            : 'Order cancelled. In-app notification sent.',
+          variant: 'success',
+        });
+
+        const refundLine = refundAmount > 0
+          ? `<p style="margin: 8px 0 0; color: #2d2a26;"><strong>Refund Amount:</strong> GH¢${refundAmount.toFixed(2)}</p>
+             <p style="margin: 8px 0 0; color: #2d2a26;"><strong>Refund Method:</strong> Wallet Credit</p>`
+          : '';
+
+        // Email notification to the buyer (best-effort).
         const buyerEmail = selectedOrder.users?.email;
         if (buyerEmail) {
           try {
             await supabase.functions.invoke('send-email', {
               body: {
                 to: buyerEmail,
-                subject: `Order Cancelled - Refund Processed (${selectedOrder.id.substring(0, 8)})`,
+                subject: `Order Cancelled${refundAmount > 0 ? ' - Refund Processed' : ''} (${orderIdShort})`,
                 html: `
                   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #fafaf8; border-radius: 12px;">
                     <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
                     <h2 style="color: #2d2a26; margin-bottom: 8px;">Order Cancelled</h2>
                     <p style="color: #6b6560; line-height: 1.6;">
-                      Hello ${selectedOrder.users?.full_name || 'there'},
+                      Hello ${buyerName},
                     </p>
                     <p style="color: #6b6560; line-height: 1.6;">
-                      Your order <strong>#${selectedOrder.id.substring(0, 8)}</strong> has been cancelled by our admin team.
+                      Your order <strong>#${orderIdShort}</strong> has been cancelled by our admin team.
                     </p>
                     <div style="background: #fff; border: 1px solid #e8e5e0; border-radius: 8px; padding: 16px; margin: 16px 0;">
-                      <p style="margin: 0; color: #2d2a26;"><strong>Order ID:</strong> ${selectedOrder.id.substring(0, 8)}</p>
-                      <p style="margin: 8px 0 0; color: #2d2a26;"><strong>Refund Amount:</strong> {formatGhs(selectedOrder.total_amount)}</p>
-                      <p style="margin: 8px 0 0; color: #2d2a26;"><strong>Refund Method:</strong> Wallet Credit</p>
+                      <p style="margin: 0; color: #2d2a26;"><strong>Order ID:</strong> ${orderIdShort}</p>
+                      ${refundLine}
                     </div>
+                    ${refundAmount > 0 ? `
                     <p style="color: #6b6560; line-height: 1.6; font-size: 14px;">
                       The full amount has been credited back to your Instiy wallet. You can use it for future purchases or request a withdrawal.
-                    </p>
+                    </p>` : ''}
                     <p style="color: #6b6560; line-height: 1.6; font-size: 14px;">
                       If you have any questions, please contact our support team.
                     </p>
@@ -143,6 +190,21 @@ export const Orders: React.FC = () => {
             });
           } catch (emailErr) {
             console.error('Failed to send cancellation email:', emailErr);
+          }
+        }
+
+        // SMS notification to the buyer (best-effort).
+        const buyerPhone = selectedOrder.users?.phone_number;
+        if (buyerPhone && refundAmount > 0) {
+          try {
+            await supabase.functions.invoke('send-sms', {
+              body: {
+                to: buyerPhone,
+                content: `Instiy: Hi ${buyerName}, your order #${orderIdShort} has been cancelled and GH¢${refundAmount.toFixed(2)} has been refunded to your Instiy wallet.`,
+              }
+            });
+          } catch (smsErr) {
+            console.error('Failed to send cancellation SMS:', smsErr);
           }
         }
       } catch (error) {
