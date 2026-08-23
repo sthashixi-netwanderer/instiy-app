@@ -16,6 +16,7 @@ import '../../models/institution_model.dart';
 import '../../services/institution_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/verification_badge.dart';
+import '../../widgets/adaptive_nav.dart';
 import 'seller_orders_screen.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/app_button.dart';
@@ -247,7 +248,9 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
+      extendBody: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Seller Dashboard')),
+      bottomNavigationBar: const AdaptiveNav(currentIndex: 4),
       body: sellerP.isLoading && stats == null
           ? Padding(
               padding: EdgeInsets.fromLTRB(
@@ -266,7 +269,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                   16,
                   MediaQuery.of(context).padding.top + kToolbarHeight + 16,
                   16,
-                  16,
+                  100,
                 ),
                 children: [
                   // Seller profile card
