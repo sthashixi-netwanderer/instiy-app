@@ -109,15 +109,18 @@ Properties: atomic (single transaction), idempotent (re-running updates the prof
 
 ### 4. Lock the flag against self-service updates
 
-Users can already UPDATE their own `users` row (`"Users can update own profile"` policy, no column restrictions), so without this they could set `is_seller = true` directly and skip the wizard. The policy gains a `WITH CHECK` that freezes the column:
+Users can already UPDATE their own `users` row (`"Users can update own profile"` policy, no column restrictions), so without this they could set `is_seller = true` directly and skip the wizard. RLS policy expressions cannot compare OLD vs NEW values, and per-column REVOKEs are no-ops while a table-level grant exists — so the table-level UPDATE/INSERT grants for `authenticated` are revoked and re-granted per column, excluding `is_seller`:
 
 ```sql
-DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
-CREATE POLICY "Users can update own profile"
-  ON public.users FOR UPDATE TO authenticated
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id AND NEW.is_seller = OLD.is_seller);
+REVOKE UPDATE ON TABLE public.users FROM authenticated;
+GRANT UPDATE (id, email, full_name, avatar_url, university, bio, phone_number,
+              created_at, updated_at, is_verified, is_admin, wallet_tag,
+              last_seen, suspended, suspended_at, suspended_report_id)
+  ON TABLE public.users TO authenticated;
+-- same pattern for INSERT
 ```
+
+Only the SECURITY DEFINER `become_seller()` RPC (owner), the service role, and the table owner can write `is_seller`. Trade-off: any future user-writable column on `users` must be added to these column lists.
 
 ### 5. One-way ratchet trigger (defense in depth)
 
