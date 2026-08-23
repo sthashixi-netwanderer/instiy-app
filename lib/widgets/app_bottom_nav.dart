@@ -81,6 +81,7 @@ class AppBottomNav extends ConsumerWidget {
     final msgState = ref.watch(messageProvider);
     final unreadCount = msgState.unreadCount;
     final isAuth = authState.isAuthenticated;
+    final isSeller = authState.user?.isSeller == true;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -122,7 +123,8 @@ class AppBottomNav extends ConsumerWidget {
                           _navButton(context, isAuth, 3, LucideIcons.messageSquare, 'Messages',
                               badgeCount: unreadCount,
                               svgAsset: 'assets/message-2-pending-svgrepo-com.svg'),
-                          _navButton(context, isAuth, 4, LucideIcons.layoutDashboard, 'Dashboard'),
+                          if (isSeller)
+                            _navButton(context, isAuth, 4, LucideIcons.layoutDashboard, 'Dashboard'),
                         ]
                       : [
                           _navButton(context, isAuth, 0, LucideIcons.home, 'Home'),

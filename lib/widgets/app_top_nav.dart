@@ -86,6 +86,7 @@ class AppTopNav extends ConsumerWidget {
     final msgState = ref.watch(messageProvider);
     final unreadCount = msgState.unreadCount;
     final isAuth = authState.isAuthenticated;
+    final isSeller = authState.user?.isSeller == true;
 
     return ClipRRect(
       child: BackdropFilter(
@@ -151,18 +152,20 @@ class AppTopNav extends ConsumerWidget {
                   badgeCount: unreadCount,
                   onTap: () => Navigator.of(context).pushNamed('/messages'),
                 ),
-                _buildNavItem(
-                  icon: LucideIcons.plus,
-                  label: 'Sell',
-                  active: currentIndex == 4,
-                  onTap: () => Navigator.of(context).pushNamed('/sell'),
-                ),
-                _buildNavItem(
-                  icon: LucideIcons.layoutDashboard,
-                  label: 'Dashboard',
-                  active: currentIndex == 5,
-                  onTap: () => Navigator.of(context).pushNamed('/seller-dashboard'),
-                ),
+                if (isSeller) ...[
+                  _buildNavItem(
+                    icon: LucideIcons.plus,
+                    label: 'Sell',
+                    active: currentIndex == 4,
+                    onTap: () => Navigator.of(context).pushNamed('/sell'),
+                  ),
+                  _buildNavItem(
+                    icon: LucideIcons.layoutDashboard,
+                    label: 'Dashboard',
+                    active: currentIndex == 5,
+                    onTap: () => Navigator.of(context).pushNamed('/seller-dashboard'),
+                  ),
+                ],
               ] else ...[
                 _buildNavItem(
                   icon: LucideIcons.home,
