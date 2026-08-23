@@ -156,7 +156,20 @@ CREATE POLICY "Providers can create services"
   WITH CHECK (auth.uid() = provider_id AND public.is_seller(auth.uid()));
 ```
 
-`business_profiles` INSERT/UPDATE-for-own policies gain the same `public.is_seller(auth.uid())` condition (exact current policy names to be taken from `20260529040000_business_profiles.sql` during implementation). The wizard never hits these policies — it goes through the SECURITY DEFINER RPC.
+```sql
+-- business_profiles (replace both own-write policies; view policy unchanged)
+DROP POLICY IF EXISTS "Sellers can insert own business profile" ON public.business_profiles;
+CREATE POLICY "Sellers can insert own business profile"
+  ON public.business_profiles FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = seller_id AND public.is_seller(auth.uid()));
+
+DROP POLICY IF EXISTS "Sellers can update own business profile" ON public.business_profiles;
+CREATE POLICY "Sellers can update own business profile"
+  ON public.business_profiles FOR UPDATE TO authenticated
+  USING (auth.uid() = seller_id AND public.is_seller(auth.uid()));
+```
+
+The wizard never hits these policies — it goes through the SECURITY DEFINER RPC.
 
 ## Client
 
@@ -170,7 +183,7 @@ CREATE POLICY "Providers can create services"
 ### Navigation gating
 
 - `lib/widgets/app_bottom_nav.dart` — in the authed branch, the Dashboard `_navButton` renders only when `isSeller`. It stays **last** in the list so `_handleNavTap` indices (0–4) and each screen's hardcoded `AdaptiveNav(currentIndex:)` remain valid for non-sellers.
-- `lib/widgets/app_top_nav.dart` (desktop) — "Sell" and "Dashboard" items render only for sellers; unauthenticated and non-seller layouts otherwise unchanged.
+- `lib/widgets/app_top_nav.dart` (desktop) — "Sell" and "Dashboard" items render only for sellers; unauthenticated and non-seller layouts otherwise unchanged. Since screens pass a hardcoded `currentIndex`, the hidden items must not shift the position of Home/Explore/Clips/Messages (keep seller items last, same as the bottom nav).
 - Route guards in `lib/main.dart` `onGenerateRoute`: `/seller-dashboard`, `/sell`, `/create-listing`, `/edit-business-profile` redirect non-sellers to `/become-seller` (covers deep links and stale installs hitting dead ends). Guards read `authProvider.user.isSeller`; unauthenticated users follow existing auth behavior.
 
 ### "Become a Seller" menu item
