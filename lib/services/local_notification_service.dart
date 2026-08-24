@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show Platform, File;
+import 'dart:ui' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -46,7 +47,7 @@ class LocalNotificationService {
     if (_initialized) return;
 
     const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@drawable/ic_notification');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -134,54 +135,24 @@ class LocalNotificationService {
     if (!kIsWeb) {
       if (!_initialized) await initialize();
 
-      String largeIconName = 'ic_notification_default';
-      switch (type) {
-        case 'order':
-          largeIconName = 'ic_notification_order';
-          break;
-        case 'message':
-        case 'new_message':
-          largeIconName = 'ic_notification_message';
-          break;
-        case 'transfer_sent':
-        case 'withdrawal':
-          largeIconName = 'ic_notification_wallet_sent';
-          break;
-        case 'transfer_received':
-        case 'deposit':
-          largeIconName = 'ic_notification_wallet_received';
-          break;
-        case 'verification_approved':
-          largeIconName = 'ic_notification_verification_approved';
-          break;
-        case 'verification_rejected':
-          largeIconName = 'ic_notification_verification_rejected';
-          break;
-        case 'delivery':
-        case 'delivery_approved':
-          largeIconName = 'ic_notification_delivery';
-          break;
-        case 'review':
-          largeIconName = 'ic_notification_review';
-          break;
-      }
-
+      // Branded tray: the project logo is the large icon for every
+      // notification type; the small (status-bar) icon is the white logo
+      // silhouette drawable set during initialization.
+      const largeIconName = 'logo';
       String? tempFilePath;
-      if (!kIsWeb) {
-        try {
-          final byteData = await rootBundle.load('assets/notification_icons/$largeIconName.png');
-          final tempDir = await getTemporaryDirectory();
-          final file = File('${tempDir.path}/$largeIconName.png');
-          if (!await file.exists()) {
-            await file.writeAsBytes(byteData.buffer.asUint8List(
-              byteData.offsetInBytes,
-              byteData.lengthInBytes,
-            ));
-          }
-          tempFilePath = file.path;
-        } catch (e) {
-          debugPrint('Error copying notification icon: $e');
+      try {
+        final byteData = await rootBundle.load('assets/$largeIconName.png');
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/$largeIconName.png');
+        if (!await file.exists()) {
+          await file.writeAsBytes(byteData.buffer.asUint8List(
+            byteData.offsetInBytes,
+            byteData.lengthInBytes,
+          ));
         }
+        tempFilePath = file.path;
+      } catch (e) {
+        debugPrint('Error copying notification icon: $e');
       }
 
       final androidDetails = AndroidNotificationDetails(
@@ -191,10 +162,11 @@ class LocalNotificationService {
         importance: Importance.high,
         priority: Priority.high,
         playSound: !useInAppSound, // OS sound only when in-app sound is off
-        icon: '@mipmap/ic_launcher',
+        icon: '@drawable/ic_notification',
+        color: const Color(0xFF7C3AED),
         largeIcon: tempFilePath != null
             ? FilePathAndroidBitmap(tempFilePath)
-            : DrawableResourceAndroidBitmap(largeIconName),
+            : const DrawableResourceAndroidBitmap('ic_notification'),
       );
 
       final details = NotificationDetails(

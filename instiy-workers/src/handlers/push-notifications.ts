@@ -137,7 +137,15 @@ export async function handlePushNotifications(request: Request, env: Env, corsHe
           data: stringData,
           android: {
             priority: 'high',
-            notification: { sound: 'default', click_action: 'FLUTTER_NOTIFICATION_CLICK' },
+            notification: {
+              sound: 'default',
+              click_action: 'FLUTTER_NOTIFICATION_CLICK',
+              // Branded tray icon: white logo silhouette shipped in the
+              // Android res/drawable-* buckets (falls back to the manifest
+              // default when absent).
+              icon: 'ic_notification',
+              color: '#7C3AED',
+            },
           },
           apns: {
             payload: { aps: { sound: 'default', 'content-available': 1 } },

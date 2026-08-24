@@ -493,6 +493,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   List<String> _searchMatchIds = [];
   int _searchMatchIndex = -1;
   bool _showScrollDownButton = false;
+  int? _lastMessageCount;
   late final MessageProvider _messageProvider;
 
   // Selection state
@@ -648,13 +649,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   void _scrollListener() {
-    if (!_scrollCtrl.hasClients) return;
-    final show = _scrollCtrl.offset < _scrollCtrl.position.maxScrollExtent - 300;
-    if (show != _showScrollDownButton) {
-      setState(() {
-        _showScrollDownButton = show;
-      });
-    }
+    _updateScrollButtonVisibility();
 
     // Load older messages when scrolled near the top
     if (_scrollCtrl.offset < 200) {
@@ -662,6 +657,18 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       if (!msgProv.isLoadingMoreMessages && msgProv.hasMoreMessages) {
         msgProv.loadMoreMessages(widget.conversation.id);
       }
+    }
+  }
+
+  /// Shows the jump-to-newest button whenever the user is scrolled away
+  /// from the bottom of the chat.
+  void _updateScrollButtonVisibility() {
+    if (!_scrollCtrl.hasClients) return;
+    final show = _scrollCtrl.offset < _scrollCtrl.position.maxScrollExtent - 200;
+    if (show != _showScrollDownButton) {
+      setState(() {
+        _showScrollDownButton = show;
+      });
     }
   }
 
@@ -1465,6 +1472,18 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           extension: 'm4a',
         );
 
+        // Keep the recording on the sender's device (same file name the
+        // voice bubble derives from the URL) so it plays offline instantly
+        // and never needs to round-trip through R2.
+        try {
+          final docsDir = await RecordingHelper.getDocsDir();
+          final voiceDir = '$docsDir/voice_notes';
+          final localName = Uri.parse(url).pathSegments.last;
+          await RecordingHelper.copyFile(localPath, '$voiceDir/$localName');
+        } catch (e) {
+          debugPrint('Error persisting sent voice note locally: $e');
+        }
+
         try {
           await RecordingHelper.deleteFile(localPath);
           await RecordingHelper.deleteFile(tempPath);
@@ -1544,6 +1563,16 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       _hasSetInitialScroll = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _setInitialScrollPosition();
+      });
+    }
+
+    // The list's extent can change without a scroll event (older messages
+    // paginated in, messages deleted) — re-evaluate the jump-to-bottom
+    // button once the frame settles.
+    if (_lastMessageCount != msgProv.messages.length) {
+      _lastMessageCount = msgProv.messages.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _updateScrollButtonVisibility();
       });
     }
 
@@ -3233,6 +3262,7 @@ class _VoiceBubbleContent extends StatefulWidget {
 class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
   bool _isDownloaded = false;
   bool _isDownloading = false;
+  Future<void>? _downloadFuture;
   AudioPlayer? _player;
   Source? _audioSource;
   bool _isPlaying = false;
@@ -3245,7 +3275,13 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
   @override
   void initState() {
     super.initState();
-    _checkIfDownloaded();
+    _checkIfDownloaded().then((_) {
+      // Voice notes live on device storage: fetch any note that isn't
+      // local yet as soon as it appears (silent — play still falls back
+      // to streaming if the download can't complete right now).
+      if (!mounted || kIsWeb || _isDownloaded) return;
+      _downloadFuture = _downloadVoiceNote(automatic: true);
+    });
   }
 
   Future<void> _checkIfDownloaded() async {
@@ -3273,7 +3309,7 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
     return '$voiceNotesDir/$filename';
   }
 
-  Future<void> _downloadVoiceNote() async {
+  Future<void> _downloadVoiceNote({bool automatic = false}) async {
     if (_isDownloading) return;
     setState(() {
       _isDownloading = true;
@@ -3310,9 +3346,14 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
         setState(() {
           _isDownloading = false;
         });
-        ShadToaster.of(context).show(
-          ShadToast(title: Text('Failed to download voice note: $e')),
-        );
+        // Background fetches fail silently (offline, or another device
+        // already pulled the note off R2); only user-triggered downloads
+        // surface a toast.
+        if (!automatic) {
+          ShadToaster.of(context).show(
+            ShadToast(title: Text('Failed to download voice note: $e')),
+          );
+        }
       }
     }
   }
@@ -3369,7 +3410,9 @@ class _VoiceBubbleContentState extends State<_VoiceBubbleContent> {
   Future<void> _togglePlay() async {
     try {
       if (!_isDownloaded) {
-        await _downloadVoiceNote();
+        // If the automatic background download is already running, wait
+        // for it instead of racing a second one.
+        await (_downloadFuture ??= _downloadVoiceNote());
         if (_isDownloaded) {
           await _initPlayer();
           if (_player != null && _audioSource != null) {
