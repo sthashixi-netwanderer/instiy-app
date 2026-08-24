@@ -1767,8 +1767,23 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                         ),
                                       ),
                                     Expanded(
-                                      child: ListView.builder(
-                                        controller: _scrollCtrl,
+                                      child: Builder(builder: (context) {
+                                        // All media in this conversation
+                                        // (oldest → newest), so the viewer
+                                        // can swipe through them like
+                                        // WhatsApp. Built once per list
+                                        // rebuild, not per bubble.
+                                        final mediaUrls = <String>[];
+                                        final mediaThumbs = <String?>[];
+                                        final mediaIndexById = <String, int>{};
+                                        for (final m in msgProv.messages) {
+                                          final url = m.mediaUrl;
+                                          if (url == null || url.isEmpty) continue;
+                                          mediaIndexById[m.id] = mediaUrls.length;
+                                          mediaUrls.add(url);
+                                          mediaThumbs.add(m.thumbnailUrl);
+                                        }
+                                        return ListView.builder(
                                         padding: EdgeInsets.fromLTRB(
                                           16,
                                           MediaQuery.paddingOf(context).top + kToolbarHeight + 16,
@@ -1801,6 +1816,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                             isSelectionMode: _isSelectionMode,
                                             isHighlighted: _highlightedMessageId == msg.id,
                                             chatColor: _chatColor,
+                                            conversationMediaUrls: mediaUrls,
+                                            conversationMediaThumbnails: mediaThumbs,
+                                            conversationMediaIndex: mediaIndexById[msg.id] ?? 0,
                                             onLongPress: () => isMe ? _enterSelectionMode(msg.id) : null,
                                             onTap: () {
                                               if (_isSelectionMode && isMe) {
@@ -1844,7 +1862,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                           }
                                           return child;
                                         },
-                                      ),
+                                      );
+                                      }),
                                     ),
                                   ],
                                 ),
@@ -2464,6 +2483,11 @@ class _MessageBubble extends StatefulWidget {
   final bool isSelectionMode;
   final bool isHighlighted;
   final Color chatColor;
+  // Conversation-wide media gallery (oldest → newest) so the viewer can
+  // swipe between every image/video in this chat, WhatsApp-style.
+  final List<String>? conversationMediaUrls;
+  final List<String?>? conversationMediaThumbnails;
+  final int conversationMediaIndex;
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final VoidCallback? onSwipeReply;
@@ -2476,6 +2500,9 @@ class _MessageBubble extends StatefulWidget {
     this.isSelectionMode = false,
     this.isHighlighted = false,
     required this.chatColor,
+    this.conversationMediaUrls,
+    this.conversationMediaThumbnails,
+    this.conversationMediaIndex = 0,
     this.onLongPress,
     this.onTap,
     this.onSwipeReply,
@@ -2733,7 +2760,13 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                       if (isVoice)
                         _VoiceBubbleContent(message: msg, isMe: widget.isMe, chatColor: widget.chatColor)
                       else
-                        _MediaBubbleContent(message: msg, isMe: widget.isMe),
+                        _MediaBubbleContent(
+                          message: msg,
+                          isMe: widget.isMe,
+                          mediaUrls: widget.conversationMediaUrls,
+                          thumbnails: widget.conversationMediaThumbnails,
+                          initialIndex: widget.conversationMediaIndex,
+                        ),
                     if (hasProduct)
                       _InlineProductCard(
                         reference: msg.productReference,
@@ -2815,8 +2848,19 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
 class _MediaBubbleContent extends StatelessWidget {
   final dynamic message;
   final bool isMe;
+  // Full conversation media (oldest → newest) + this bubble's position in
+  // it; null when the caller didn't provide a gallery (fallback: single).
+  final List<String>? mediaUrls;
+  final List<String?>? thumbnails;
+  final int initialIndex;
 
-  const _MediaBubbleContent({required this.message, required this.isMe});
+  const _MediaBubbleContent({
+    required this.message,
+    required this.isMe,
+    this.mediaUrls,
+    this.thumbnails,
+    this.initialIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2825,7 +2869,18 @@ class _MediaBubbleContent extends StatelessWidget {
     final thumbnail = message.thumbnailUrl;
 
     return GestureDetector(
-      onTap: () => MediaViewer.open(context, [url], initialIndex: 0),
+      onTap: () {
+        final gallery = (mediaUrls != null && mediaUrls!.isNotEmpty)
+            ? mediaUrls!
+            : [url];
+        final index = gallery.length == 1 ? 0 : initialIndex.clamp(0, gallery.length - 1);
+        MediaViewer.open(
+          context,
+          gallery,
+          initialIndex: index,
+          thumbnailUrls: thumbnails,
+        );
+      },
       child: ClipRRect(
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(14),
