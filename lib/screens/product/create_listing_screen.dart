@@ -1743,7 +1743,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     ),
                     SizedBox(height: context.rh(4)),
                     Text(
-                      'Max 30 seconds. Show your product in action.',
+                      'Max 30 seconds — longer videos are trimmed to their first 30 seconds. Show your product in action.',
                       style: TextStyle(
                         fontSize: context.rsp(11),
                         color: AppTheme.mutedSteel,
@@ -1960,7 +1960,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                               ),
                               SizedBox(height: context.rh(4)),
                               Text(
-                                'Record or Upload Video',
+                                'Record or Upload Video (max 30s)',
                                 style: TextStyle(
                                   color: const Color(0xFF94A3B8),
                                   fontSize: context.rsp(12),

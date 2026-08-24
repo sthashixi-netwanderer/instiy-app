@@ -35,6 +35,12 @@ Future<Uint8List?> generateVideoThumbnailBytes(String? path) async {
 }
 
 /// Native (mobile) video services using dart:io and video_compress.
+
+/// Listing videos are capped at 30 seconds; anything longer is trimmed to
+/// its first 30 seconds during publish. Keep in sync with the caption on
+/// the create/edit listing screen and the source-sheet subtitles.
+const int kMaxListingVideoSeconds = 30;
+
 Future<PickedMedia?> pickVideoOrRecord(BuildContext context) async {
   final source = await _showVideoSourceSheet(context);
   if (source == null) return null;
@@ -53,6 +59,24 @@ Future<PickedMedia?> pickVideoOrRecord(BuildContext context) async {
   if (picked == null) return null;
   final file = File(picked.path);
   final bytes = await file.readAsBytes();
+
+  // Tell the seller up front when a gallery video will be trimmed.
+  if (source == 'gallery') {
+    try {
+      final info = await VideoCompress.getMediaInfo(picked.path);
+      if ((info.duration ?? 0) > kMaxListingVideoSeconds * 1000 && context.mounted) {
+        ShadToaster.of(context).show(
+          ShadToast(
+            backgroundColor: AppTheme.warningAmber,
+            title: const Text(
+              'Video longer than 30 seconds — only the first 30 seconds will be used when you publish.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
   return PickedMedia(
     bytes: bytes,
     name: picked.name.isNotEmpty ? picked.name : 'video_${DateTime.now().millisecondsSinceEpoch}.mp4',
@@ -68,6 +92,40 @@ Future<PickedMedia?> compressVideoOrPass(PickedMedia media, {Function(String)? o
 
     final file = File(media.path!);
     final sizeMB = file.lengthSync() / (1024 * 1024);
+
+    // Videos over 30s are cut to their first 30s — cutting requires a
+    // re-encode, so this runs even when the file is already small.
+    double? durationMs;
+    try {
+      durationMs = (await VideoCompress.getMediaInfo(media.path!)).duration;
+    } catch (_) {}
+    if (durationMs != null && durationMs > kMaxListingVideoSeconds * 1000) {
+      onProgress?.call('Trimming video to the first $kMaxListingVideoSeconds seconds...');
+      // NOTE: video_compress takes startTime/duration in SECONDS (both
+      // platform implementations), unlike getMediaInfo().duration (ms).
+      final trimmed = await VideoCompress.compressVideo(
+        media.path!,
+        quality: VideoQuality.Res1280x720Quality,
+        deleteOrigin: false,
+        includeAudio: true,
+        frameRate: 30,
+        startTime: 0,
+        duration: kMaxListingVideoSeconds,
+      );
+      if (trimmed != null && trimmed.file != null) {
+        final trimmedSize = trimmed.file!.lengthSync() / (1024 * 1024);
+        onProgress?.call('Trimmed to 30s (${trimmedSize.round()}MB)');
+        final trimmedBytes = await trimmed.file!.readAsBytes();
+        return PickedMedia(
+          bytes: trimmedBytes,
+          name: media.name,
+          path: trimmed.file!.path,
+        );
+      }
+      // Trim failed — fall through to plain compression, which at least
+      // shrinks the upload.
+    }
+
     if (sizeMB < 5) {
       onProgress?.call('Video already optimized');
       return null; // signal: use original
@@ -123,7 +181,7 @@ Future<String?> _showVideoSourceSheet(BuildContext context) {
             iconColor: AppTheme.successMoss,
             iconBgColor: AppTheme.successMoss.withValues(alpha: 0.1),
             title: 'Choose from Gallery',
-            subtitle: 'Select an existing video',
+            subtitle: 'First 30s is used if the video is longer',
             onTap: () => Navigator.of(ctx).pop('gallery'),
           ),
           const SizedBox(height: 8),
