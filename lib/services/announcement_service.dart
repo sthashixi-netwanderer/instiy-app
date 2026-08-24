@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'supabase_service.dart';
@@ -40,42 +38,43 @@ class AppAnnouncement {
   bool targets(String routeName) => targetScreens.contains(routeName);
 }
 
-/// Fetches active announcements once per session and enforces the per-user
-/// view cap. Showing is limited to once per announcement per app session so
-/// the popup never nags on every navigation within a single sitting.
+/// Announcement state lives in [AnnouncementNotifier] (Riverpod), which keeps
+/// the list fresh via realtime. This service is the data layer: fetching,
+/// per-user view capping (SharedPreferences) and the once-per-session show
+/// guard so the popup never nags on every navigation within a single sitting.
 class AnnouncementService {
-  static List<AppAnnouncement>? _cache;
+  static const _viewCountPrefix = 'announcement_views_';
   static final Set<String> _shownThisSession = {};
 
-  static const _viewCountPrefix = 'announcement_views_';
+  /// Guards against stacking dialogs when several routes fire in quick
+  /// succession (e.g. deep-link chains).
+  static bool dialogVisible = false;
 
-  /// Loads active announcements into the in-memory cache. Safe to call
-  /// repeatedly; failures fail soft (no popups on network errors).
-  static Future<void> ensureLoaded({bool force = false}) async {
-    if (_cache != null && !force) return;
-    try {
-      final rows = await SupabaseService.table('app_announcements')
-          .select('id, title, content, target_screens, max_views')
-          .eq('is_active', true)
-          .order('created_at', ascending: false);
-      _cache = (rows as List<dynamic>)
-          .map((r) => AppAnnouncement.fromJson(Map<String, dynamic>.from(r)))
-          .toList();
-    } catch (_) {
-      _cache ??= const [];
-    }
+  /// Fetches the currently active announcements from the database.
+  /// Failures propagate to the caller (the provider swallows them).
+  static Future<List<AppAnnouncement>> fetchAnnouncements() async {
+    final rows = await SupabaseService.table('app_announcements')
+        .select('id, title, content, target_screens, max_views')
+        .eq('is_active', true)
+        .order('created_at', ascending: false);
+    return (rows as List<dynamic>)
+        .map((r) => AppAnnouncement.fromJson(Map<String, dynamic>.from(r)))
+        .toList();
   }
 
-  /// The announcement to show on [routeName], if any: it must target the
-  /// screen, not have been shown this session, and be under its view cap.
-  static Future<AppAnnouncement?> pendingFor(String routeName) async {
-    final cache = _cache;
-    if (cache == null || cache.isEmpty) return null;
-    await _loadPrefs();
-    for (final announcement in cache) {
+  /// The announcement to show on [routeName] from [announcements], if any:
+  /// it must target the screen, not have been shown this session, and be
+  /// under its per-user view cap.
+  static Future<AppAnnouncement?> pendingFor(
+    List<AppAnnouncement> announcements,
+    String routeName,
+  ) async {
+    if (announcements.isEmpty) return null;
+    final prefs = await SharedPreferences.getInstance();
+    for (final announcement in announcements) {
       if (!announcement.targets(routeName)) continue;
       if (_shownThisSession.contains(announcement.id)) continue;
-      if ((_prefs.getInt('$_viewCountPrefix${announcement.id}') ?? 0) >=
+      if ((prefs.getInt('$_viewCountPrefix${announcement.id}') ?? 0) >=
           announcement.maxViews) {
         continue;
       }
@@ -88,18 +87,8 @@ class AnnouncementService {
   /// persistent view count.
   static Future<void> markShown(AppAnnouncement announcement) async {
     _shownThisSession.add(announcement.id);
-    await _loadPrefs();
+    final prefs = await SharedPreferences.getInstance();
     final key = '$_viewCountPrefix${announcement.id}';
-    await _prefs.setInt(key, (_prefs.getInt(key) ?? 0) + 1);
-  }
-
-  /// Guards against stacking dialogs when several routes fire in quick
-  /// succession (e.g. deep-link chains).
-  static bool dialogVisible = false;
-
-  static late SharedPreferences _prefs;
-
-  static Future<void> _loadPrefs() async {
-    _prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(key, (prefs.getInt(key) ?? 0) + 1);
   }
 }

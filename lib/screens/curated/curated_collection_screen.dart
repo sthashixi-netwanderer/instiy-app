@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../models/curated_collection_model.dart';
 import '../../models/product_model.dart';
@@ -10,6 +11,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/adaptive_nav.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/responsive_layout.dart';
+import '../../widgets/skeleton.dart';
 import 'package:instiy/utils/formatters.dart';
 
 class CuratedCollectionScreen extends ConsumerStatefulWidget {
@@ -56,17 +58,120 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
     final error = curatedProv.error;
     final products = collection?.items.where((item) => item.product != null).map((item) => item.product!).toList() ?? [];
 
+    final collectionImage = collection?.imageUrl;
+    final hasImage = collectionImage != null && collectionImage.trim().isNotEmpty;
+    final collectionSubtitle = collection?.subtitle;
+    final hasSubtitle = collectionSubtitle != null && collectionSubtitle.trim().isNotEmpty;
+    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(12);
+
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.cleanBackground,
       bottomNavigationBar: const AdaptiveNav(currentIndex: 0),
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppTheme.cleanBackground,
+        extendBodyBehindAppBar: true,
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: Text(
+            collection?.title ?? 'Collection',
+            style: TextStyle(
+              fontSize: context.rsp(16),
+              fontWeight: FontWeight.w600,
+              color: AppTheme.charcoalInk,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          actions: [
+            if (products.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(right: context.rw(12)),
+                child: Center(
+                  child: Text(
+                    '${products.length} ${products.length == 1 ? 'product' : 'products'}',
+                    style: TextStyle(
+                      color: AppTheme.mutedSteel,
+                      fontSize: context.rsp(13),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
         body: RefreshIndicator(
           onRefresh: _loadCollection,
           child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              _buildAppBar(context, collection),
+              SliverToBoxAdapter(
+                child: SizedBox(height: topPadding),
+              ),
+              if (hasImage)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(context.rw(16), 0, context.rw(16), context.rh(12)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(context.rr(16)),
+                      child: Stack(
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: collectionImage,
+                            width: double.infinity,
+                            height: context.rh(140),
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.6),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (hasSubtitle)
+                            Positioned(
+                              left: context.rw(14),
+                              right: context.rw(14),
+                              bottom: context.rh(12),
+                              child: Text(
+                                collectionSubtitle,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: context.rsp(13),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else if (hasSubtitle)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(context.rw(16), 0, context.rw(16), context.rh(8)),
+                    child: Text(
+                      collectionSubtitle,
+                      style: TextStyle(
+                        fontSize: context.rsp(13),
+                        color: AppTheme.mutedSteel,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
               if (isLoading && collection == null)
                 _buildLoadingSliver()
               else if (error != null && collection == null)
@@ -82,128 +187,11 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
     );
   }
 
-  Widget _buildAppBar(BuildContext context, CuratedCollection? collection) {
-    return SliverAppBar(
-      expandedHeight: context.rh(200),
-      pinned: true,
-      backgroundColor: AppTheme.headerBarSolid,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: AppTheme.charcoalInk),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Text(
-        collection?.title ?? 'Collection',
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: AppTheme.charcoalInk,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      flexibleSpace: FlexibleSpaceBar(
-        background: collection?.imageUrl != null
-            ? Container(
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: CachedNetworkImageProvider(collection!.imageUrl!),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.3),
-                        Colors.black.withValues(alpha: 0.7),
-                      ],
-                    ),
-                  ),
-                  padding: EdgeInsets.only(
-                    left: context.rw(16),
-                    right: context.rw(16),
-                    bottom: context.rh(24),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (collection.subtitle != null)
-                        Text(
-                          collection.subtitle!,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white70,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${collection.items.where((item) => item.product != null).length} products',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : Container(
-                color: AppTheme.accent.withValues(alpha: 0.1),
-                padding: EdgeInsets.only(
-                  left: context.rw(16),
-                  right: context.rw(16),
-                  bottom: context.rh(24),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (collection?.subtitle != null)
-                      Text(
-                        collection!.subtitle!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.charcoalInk,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${collection?.items.where((item) => item.product != null).length ?? 0} products',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.charcoalInk,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-
   Widget _buildLoadingSliver() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: context.rw(16)),
-        child: Column(
-          children: List.generate(
-            3,
-            (index) => Padding(
-              padding: EdgeInsets.only(bottom: context.rh(16)),
-              child: _buildProductCardSkeleton(),
-            ),
-          ),
-        ),
+    return SliverPadding(
+      padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(4)),
+      sliver: const SliverToBoxAdapter(
+        child: ProductGridSkeleton(count: 6),
       ),
     );
   }
@@ -211,9 +199,9 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
   Widget _buildErrorSliver(BuildContext context) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(16)),
+        padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(32)),
         child: EmptyState(
-          icon: Icons.error_outline,
+          icon: LucideIcons.alertCircle,
           title: 'Failed to load collection',
           description: ref.watch(curatedProvider).error ?? 'Please try again later',
           actionLabel: 'Retry',
@@ -226,9 +214,9 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
   Widget _buildNotFoundSliver(BuildContext context) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(16)),
+        padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(32)),
         child: EmptyState(
-          icon: Icons.inventory_2_outlined,
+          icon: LucideIcons.packageSearch,
           title: 'Collection not found',
           description: 'The collection you are looking for does not exist',
           actionLabel: 'Go Back',
@@ -242,9 +230,9 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
     if (products.isEmpty) {
       return SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(16)),
+          padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(32)),
           child: EmptyState(
-            icon: Icons.shopping_bag_outlined,
+            icon: LucideIcons.shoppingBag,
             title: 'No products yet',
             description: 'This collection has no products yet',
             actionLabel: 'Go Back',
@@ -255,7 +243,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
     }
 
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: context.rw(16), vertical: context.rh(16)),
+      padding: EdgeInsets.fromLTRB(context.rw(16), context.rh(4), context.rw(16), context.rh(24)),
       sliver: SliverGrid(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
@@ -505,44 +493,6 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildProductCardSkeleton() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.pureSurface,
-        borderRadius: BorderRadius.circular(context.rr(16)),
-        border: Border.all(color: AppTheme.whisperBorder),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Container(
-            height: context.rh(180),
-            color: AppTheme.warmMist,
-          ),
-          Padding(
-            padding: EdgeInsets.all(context.rw(8)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: context.rw(120),
-                  height: context.rh(12),
-                  color: AppTheme.warmMist,
-                ),
-                SizedBox(height: context.rh(8)),
-                Container(
-                  width: context.rw(80),
-                  height: context.rh(12),
-                  color: AppTheme.warmMist,
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

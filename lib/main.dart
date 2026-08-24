@@ -9,8 +9,8 @@ import 'config/app_config.dart';
 import 'config/app_theme.dart';
 import 'services/navigation_service.dart';
 import 'services/supabase_service.dart';
-import 'services/announcement_service.dart';
 import 'services/announcement_observer.dart';
+import 'providers/announcement_provider.dart';
 import 'providers/providers.dart';
 import 'services/secrets_service.dart';
 import 'services/local_notification_service.dart';
@@ -82,6 +82,10 @@ import 'screens/seller/become_seller_screen.dart'
 /// services initialize in the background.
 late final Future<void> appInitialization;
 
+/// App-wide Riverpod container, created explicitly so code outside the
+/// widget tree (the announcement observer) can read providers.
+final ProviderContainer _container = ProviderContainer();
+
 /// CRITICAL-PATH initialization only. Everything the very first frame of the
 /// app (splash → home) actually needs to render. Anything that is not strictly
 /// required to show the home screen is deferred to [_initializeDeferred] so the
@@ -113,9 +117,12 @@ Future<void> _initializeApp() async {
   // screen renders immediately from cached/session data while these finish.
   unawaited(_initializeDeferred());
 
-  // Warm the announcement cache so screen-targeted popups can appear as
-  // soon as the user lands on a targeted screen (fail-soft, no popup on error).
-  unawaited(AnnouncementService.ensureLoaded().catchError((_) {}));
+  // Warm the announcement provider (loads the list and opens the realtime
+  // subscription) so screen-targeted popups appear as soon as the user
+  // lands on a targeted screen — and update live as the admin edits them.
+  unawaited(
+    _container.read(announcementProvider.notifier).ensureLoaded(),
+  );
 }
 
 /// Non-critical, post-first-frame initialization. Runs in the background after
@@ -387,12 +394,13 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ProviderScope(
+    return UncontrolledProviderScope(
+      container: _container,
       child: ShadApp(
         navigatorKey: NavigationService.navigatorKey,
         navigatorObservers: [
           NavigationService.routeObserver,
-          AnnouncementObserver(),
+          AnnouncementObserver(_container),
         ],
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,
