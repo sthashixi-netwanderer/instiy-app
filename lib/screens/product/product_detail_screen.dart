@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
@@ -641,6 +642,137 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Owner shortcut on out-of-stock listings: set a new stock quantity in
+  /// place, without opening the full edit-product screen. The database's
+  /// stock-status trigger revives the listing (sold → available) once the
+  /// quantity is positive again.
+  Future<void> _addStock() async {
+    final currentStock = _product?.stockQuantity ?? 0;
+    final qty = await _showAddStockDialog(currentStock);
+    if (qty == null || qty <= currentStock) return;
+
+    final success = await ref.read(productProvider).updateProduct(
+          productId: _product!.id,
+          stockQuantity: qty,
+        );
+    if (!mounted) return;
+    if (success) {
+      ShadToaster.of(context).show(
+        ShadToast(
+          backgroundColor: AppTheme.successMoss,
+          title: Text('Stock updated to $qty unit${qty == 1 ? '' : 's'}'),
+        ),
+      );
+      unawaited(_loadProduct());
+    } else {
+      ShadToaster.of(context).show(
+        const ShadToast(
+          backgroundColor: AppTheme.destructive,
+          title: Text('Could not update stock. Please try again.'),
+        ),
+      );
+    }
+  }
+
+  Future<int?> _showAddStockDialog(int currentStock) async {
+    final controller = TextEditingController(text: currentStock <= 0 ? '' : '$currentStock');
+    int parsed() => int.tryParse(controller.text.trim()) ?? 0;
+
+    return AppTheme.showGlassDialog<int>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: controller.text.length),
+          );
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Add Stock',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.charcoalInk,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                currentStock <= 0
+                    ? '"${_product?.title ?? 'This item'}" is out of stock. How many units do you have available?'
+                    : '$currentStock unit${currentStock == 1 ? '' : 's'} currently in stock. Set the new total.',
+                style: const TextStyle(color: AppTheme.mutedSteel, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              ShadInput(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                maxLength: 5,
+                textAlign: TextAlign.center,
+                placeholder: const Text('0'),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  for (final delta in const [5, 10, 20])
+                    Padding(
+                      padding: EdgeInsets.only(right: context.rw(8)),
+                      child: ShadButton.outline(
+                        onPressed: () {
+                          final base = currentStock <= 0 ? 0 : parsed();
+                          controller.text = '${base + delta}';
+                          setDialogState(() {});
+                        },
+                        child: Text('+$delta'),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'New total: ${parsed()} unit${parsed() == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.charcoalInk,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ShadButton.ghost(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ShadButton(
+                      backgroundColor: AppTheme.successMoss,
+                      foregroundColor: Colors.white,
+                      enabled: parsed() > currentStock,
+                      onPressed: () => Navigator.of(context).pop(parsed()),
+                      child: const Text('Update Stock'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1345,7 +1477,15 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               ],
                             ),
                           ),
-                          if (_product!.stockQuantity > 0 && _product!.stockQuantity <= 5)
+                          if (isOwner && _product!.stockQuantity <= 0) ...[
+                            ShadButton(
+                              onPressed: _addStock,
+                              backgroundColor: AppTheme.successMoss,
+                              foregroundColor: Colors.white,
+                              leading: Icon(LucideIcons.packagePlus, size: context.ri(16)),
+                              child: const Text('Add Stock'),
+                            ),
+                          ] else if (_product!.stockQuantity > 0 && _product!.stockQuantity <= 5)
                             Container(
                               padding: EdgeInsets.symmetric(horizontal: context.rw(8), vertical: context.rh(4)),
                               decoration: BoxDecoration(
