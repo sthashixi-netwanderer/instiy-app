@@ -13,6 +13,7 @@ import { Policies } from "./pages/Policies";
 import { CuratedCollections } from "./pages/CuratedCollections";
 import { Reports } from "./pages/Reports";
 import { Carousel } from "./pages/Carousel";
+import { Announcements } from "./pages/Announcements";
 import { AISettings } from "./pages/AISettings";
 import { GPSConfig } from "./pages/GPSConfig";
 import { WithdrawalFees } from "./pages/WithdrawalFees";
@@ -40,6 +41,7 @@ import {
 	BrainCircuit,
 	MapPin,
 	Wallet,
+	Megaphone,
 } from "lucide-react";
 const instiyLogo = "/favicon.svg";
 
@@ -259,6 +261,12 @@ export const App: React.FC = () => {
 			path: "/carousel",
 		},
 		{
+			id: "announcements",
+			label: "Announcements",
+			icon: <Megaphone size={18} />,
+			path: "/announcements",
+		},
+		{
 			id: "reports",
 			label: "Reports",
 			icon: <Flag size={18} />,
@@ -448,6 +456,7 @@ export const App: React.FC = () => {
 					<Route path="/policies" element={<Policies />} />
 					<Route path="/curated" element={<CuratedCollections />} />
 					<Route path="/carousel" element={<Carousel />} />
+					<Route path="/announcements" element={<Announcements />} />
 					<Route path="/reports" element={<Reports />} />
 					<Route path="/ai-settings" element={<AISettings />} />
 					<Route path="/gps-settings" element={<GPSConfig />} />

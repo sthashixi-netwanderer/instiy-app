@@ -9,6 +9,8 @@ import 'config/app_config.dart';
 import 'config/app_theme.dart';
 import 'services/navigation_service.dart';
 import 'services/supabase_service.dart';
+import 'services/announcement_service.dart';
+import 'services/announcement_observer.dart';
 import 'providers/providers.dart';
 import 'services/secrets_service.dart';
 import 'services/local_notification_service.dart';
@@ -110,6 +112,10 @@ Future<void> _initializeApp() async {
   // Kick off everything non-critical without blocking the splash. The home
   // screen renders immediately from cached/session data while these finish.
   unawaited(_initializeDeferred());
+
+  // Warm the announcement cache so screen-targeted popups can appear as
+  // soon as the user lands on a targeted screen (fail-soft, no popup on error).
+  unawaited(AnnouncementService.ensureLoaded().catchError((_) {}));
 }
 
 /// Non-critical, post-first-frame initialization. Runs in the background after
@@ -384,7 +390,10 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
     return ProviderScope(
       child: ShadApp(
         navigatorKey: NavigationService.navigatorKey,
-        navigatorObservers: [NavigationService.routeObserver],
+        navigatorObservers: [
+          NavigationService.routeObserver,
+          AnnouncementObserver(),
+        ],
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
@@ -398,8 +407,11 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
         },
         initialRoute: '/splash',
         onGenerateRoute: (settings) {
-          // Helper to wrap all routes with smooth fade+slide transition
-          Route<T> route<T>(Widget page) => AppTheme.fadeSlideRoute<T>(page);
+          // Helper to wrap all routes with smooth fade+slide transition.
+          // Settings are forwarded so routes carry their names (used by the
+          // announcement observer for screen-targeted popups).
+          Route<T> route<T>(Widget page) =>
+              AppTheme.fadeSlideRoute<T>(page, settings: settings);
 
           final name = settings.name ?? '';
           if (name.isNotEmpty) {

@@ -717,8 +717,9 @@ class AppTheme {
   }
 
   /// Custom page transition: fade + subtle slide up
-  static Route<T> fadeSlideRoute<T>(Widget page) {
+  static Route<T> fadeSlideRoute<T>(Widget page, {RouteSettings? settings}) {
     return PageRouteBuilder<T>(
+      settings: settings,
       transitionDuration: const Duration(milliseconds: 250),
       reverseTransitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (context, animation, secondaryAnimation) => page,
