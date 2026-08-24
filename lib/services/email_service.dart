@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import '../models/product_model.dart';
 import 'supabase_service.dart';
 import 'package:instiy/utils/formatters.dart';
 
@@ -673,72 +672,6 @@ class EmailService {
       <p><strong>$sellerName</strong> replied to your review on <strong>$productTitle</strong>.</p>
       <div class="reply">
         <p style="margin: 0; color: #1c1917;">$reply</p>
-      </div>
-    </div>
-    <div class="footer">
-      <p>Instiy — Student Marketplace</p>
-    </div>
-  </div>
-</body>
-</html>''',
-    );
-  }
-
-  // ─── New Product from Followed Seller ─────────────────────────
-
-  static Future<void> sendNewProductFromFollowedSeller({
-    required String followerEmail,
-    required String followerName,
-    required String sellerName,
-    required String productTitle,
-    required double productPrice,
-    required String? productThumbnail,
-    required String productId,
-  }) async {
-    final slug = Product.generateSlug(productTitle);
-    final deepLink = 'https://instiy.com/products/$slug-$productId';
-    final thumbnailHtml = productThumbnail != null
-        ? '<img src="$productThumbnail" alt="$productTitle" style="width: 100%; max-width: 400px; border-radius: 12px; margin: 16px 0;" />'
-        : '';
-
-    final subject = '$sellerName just listed a new product';
-    await _sendEmail(
-      to: followerEmail,
-      subject: subject,
-      htmlBody: '''
-<!DOCTYPE html>
-<html>
-<head>
-  <title>$subject</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f4; margin: 0; padding: 20px; }
-    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .header { background: linear-gradient(135deg, #6c47ff, #8B5CF6); padding: 32px 24px; text-align: center; }
-    .header h1 { color: white; margin: 0; font-size: 20px; }
-    .body { padding: 24px; }
-    .product-card { background: #f5f5f4; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
-    .product-title { font-size: 16px; font-weight: 600; color: #1c1917; margin: 8px 0 4px; }
-    .product-price { font-size: 20px; font-weight: 700; color: #6c47ff; }
-    .btn { display: inline-block; background: linear-gradient(135deg, #6c47ff, #8B5CF6); color: white; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 600; font-size: 15px; margin: 16px 0; }
-    .footer { padding: 16px 24px; background: #f5f5f4; text-align: center; color: #78716c; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
-      <h1>New Listing!</h1>
-    </div>
-    <div class="body">
-      <p>Hi $followerName,</p>
-      <p><strong>$sellerName</strong>, who you follow, just listed a new product:</p>
-      <div class="product-card">
-        $thumbnailHtml
-        <div class="product-title">$productTitle</div>
-        <div class="product-price">${formatGhs(productPrice)}</div>
-      </div>
-      <div style="text-align: center;">
-        <a href="$deepLink" class="btn">View Product</a>
       </div>
     </div>
     <div class="footer">

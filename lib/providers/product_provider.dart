@@ -7,7 +7,6 @@ import '../models/draft_listing_model.dart';
 import '../services/category_image_cache_service.dart';
 import '../services/draft_service.dart';
 import '../providers/block_provider.dart';
-import '../services/follow_service.dart';
 import '../services/product_service.dart';
 import '../services/supabase_service.dart';
 
@@ -312,21 +311,8 @@ class ProductProvider extends ChangeNotifier {
       _userListings.insert(0, product);
       notifyListeners();
 
-      // Notify followers about the new product (fire-and-forget)
-      final currentUser = SupabaseService.auth.currentUser;
-      if (currentUser != null) {
-        final sellerName = product.sellerName ?? 'A seller';
-        final thumb = product.thumbnailUrl ??
-            (product.imageUrls.isNotEmpty ? product.imageUrls.first : null);
-        FollowService.notifyFollowersOfNewProduct( // ignore: unawaited_futures
-          sellerId: currentUser.id,
-          sellerName: sellerName,
-          productId: product.id,
-          productTitle: product.title,
-          productPrice: product.price,
-          productThumbnail: thumb,
-        );
-      }
+      // Follower notifications + emails are sent server-side by the
+      // trg_notify_seller_followers_new_product trigger on product insert.
 
       return true;
     } catch (e) {

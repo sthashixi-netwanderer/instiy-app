@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'supabase_service.dart';
-import 'email_service.dart';
 
 class FollowService {
   /// Check if the current user is following [sellerId]
@@ -130,55 +129,5 @@ class FollowService {
         'email': user?['email'] as String?,
       };
     }).toList();
-  }
-
-  /// Notify all followers when a seller lists a new product
-  static Future<void> notifyFollowersOfNewProduct({
-    required String sellerId,
-    required String sellerName,
-    required String productId,
-    required String productTitle,
-    required double productPrice,
-    required String? productThumbnail,
-  }) async {
-    try {
-      final followers = await getFollowers(sellerId);
-      if (followers.isEmpty) return;
-
-      // Batch insert notifications
-      final notifications = followers.map((follower) => {
-        'user_id': follower['id'],
-        'title': '$sellerName listed a new product',
-        'body': productTitle,
-        'type': 'new_product',
-        'data': {
-          'product_id': productId,
-          'seller_id': sellerId,
-        },
-      }).toList();
-
-      await SupabaseService.table('notifications').insert(notifications);
-
-      // Send emails (fire-and-forget, don't block)
-      for (final follower in followers) {
-        final email = follower['email'] as String?;
-        final name = follower['name'] as String? ?? 'User';
-        if (email != null && email.isNotEmpty) {
-          EmailService.sendNewProductFromFollowedSeller(
-            followerEmail: email,
-            followerName: name,
-            sellerName: sellerName,
-            productTitle: productTitle,
-            productPrice: productPrice,
-            productThumbnail: productThumbnail,
-            productId: productId,
-          ).catchError((e) { // ignore: unawaited_futures
-            debugPrint('Email notification failed for $email: $e');
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint('Notify followers failed: $e');
-    }
   }
 }
