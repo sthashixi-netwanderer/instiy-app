@@ -333,6 +333,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
 
   Widget _buildAppLockTab(ShadThemeData theme) {
     final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
+    // Seller screens are only reachable (and lockable) for sellers.
+    final isSeller = ref.watch(authProvider).user?.isSeller == true;
     return ListView(
       padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
       children: [
@@ -392,7 +394,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                 ),
                 SizedBox(height: context.rh(8)),
                 for (final (key, icon, label, detail) in _screenConfig)
-                  _LockScreenItem(
+                  if (isSeller || !key.startsWith('seller_'))
+                    _LockScreenItem(
                     icon: icon,
                     label: label,
                     detail: detail,
