@@ -403,6 +403,9 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
           final isDark = theme.brightness == Brightness.dark;
           return theme.copyWith(
             popupMenuTheme: AppTheme.popupMenuTheme(isDark: isDark),
+            // Material 3 TabBars draw a dark outlineVariant divider under the
+            // tabs by default; the tabbed screens style their own borders.
+            tabBarTheme: const TabBarThemeData(dividerColor: Colors.transparent),
           );
         },
         initialRoute: '/splash',
