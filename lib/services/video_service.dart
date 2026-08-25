@@ -19,9 +19,13 @@ class VideoService {
 
   /// Compress a video for upload. Returns the compressed media on mobile,
   /// or the original PickedMedia on web (no compression available).
+  ///
+  /// [maxDurationSeconds] trims to the first N seconds (listing default:
+  /// 30s). Pass null to compress without trimming (chat videos).
   static Future<PickedMedia?> compressVideo(
     PickedMedia media, {
     Function(String)? onProgress,
+    int? maxDurationSeconds = 30,
   }) async {
     if (kIsWeb || media.path == null) {
       onProgress?.call('Video compression not available on web');
@@ -29,7 +33,11 @@ class VideoService {
     }
 
     // Mobile: use native compression via the native helper.
-    final compressed = await compressVideoOrPass(media, onProgress: onProgress);
+    final compressed = await compressVideoOrPass(
+      media,
+      onProgress: onProgress,
+      maxDurationSeconds: maxDurationSeconds,
+    );
     return compressed ?? media;
   }
 

@@ -124,6 +124,9 @@ class Message {
   final String content;
   final String? _mediaUrlField;
   final String? mediaType;
+  /// Where the media came from: 'camera' (in-app capture) or 'gallery'.
+  /// Null on legacy messages — only gallery picking existed then.
+  final String? mediaSource;
   final ProductReference? productReference;
   final DateTime createdAt;
   final bool isRead;
@@ -143,6 +146,7 @@ class Message {
     required this.content,
     String? mediaUrl,
     this.mediaType,
+    this.mediaSource,
     this.productReference,
     required this.createdAt,
     this.isRead = false,
@@ -173,6 +177,10 @@ class Message {
   bool get isGif => mediaType == 'gif';
   bool get isSticker => mediaType == 'sticker';
 
+  /// True when this video was recorded inside the app (camera source).
+  /// Legacy videos (null source) could only come from the gallery.
+  bool get isCameraVideo => mediaType == 'video' && mediaSource == 'camera';
+
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
       id: json['id'] as String,
@@ -181,6 +189,7 @@ class Message {
       content: json['content'] as String,
       mediaUrl: json['media_url'] as String?,
       mediaType: json['media_type'] as String?,
+      mediaSource: json['media_source'] as String?,
       productReference: json['product_reference'] != null
           ? ProductReference.fromJson(
               json['product_reference'] as Map<String, dynamic>)

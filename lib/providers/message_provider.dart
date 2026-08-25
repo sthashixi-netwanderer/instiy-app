@@ -881,6 +881,7 @@ class MessageProvider extends ChangeNotifier {
     required String mediaType,
     String caption = '',
     String? replyToMessageId,
+    String? mediaSource,
   }) async {
     if (_activeConversation == null) return;
 
@@ -891,6 +892,7 @@ class MessageProvider extends ChangeNotifier {
         mediaType: mediaType,
         caption: caption,
         replyToMessageId: replyToMessageId,
+        mediaSource: mediaSource,
       );
       // Add message immediately so it appears without waiting for Realtime
       if (!_messages.any((m) => m.id == message.id)) {

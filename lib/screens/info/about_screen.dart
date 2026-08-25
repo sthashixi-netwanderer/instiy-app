@@ -27,14 +27,11 @@ class AboutScreen extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                Container(
-                  width: context.rw(80),
-                  height: context.rh(80),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(context.rr(20)),
-                  ),
-                  child: Icon(LucideIcons.store, size: context.ri(40), color: AppTheme.accent),
+                Image.asset(
+                  'assets/logo.png',
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.contain,
                 ),
                 SizedBox(height: context.rh(12)),
                 Text(

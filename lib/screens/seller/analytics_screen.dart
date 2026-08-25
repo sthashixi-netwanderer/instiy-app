@@ -137,7 +137,7 @@ class _SellerAnalyticsScreenState extends ConsumerState<SellerAnalyticsScreen> {
                   const SizedBox(height: 16),
                   _buildAnalyticsCard(
                     'Average Rating',
-                    stats.averageRating > 0 ? formatCurrency(stats.averageRating) : 'No ratings',
+                    stats.averageRating > 0 ? stats.averageRating.toStringAsFixed(1) : 'No ratings',
                     LucideIcons.star,
                     AppTheme.warningAmber,
                     '${stats.newReviews} new reviews in last 7 days',

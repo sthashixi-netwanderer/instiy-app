@@ -62,7 +62,7 @@ class _CuratedCollectionScreenState extends ConsumerState<CuratedCollectionScree
     final hasImage = collectionImage != null && collectionImage.trim().isNotEmpty;
     final collectionSubtitle = collection?.subtitle;
     final hasSubtitle = collectionSubtitle != null && collectionSubtitle.trim().isNotEmpty;
-    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(12);
+    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
 
     return ResponsiveLayout(
       type: ResponsiveLayoutType.general,

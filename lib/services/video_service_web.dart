@@ -21,7 +21,11 @@ Future<PickedMedia?> pickVideoOrRecord(BuildContext context) async {
 }
 
 /// On web, compression is not available — return null to signal "use original".
-Future<PickedMedia?> compressVideoOrPass(PickedMedia media, {Function(String)? onProgress}) async {
+Future<PickedMedia?> compressVideoOrPass(
+  PickedMedia media, {
+  Function(String)? onProgress,
+  int? maxDurationSeconds,
+}) async {
   onProgress?.call('Video compression not available on web');
   return null;
 }

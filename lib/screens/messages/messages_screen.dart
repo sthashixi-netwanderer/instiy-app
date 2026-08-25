@@ -21,6 +21,7 @@ import '../../services/wallet_lock_service.dart';
 import 'recording_helper.dart';
 import '../../utils/responsive.dart';
 import '../../models/message_model.dart';
+import '../../models/picked_media.dart';
 import '../../models/chat_background_model.dart';
 import '../../providers/providers.dart';
 import '../../providers/chat_background_provider.dart';
@@ -484,6 +485,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   // Thumbnails (random video frame) for pending videos, aligned by index
   // with [_pendingMediaList]; null for images or while generating.
   List<Uint8List?> _pendingVideoThumbList = [];
+  // Origin of each pending item — 'camera' (in-app capture) or 'gallery' —
+  // aligned by index with [_pendingMediaList].
+  List<String> _pendingMediaSourceList = [];
+  // True while a camera recording is being compressed before it joins the
+  // pending strip.
+  bool _isProcessingCapture = false;
   String? _firstUnreadMessageId;
   bool _hasSetInitialScroll = false;
 
@@ -1127,6 +1134,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           thumbnailBytes: i < _pendingVideoThumbList.length
               ? _pendingVideoThumbList[i]
               : null,
+          mediaSource: i < _pendingMediaSourceList.length
+              ? _pendingMediaSourceList[i]
+              : null,
         );
       }
       _messageCtrl.clear();
@@ -1134,6 +1144,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         _pendingMediaList = [];
         _pendingIsVideoList = [];
         _pendingVideoThumbList = [];
+        _pendingMediaSourceList = [];
         _productReference = null;
         _replyToMessage = null;
       });
@@ -1180,32 +1191,82 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
 
     final picker = ImagePicker();
-    final isVideo = source == 'video';
 
-    if (isVideo) {
-      final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      await _handleVideoPicked(bytes, picked.name, path: picked.path);
-    } else {
-      final pickedList = await picker.pickMultiImage(maxWidth: 1080, maxHeight: 1080, imageQuality: 60);
-      if (pickedList.isEmpty) return;
-      for (final picked in pickedList) {
-        final bytes = await picked.readAsBytes();
-        await _handleImagePicked(bytes, picked.name);
+    try {
+      switch (source) {
+        case 'camera_image':
+          final picked = await picker.pickImage(
+            source: ImageSource.camera,
+            maxWidth: 1080,
+            maxHeight: 1080,
+            imageQuality: 60,
+          );
+          if (picked == null) return;
+          final bytes = await picked.readAsBytes();
+          await _handleImagePicked(bytes, picked.name, mediaSource: 'camera');
+        case 'camera_video':
+          final picked = await picker.pickVideo(
+            source: ImageSource.camera,
+            maxDuration: const Duration(seconds: 60),
+          );
+          if (picked == null) return;
+          final processed = await _prepareRecordedVideo(picked);
+          await _handleVideoPicked(
+            processed.bytes,
+            processed.name,
+            path: processed.path,
+            mediaSource: 'camera',
+          );
+        case 'video':
+          final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
+          if (picked == null) return;
+          final bytes = await picked.readAsBytes();
+          await _handleVideoPicked(bytes, picked.name, path: picked.path, mediaSource: 'gallery');
+        default:
+          final pickedList = await picker.pickMultiImage(maxWidth: 1080, maxHeight: 1080, imageQuality: 60);
+          if (pickedList.isEmpty) return;
+          for (final picked in pickedList) {
+            final bytes = await picked.readAsBytes();
+            await _handleImagePicked(bytes, picked.name, mediaSource: 'gallery');
+          }
+      }
+    } catch (e) {
+      // Camera capture can fail when permission is denied or unavailable.
+      debugPrint('Media capture failed: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(title: Text('Could not capture media. Check camera permissions.')),
+        );
       }
     }
   }
 
-  Future<void> _handleImagePicked(dynamic bytes, String name) async {
+  /// Shrinks a camera recording before it joins the pending strip — raw
+  /// camera output is far too large to upload uncompressed. Falls back to
+  /// the original bytes when compression isn't possible (web, failure).
+  Future<PickedMedia> _prepareRecordedVideo(XFile picked) async {
+    final original = await PickedMedia.fromXFile(picked);
+    setState(() => _isProcessingCapture = true);
+    try {
+      final compressed = await VideoService.compressVideo(original, maxDurationSeconds: null);
+      return compressed ?? original;
+    } catch (_) {
+      return original;
+    } finally {
+      if (mounted) setState(() => _isProcessingCapture = false);
+    }
+  }
+
+  Future<void> _handleImagePicked(dynamic bytes, String name, {String mediaSource = 'gallery'}) async {
     setState(() {
       _pendingMediaList.add(bytes);
       _pendingIsVideoList.add(false);
       _pendingVideoThumbList.add(null);
+      _pendingMediaSourceList.add(mediaSource);
     });
   }
 
-  Future<void> _handleVideoPicked(dynamic bytes, String name, {String? path}) async {
+  Future<void> _handleVideoPicked(dynamic bytes, String name, {String? path, String mediaSource = 'gallery'}) async {
     // Add the video bytes — backend handles duration check and trimming.
     // A thumbnail from a random frame is generated in the background and
     // attached so the chat bubble shows a preview instead of an icon.
@@ -1214,6 +1275,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       _pendingMediaList.add(bytes);
       _pendingIsVideoList.add(true);
       _pendingVideoThumbList.add(null);
+      _pendingMediaSourceList.add(mediaSource);
     });
 
     final thumb = await VideoService.generateThumbnail(path);
@@ -1231,6 +1293,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       _pendingMediaList.clear();
       _pendingIsVideoList.clear();
       _pendingVideoThumbList.clear();
+      _pendingMediaSourceList.clear();
     });
   }
 
@@ -1283,6 +1346,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     required String caption,
     String? replyToMessageId,
     Uint8List? thumbnailBytes,
+    String? mediaSource,
   }) {
     setState(() => _isSendingMedia = true);
 
@@ -1325,6 +1389,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
             mediaType: mediaType,
             caption: caption,
             replyToMessageId: replyToMessageId,
+            mediaSource: mediaSource,
           );
         }
       } catch (_) {
@@ -1335,6 +1400,72 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         }
       }
     }();
+  }
+
+  Widget _buildPendingMediaThumbnail(dynamic media, bool isVideo, Uint8List? videoThumb) {
+    if (isVideo) {
+      return Container(
+        width: 70,
+        height: 70,
+        color: AppTheme.charcoalInk,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (videoThumb != null)
+              Positioned.fill(
+                child: Image.memory(
+                  videoThumb,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                shape: BoxShape.circle,
+              ),
+              padding: const EdgeInsets.all(4),
+              child: const Icon(LucideIcons.play, size: 16, color: Colors.white),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (media is Uint8List) {
+      return Image.memory(
+        media,
+        width: 70,
+        height: 70,
+        fit: BoxFit.cover,
+      );
+    } else if (media is List<int>) {
+      return Image.memory(
+        Uint8List.fromList(media),
+        width: 70,
+        height: 70,
+        fit: BoxFit.cover,
+      );
+    } else if (media is File) {
+      return Image.file(
+        media,
+        width: 70,
+        height: 70,
+        fit: BoxFit.cover,
+      );
+    } else if (media is String) {
+      return Image.file(
+        File(media),
+        width: 70,
+        height: 70,
+        fit: BoxFit.cover,
+      );
+    }
+    return Container(
+      width: 70,
+      height: 70,
+      color: AppTheme.warmMist,
+      child: const Icon(LucideIcons.image, size: 20, color: AppTheme.mutedSteel),
+    );
   }
 
   Future<void> _startRecording() async {
@@ -1531,20 +1662,38 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           children: [
             const SizedBox(height: 12),
             _MediaOption(
-              icon: LucideIcons.image,
+              icon: LucideIcons.camera,
               iconColor: _chatColor,
               iconBgColor: _chatColor.withValues(alpha: 0.1),
-              title: 'Photo',
-              subtitle: 'Send a photo from gallery',
-              onTap: () => Navigator.of(ctx).pop('image'),
+              title: 'Take Photo',
+              subtitle: 'Capture a photo with your camera',
+              onTap: () => Navigator.of(ctx).pop('camera_image'),
             ),
             const SizedBox(height: 8),
             _MediaOption(
               icon: LucideIcons.video,
               iconColor: _chatColor,
               iconBgColor: _chatColor.withValues(alpha: 0.1),
-              title: 'Video',
-              subtitle: 'Send a video (max 15s)',
+              title: 'Record Video',
+              subtitle: 'Record with your camera (max 60s)',
+              onTap: () => Navigator.of(ctx).pop('camera_video'),
+            ),
+            const SizedBox(height: 8),
+            _MediaOption(
+              icon: LucideIcons.image,
+              iconColor: _chatColor,
+              iconBgColor: _chatColor.withValues(alpha: 0.1),
+              title: 'Gallery Photo',
+              subtitle: 'Send photos from your gallery',
+              onTap: () => Navigator.of(ctx).pop('image'),
+            ),
+            const SizedBox(height: 8),
+            _MediaOption(
+              icon: LucideIcons.film,
+              iconColor: _chatColor,
+              iconBgColor: _chatColor.withValues(alpha: 0.1),
+              title: 'Gallery Video',
+              subtitle: 'Send a video from your gallery (max 60s)',
               onTap: () => Navigator.of(ctx).pop('video'),
             ),
           ],
@@ -1936,6 +2085,31 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                     onRemove: _removeReference,
                   ),
                 // Media preview
+                if (_isProcessingCapture)
+                  Container(
+                    height: 40,
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.pureSurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.whisperBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Processing recorded video…',
+                          style: TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_pendingMediaList.isNotEmpty)
                   Container(
                     height: 86,
@@ -1963,6 +2137,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                             itemBuilder: (context, idx) {
                               final file = _pendingMediaList[idx];
                               final isVideo = _pendingIsVideoList[idx];
+                              final isCamera = idx < _pendingMediaSourceList.length &&
+                                  _pendingMediaSourceList[idx] == 'camera';
                               return Container(
                                 margin: const EdgeInsets.only(right: 8),
                                 width: 70,
@@ -1971,22 +2147,40 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                   children: [
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: isVideo
-                                          ? Container(
-                                              width: 70,
-                                              height: 70,
-                                              color: AppTheme.charcoalInk,
-                                              child: const Center(
-                                                child: Icon(LucideIcons.play, size: 20, color: Colors.white),
-                                              ),
-                                            )
-                                          : Image.file(
-                                              file,
-                                              width: 70,
-                                              height: 70,
-                                              fit: BoxFit.cover,
-                                            ),
+                                      child: _buildPendingMediaThumbnail(
+                                        file,
+                                        isVideo,
+                                        idx < _pendingVideoThumbList.length ? _pendingVideoThumbList[idx] : null,
+                                      ),
                                     ),
+                                    if (isCamera)
+                                      Positioned(
+                                        left: 4,
+                                        bottom: 4,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.65),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              _RecordingDot(size: 6),
+                                              SizedBox(width: 3),
+                                              Text(
+                                                'REC',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Colors.white,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     Positioned(
                                       top: -2,
                                       right: -2,
@@ -1996,6 +2190,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                             _pendingMediaList.removeAt(idx);
                                             _pendingIsVideoList.removeAt(idx);
                                             _pendingVideoThumbList.removeAt(idx);
+                                            if (idx < _pendingMediaSourceList.length) {
+                                              _pendingMediaSourceList.removeAt(idx);
+                                            }
                                           });
                                         },
                                         child: Container(
@@ -2140,7 +2337,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                 child: IconButton(
                                   icon: const Icon(LucideIcons.paperclip, size: 20),
                                   color: AppTheme.mutedSteel,
-                                  onPressed: _isSendingMedia ? null : _pickMedia,
+                                  onPressed: (_isSendingMedia || _isProcessingCapture) ? null : _pickMedia,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -2874,6 +3071,22 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
   }
 }
 
+/// Solid red dot used to mark in-app camera recordings (REC chip, bubble
+/// badge). Drawn as a plain circle so it doesn't depend on icon-font fill.
+class _RecordingDot extends StatelessWidget {
+  final double size;
+  const _RecordingDot({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+    );
+  }
+}
+
 class _MediaBubbleContent extends StatelessWidget {
   final dynamic message;
   final bool isMe;
@@ -2980,6 +3193,52 @@ class _MediaBubbleContent extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(LucideIcons.play, color: Colors.white, size: 28),
+              ),
+            // Provenance badge — recordings made in-app are marked with a
+            // red dot; gallery picks (and legacy videos, which could only
+            // come from the gallery) show a gallery label.
+            if (isVideo)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: message.isCameraVideo
+                      ? const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _RecordingDot(size: 7),
+                            SizedBox(width: 4),
+                            Text(
+                              'Recorded',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.image, size: 11, color: Colors.white70),
+                            SizedBox(width: 4),
+                            Text(
+                              'Gallery',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
           ],
         ),

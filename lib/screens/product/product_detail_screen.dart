@@ -1796,8 +1796,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                               : (_product!.campuses.isNotEmpty
                                                     ? _product!.campuses.first
                                                     : null);
-                                          if (targetInst == null)
+                                          if (targetInst == null) {
                                             return const SizedBox.shrink();
+                                          }
 
                                           final shortName = _getCampusShortname(
                                             targetInst,

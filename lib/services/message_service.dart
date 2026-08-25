@@ -496,6 +496,7 @@ class MessageService {
     required String mediaType,
     String caption = '',
     String? replyToMessageId,
+    String? mediaSource,
   }) async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser!.id;
@@ -507,6 +508,9 @@ class MessageService {
       'media_url': mediaUrl,
       'media_type': mediaType,
     };
+    if (mediaSource != null) {
+      payload['media_source'] = mediaSource;
+    }
     if (replyToMessageId != null) {
       payload['reply_to_message_id'] = replyToMessageId;
     }
@@ -518,7 +522,7 @@ class MessageService {
     if (mediaType == 'voice') {
       snippet = '🎙️ Voice Note';
     } else if (mediaType == 'video') {
-      snippet = '📹 Video';
+      snippet = mediaSource == 'camera' ? '📹 Recorded Video' : '📹 Video';
     } else if (mediaType == 'gif') {
       snippet = '🎞️ GIF';
     } else if (mediaType == 'sticker') {

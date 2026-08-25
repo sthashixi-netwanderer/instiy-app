@@ -85,7 +85,15 @@ Future<PickedMedia?> pickVideoOrRecord(BuildContext context) async {
 }
 
 /// Compress video on mobile using video_compress.
-Future<PickedMedia?> compressVideoOrPass(PickedMedia media, {Function(String)? onProgress}) async {
+///
+/// [maxDurationSeconds] trims the video to its first N seconds (listings
+/// cap at 30s). Pass null to skip trimming — used for chat videos, which
+/// only need their size reduced for upload.
+Future<PickedMedia?> compressVideoOrPass(
+  PickedMedia media, {
+  Function(String)? onProgress,
+  int? maxDurationSeconds = kMaxListingVideoSeconds,
+}) async {
   if (media.path == null) return null;
   try {
     onProgress?.call('Analyzing video...');
@@ -93,37 +101,39 @@ Future<PickedMedia?> compressVideoOrPass(PickedMedia media, {Function(String)? o
     final file = File(media.path!);
     final sizeMB = file.lengthSync() / (1024 * 1024);
 
-    // Videos over 30s are cut to their first 30s — cutting requires a
-    // re-encode, so this runs even when the file is already small.
-    double? durationMs;
-    try {
-      durationMs = (await VideoCompress.getMediaInfo(media.path!)).duration;
-    } catch (_) {}
-    if (durationMs != null && durationMs > kMaxListingVideoSeconds * 1000) {
-      onProgress?.call('Trimming video to the first $kMaxListingVideoSeconds seconds...');
-      // NOTE: video_compress takes startTime/duration in SECONDS (both
-      // platform implementations), unlike getMediaInfo().duration (ms).
-      final trimmed = await VideoCompress.compressVideo(
-        media.path!,
-        quality: VideoQuality.Res1280x720Quality,
-        deleteOrigin: false,
-        includeAudio: true,
-        frameRate: 30,
-        startTime: 0,
-        duration: kMaxListingVideoSeconds,
-      );
-      if (trimmed != null && trimmed.file != null) {
-        final trimmedSize = trimmed.file!.lengthSync() / (1024 * 1024);
-        onProgress?.call('Trimmed to 30s (${trimmedSize.round()}MB)');
-        final trimmedBytes = await trimmed.file!.readAsBytes();
-        return PickedMedia(
-          bytes: trimmedBytes,
-          name: media.name,
-          path: trimmed.file!.path,
+    if (maxDurationSeconds != null) {
+      // Videos over the cap are cut to their first N seconds — cutting
+      // requires a re-encode, so this runs even when the file is small.
+      double? durationMs;
+      try {
+        durationMs = (await VideoCompress.getMediaInfo(media.path!)).duration;
+      } catch (_) {}
+      if (durationMs != null && durationMs > maxDurationSeconds * 1000) {
+        onProgress?.call('Trimming video to the first $maxDurationSeconds seconds...');
+        // NOTE: video_compress takes startTime/duration in SECONDS (both
+        // platform implementations), unlike getMediaInfo().duration (ms).
+        final trimmed = await VideoCompress.compressVideo(
+          media.path!,
+          quality: VideoQuality.Res1280x720Quality,
+          deleteOrigin: false,
+          includeAudio: true,
+          frameRate: 30,
+          startTime: 0,
+          duration: maxDurationSeconds,
         );
+        if (trimmed != null && trimmed.file != null) {
+          final trimmedSize = trimmed.file!.lengthSync() / (1024 * 1024);
+          onProgress?.call('Trimmed to ${maxDurationSeconds}s (${trimmedSize.round()}MB)');
+          final trimmedBytes = await trimmed.file!.readAsBytes();
+          return PickedMedia(
+            bytes: trimmedBytes,
+            name: media.name,
+            path: trimmed.file!.path,
+          );
+        }
+        // Trim failed — fall through to plain compression, which at least
+        // shrinks the upload.
       }
-      // Trim failed — fall through to plain compression, which at least
-      // shrinks the upload.
     }
 
     if (sizeMB < 5) {
