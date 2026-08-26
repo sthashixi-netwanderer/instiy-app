@@ -73,14 +73,9 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    bool destructive = false,
     bool highlight = false,
   }) {
-    final color = destructive
-        ? AppTheme.destructive
-        : highlight
-        ? AppTheme.accent
-        : AppTheme.mutedSteel;
+    final color = highlight ? AppTheme.accent : AppTheme.mutedSteel;
     return AnimatedPress(
       onTap: onTap,
       child: Container(
@@ -105,9 +100,7 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                 style: TextStyle(
                   fontSize: context.rsp(14.5),
                   fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
-                  color: destructive
-                      ? AppTheme.destructive
-                      : AppTheme.charcoalInk,
+                  color: AppTheme.charcoalInk,
                 ),
               ),
             ),
@@ -145,7 +138,7 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
           context.rh(120),
         ),
         children: [
-          // Profile summary card
+          // Profile summary card with inline edit button
           ClipRRect(
             borderRadius: BorderRadius.circular(context.rr(20)),
             child: BackdropFilter(
@@ -225,11 +218,102 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                         ],
                       ),
                     ),
+                    SizedBox(width: context.rw(10)),
+                    AnimatedPress(
+                      onTap: () =>
+                          Navigator.of(context).pushNamed('/edit-profile'),
+                      child: Container(
+                        width: context.rw(38),
+                        height: context.rw(38),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(context.rr(12)),
+                          border: Border.all(
+                            color: AppTheme.accent.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          LucideIcons.penLine,
+                          size: context.ri(17),
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
+          SizedBox(height: context.rh(16)),
+          // Seller verification — standout CTA, hidden once the account
+          // is verified.
+          if (user?.isVerified != true) ...[
+            // Seller verification — standout CTA
+            AnimatedPress(
+              onTap: () => Navigator.of(
+                context,
+              ).pushNamed('/seller-profile-verification'),
+              child: Container(
+                padding: context.rPadding(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.accent,
+                      AppTheme.accent.withValues(alpha: 0.75),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(context.rr(18)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.accent.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      LucideIcons.shieldCheck,
+                      size: context.ri(22),
+                      color: Colors.white,
+                    ),
+                    SizedBox(width: context.rw(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Seller Verification',
+                            style: TextStyle(
+                              fontSize: context.rsp(15),
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(height: context.rh(1)),
+                          Text(
+                            'Verify your identity to start selling',
+                            style: TextStyle(
+                              fontSize: context.rsp(12),
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      LucideIcons.chevronRight,
+                      size: context.ri(20),
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: context.rh(16)),
           // Actions — the former avatar dropdown items
           ClipRRect(
@@ -299,21 +383,18 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                       label: 'Settings',
                       onTap: () => Navigator.of(context).pushNamed('/account'),
                     ),
-                    Divider(
-                      height: 1,
-                      indent: context.rw(44),
-                      endIndent: context.rw(12),
-                      color: AppTheme.whisperBorder.withValues(alpha: 0.6),
-                    ),
-                    _buildMenuRow(
-                      icon: LucideIcons.logOut,
-                      label: 'Sign Out',
-                      onTap: _confirmSignOut,
-                      destructive: true,
-                    ),
                   ],
                 ),
               ),
+            ),
+          ),
+          SizedBox(height: context.rh(24)),
+          // Sign out — centered on its own
+          Center(
+            child: ShadButton.destructive(
+              onPressed: _confirmSignOut,
+              leading: Icon(LucideIcons.logOut, size: context.ri(18)),
+              child: const Text('Sign Out'),
             ),
           ),
         ],

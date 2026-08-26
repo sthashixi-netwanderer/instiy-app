@@ -27,8 +27,10 @@ class OrdersScreen extends ConsumerStatefulWidget {
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   bool _isLocked = true;
   bool _checkingLock = true;
-  final TextEditingController _pendingSearchController = TextEditingController();
-  final TextEditingController _completedSearchController = TextEditingController();
+  final TextEditingController _pendingSearchController =
+      TextEditingController();
+  final TextEditingController _completedSearchController =
+      TextEditingController();
   String _pendingQuery = '';
   String _completedQuery = '';
   Timer? _pendingSearchDebounce;
@@ -40,13 +42,25 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     _pendingSearchController.addListener(() {
       _pendingSearchDebounce?.cancel();
       _pendingSearchDebounce = Timer(const Duration(milliseconds: 300), () {
-        if (mounted) setState(() => _pendingQuery = _pendingSearchController.text.trim().toLowerCase());
+        if (mounted) {
+          setState(
+            () => _pendingQuery = _pendingSearchController.text
+                .trim()
+                .toLowerCase(),
+          );
+        }
       });
     });
     _completedSearchController.addListener(() {
       _completedSearchDebounce?.cancel();
       _completedSearchDebounce = Timer(const Duration(milliseconds: 300), () {
-        if (mounted) setState(() => _completedQuery = _completedSearchController.text.trim().toLowerCase());
+        if (mounted) {
+          setState(
+            () => _completedQuery = _completedSearchController.text
+                .trim()
+                .toLowerCase(),
+          );
+        }
       });
     });
     _checkLock();
@@ -72,7 +86,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         _isLocked = false;
         _checkingLock = false;
       });
-      ref.read(orderProvider.notifier).loadOrders(); // ignore: unawaited_futures
+      ref
+          .read(orderProvider.notifier)
+          .loadOrders(); // ignore: unawaited_futures
     } else {
       setState(() {
         _isLocked = true;
@@ -90,7 +106,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
-        appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('My Orders'),
+        ),
         body: const Center(child: Text('Sign in to view your orders')),
       );
     }
@@ -99,7 +118,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
-        appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('My Orders'),
+        ),
         body: const Padding(
           padding: EdgeInsets.all(16),
           child: ListSkeleton(count: 6),
@@ -111,7 +133,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
-        appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('My Orders'),
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -123,7 +148,11 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                   color: AppTheme.accent.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(LucideIcons.lock, size: context.ri(40), color: AppTheme.accent),
+                child: Icon(
+                  LucideIcons.lock,
+                  size: context.ri(40),
+                  color: AppTheme.accent,
+                ),
               ),
               SizedBox(height: context.rh(16)),
               Text(
@@ -170,7 +199,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       return Scaffold(
         backgroundColor: AppTheme.cleanBackground,
         extendBodyBehindAppBar: true,
-        appBar: AppTheme.glassAppBar(context: context, title: const Text('My Orders')),
+        appBar: AppTheme.glassAppBar(
+          context: context,
+          title: const Text('My Orders'),
+        ),
         body: Center(
           child: Padding(
             padding: context.rAll(16),
@@ -192,19 +224,38 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         appBar: AppTheme.glassAppBar(
           context: context,
           title: const Text('My Orders'),
+          // General delivery QR lives in the header — one code for every
+          // pending item, shown only while something awaits delivery.
+          actions: [
+            if (_hasPendingDeliveries(_pendingOrders(orderProv.orders)))
+              ShadIconButton.ghost(
+                icon: Icon(
+                  LucideIcons.qrCode,
+                  size: 22,
+                  color: AppTheme.accent,
+                ),
+                onPressed: _showGeneralQr,
+              ),
+          ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(kTextTabBarHeight),
             child: ClipRRect(
               child: BackdropFilter(
                 filter: ImageFilter.compose(
-                  outer: ImageFilter.blur(sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+                  outer: ImageFilter.blur(
+                    sigmaX: AppTheme.glassBlurHeavy,
+                    sigmaY: AppTheme.glassBlurHeavy,
+                  ),
                   inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
                 ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppTheme.pureSurface.withValues(alpha: 0.7),
                     border: Border(
-                      bottom: BorderSide(color: AppTheme.whisperBorder, width: 0.5),
+                      bottom: BorderSide(
+                        color: AppTheme.whisperBorder,
+                        width: 0.5,
+                      ),
                     ),
                   ),
                   child: TabBar(
@@ -221,7 +272,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     ),
                     tabs: [
                       Tab(text: 'Pending (${_pendingCount(orderProv.orders)})'),
-                      Tab(text: 'Completed (${_completedCount(orderProv.orders)})'),
+                      Tab(
+                        text:
+                            'Completed (${_completedCount(orderProv.orders)})',
+                      ),
                     ],
                   ),
                 ),
@@ -233,7 +287,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
             ? Padding(
                 padding: EdgeInsets.fromLTRB(
                   context.rw(16),
-                  MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight + context.rh(16),
+                  MediaQuery.of(context).padding.top +
+                      kToolbarHeight +
+                      kTextTabBarHeight +
+                      context.rh(16),
                   context.rw(16),
                   context.rh(16),
                 ),
@@ -253,7 +310,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     searchController: _completedSearchController,
                     query: _completedQuery,
                     emptyTitle: 'No completed orders',
-                    emptyDescription: 'Delivered and cancelled orders will appear here.',
+                    emptyDescription:
+                        'Delivered and cancelled orders will appear here.',
                   ),
                 ],
               ),
@@ -274,6 +332,27 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   int _pendingCount(List<Order> orders) => _pendingOrders(orders).length;
   int _completedCount(List<Order> orders) => _completedOrders(orders).length;
 
+  /// Whether any pending order still has an item awaiting delivery
+  /// verification — the general delivery QR is only useful then.
+  bool _hasPendingDeliveries(List<Order> orders) => orders.any(
+    (o) => o.items.any(
+      (i) =>
+          i.deliveryCode != null &&
+          i.deliveryCode!.isNotEmpty &&
+          (i.status == 'pending' || i.status == 'processing'),
+    ),
+  );
+
+  void _showGeneralQr() {
+    final user = ref.read(authProvider).user;
+    if (user == null) return;
+    showShadSheet(
+      context: context,
+      builder: (_) =>
+          ShadSheet(child: _GeneralQrSheet(payload: 'instiy-gqr:${user.id}')),
+    );
+  }
+
   List<Order> _searchOrders(List<Order> orders, String query) {
     if (query.isEmpty) return orders;
     return orders.where((o) {
@@ -282,7 +361,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       // Match status
       if (o.status.toLowerCase().contains(query)) return true;
       // Match any product title in the order
-      return o.items.any((item) => item.productTitle.toLowerCase().contains(query));
+      return o.items.any(
+        (item) => item.productTitle.toLowerCase().contains(query),
+      );
     }).toList();
   }
 
@@ -300,21 +381,32 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         Padding(
           padding: EdgeInsets.fromLTRB(
             context.rw(16),
-            MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight + context.rh(12),
+            MediaQuery.of(context).padding.top +
+                kToolbarHeight +
+                kTextTabBarHeight +
+                context.rh(12),
             context.rw(16),
             context.rh(8),
           ),
           child: ShadInput(
             controller: searchController,
             placeholder: Text('Search orders by name or ID...'),
-            leading: Icon(LucideIcons.search, size: context.ri(18), color: AppTheme.mutedSteel),
+            leading: Icon(
+              LucideIcons.search,
+              size: context.ri(18),
+              color: AppTheme.mutedSteel,
+            ),
             trailing: searchController.text.isNotEmpty
                 ? GestureDetector(
                     onTap: () {
                       searchController.clear();
                       setState(() => query = '');
                     },
-                    child: Icon(LucideIcons.x, size: context.ri(16), color: AppTheme.mutedSteel),
+                    child: Icon(
+                      LucideIcons.x,
+                      size: context.ri(16),
+                      color: AppTheme.mutedSteel,
+                    ),
                   )
                 : null,
           ),
@@ -323,11 +415,17 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         Expanded(
           child: filtered.isEmpty
               ? RefreshIndicator(
-                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight,
-                  onRefresh: () => ref.read(orderProvider.notifier).loadOrders(),
+                  edgeOffset:
+                      MediaQuery.of(context).padding.top +
+                      kToolbarHeight +
+                      kTextTabBarHeight,
+                  onRefresh: () =>
+                      ref.read(orderProvider.notifier).loadOrders(),
                   child: ListView(
                     children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.12),
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.12,
+                      ),
                       EmptyState(
                         icon: LucideIcons.package,
                         title: emptyTitle,
@@ -335,14 +433,20 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                             ? 'No orders match "$query"'
                             : emptyDescription,
                         actionLabel: query.isEmpty ? 'Start Shopping' : null,
-                        onActionPressed: query.isEmpty ? () => Navigator.of(context).pushNamed('/explore') : null,
+                        onActionPressed: query.isEmpty
+                            ? () => Navigator.of(context).pushNamed('/explore')
+                            : null,
                       ),
                     ],
                   ),
                 )
               : RefreshIndicator(
-                  edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight + kTextTabBarHeight,
-                  onRefresh: () => ref.read(orderProvider.notifier).loadOrders(),
+                  edgeOffset:
+                      MediaQuery.of(context).padding.top +
+                      kToolbarHeight +
+                      kTextTabBarHeight,
+                  onRefresh: () =>
+                      ref.read(orderProvider.notifier).loadOrders(),
                   child: ListView.separated(
                     padding: EdgeInsets.fromLTRB(
                       context.rw(16),
@@ -351,7 +455,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                       context.rh(16),
                     ),
                     itemCount: filtered.length,
-                    separatorBuilder: (_, _) => SizedBox(height: context.rh(12)),
+                    separatorBuilder: (_, _) =>
+                        SizedBox(height: context.rh(12)),
                     itemBuilder: (context, index) {
                       return _OrderCard(order: filtered[index]);
                     },
@@ -397,9 +502,7 @@ class _OrderCardState extends State<_OrderCard> {
   void _showQrModal(OrderItem item) {
     showShadSheet(
       context: context,
-      builder: (_) => ShadSheet(
-        child: _QrCodeSheet(item: item),
-      ),
+      builder: (_) => ShadSheet(child: _QrCodeSheet(item: item)),
     );
   }
 
@@ -411,58 +514,68 @@ class _OrderCardState extends State<_OrderCard> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ...items.map((item) => Padding(
-                  padding: EdgeInsets.only(bottom: context.rh(8)),
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      _showQrModal(item);
-                    },
-                    child: Container(
-                      padding: context.rAll(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(context.rr(12)),
-                        border: Border.all(color: AppTheme.whisperBorder),
-                      ),
-                      child: Row(
-                        children: [
-                          if (item.productThumbnail != null)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(context.rr(8)),
-                              child: SizedBox(
-                                width: context.rw(44),
-                                height: context.rh(44),
-                                child: CachedNetworkImage(
-                                  imageUrl: item.productThumbnail!,
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: 44,
-                                  placeholder: (_, _) =>
-                                      Container(color: AppTheme.warmMist),
-                                  errorWidget: (_, _, _) =>
-                                      Container(color: AppTheme.warmMist),
-                                ),
+            ...items.map(
+              (item) => Padding(
+                padding: EdgeInsets.only(bottom: context.rh(8)),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _showQrModal(item);
+                  },
+                  child: Container(
+                    padding: context.rAll(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(context.rr(12)),
+                      border: Border.all(color: AppTheme.whisperBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        if (item.productThumbnail != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(context.rr(8)),
+                            child: SizedBox(
+                              width: context.rw(44),
+                              height: context.rh(44),
+                              child: CachedNetworkImage(
+                                imageUrl: item.productThumbnail!,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 44,
+                                placeholder: (_, _) =>
+                                    Container(color: AppTheme.warmMist),
+                                errorWidget: (_, _, _) =>
+                                    Container(color: AppTheme.warmMist),
                               ),
-                            )
-                          else
-                            const Icon(LucideIcons.qrCode, color: AppTheme.accent),
-                          SizedBox(width: context.rw(12)),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.productTitle,
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                                Text('Code: ${item.deliveryCode}',
-                                    style: TextStyle(fontSize: context.rsp(12))),
-                              ],
                             ),
+                          )
+                        else
+                          const Icon(
+                            LucideIcons.qrCode,
+                            color: AppTheme.accent,
                           ),
-                          Icon(LucideIcons.chevronRight, size: context.ri(18)),
-                        ],
-                      ),
+                        SizedBox(width: context.rw(12)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.productTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'Code: ${item.deliveryCode}',
+                                style: TextStyle(fontSize: context.rsp(12)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(LucideIcons.chevronRight, size: context.ri(18)),
+                      ],
                     ),
                   ),
-                )),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -472,10 +585,9 @@ class _OrderCardState extends State<_OrderCard> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => Navigator.of(context).pushNamed(
-        '/order-detail',
-        arguments: widget.order.id,
-      ),
+      onTap: () => Navigator.of(
+        context,
+      ).pushNamed('/order-detail', arguments: widget.order.id),
       child: Container(
         padding: context.rAll(16),
         decoration: BoxDecoration(
@@ -497,11 +609,11 @@ class _OrderCardState extends State<_OrderCard> {
                   ),
                 ),
                 Container(
-                  padding:
-                      context.rPadding(horizontal: 10, vertical: 4),
+                  padding: context.rPadding(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _statusColor(widget.order.status)
-                        .withValues(alpha: 0.1),
+                    color: _statusColor(
+                      widget.order.status,
+                    ).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(context.rr(12)),
                   ),
                   child: Text(
@@ -525,10 +637,13 @@ class _OrderCardState extends State<_OrderCard> {
                     children: [
                       Row(
                         children: [
-                          Text('Total: ',
-                              style: TextStyle(
-                                  color: AppTheme.mutedSteel,
-                                  fontSize: context.rsp(13))),
+                          Text(
+                            'Total: ',
+                            style: TextStyle(
+                              color: AppTheme.mutedSteel,
+                              fontSize: context.rsp(13),
+                            ),
+                          ),
                           Text(
                             formatGhs(widget.order.totalAmount),
                             style: const TextStyle(
@@ -556,7 +671,9 @@ class _OrderCardState extends State<_OrderCard> {
                 Text(
                   DateFormat('MMM d, yyyy').format(widget.order.createdAt),
                   style: TextStyle(
-                      fontSize: context.rsp(12), color: AppTheme.mutedSteel),
+                    fontSize: context.rsp(12),
+                    color: AppTheme.mutedSteel,
+                  ),
                 ),
               ],
             ),
@@ -591,7 +708,11 @@ class _OrderCardState extends State<_OrderCard> {
                                   )
                                 : Container(
                                     color: AppTheme.warmMist,
-                                    child: Icon(LucideIcons.shoppingBag, size: context.ri(20), color: AppTheme.mutedSteel),
+                                    child: Icon(
+                                      LucideIcons.shoppingBag,
+                                      size: context.ri(20),
+                                      color: AppTheme.mutedSteel,
+                                    ),
                                   ),
                           ),
                         ),
@@ -601,16 +722,26 @@ class _OrderCardState extends State<_OrderCard> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: context.rw(120)),
-                              child: Text(item.productTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: context.rsp(13), fontWeight: FontWeight.w500)),
-                            ),
-                            Text('x${item.quantity}',
+                              constraints: BoxConstraints(
+                                maxWidth: context.rw(120),
+                              ),
+                              child: Text(
+                                item.productTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                    fontSize: context.rsp(12),
-                                    color: AppTheme.mutedSteel)),
+                                  fontSize: context.rsp(13),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              'x${item.quantity}',
+                              style: TextStyle(
+                                fontSize: context.rsp(12),
+                                color: AppTheme.mutedSteel,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -716,9 +847,12 @@ class _QrCodeSheet extends StatelessWidget {
                   dataModuleShape: QrDataModuleShape.circle,
                   color: Colors.black,
                 ),
-                embeddedImage: item.productThumbnail != null && item.productThumbnail!.isNotEmpty
+                embeddedImage:
+                    item.productThumbnail != null &&
+                        item.productThumbnail!.isNotEmpty
                     ? CachedNetworkImageProvider(item.productThumbnail!)
-                    : const AssetImage('assets/logo_highres.png') as ImageProvider,
+                    : const AssetImage('assets/logo_highres.png')
+                          as ImageProvider,
                 embeddedImageStyle: const QrEmbeddedImageStyle(
                   size: Size(40, 40),
                 ),
@@ -740,12 +874,16 @@ class _QrCodeSheet extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: item.productThumbnail != null && item.productThumbnail!.isNotEmpty
+                  child:
+                      item.productThumbnail != null &&
+                          item.productThumbnail!.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: item.productThumbnail!,
                           fit: BoxFit.cover,
-                          placeholder: (_, _) => Image.asset('assets/logo_highres.png'),
-                          errorWidget: (_, _, _) => Image.asset('assets/logo_highres.png'),
+                          placeholder: (_, _) =>
+                              Image.asset('assets/logo_highres.png'),
+                          errorWidget: (_, _, _) =>
+                              Image.asset('assets/logo_highres.png'),
                         )
                       : Image.asset(
                           'assets/logo_highres.png',
@@ -798,14 +936,18 @@ class _QrCodeSheet extends StatelessWidget {
                 foregroundColor: AppTheme.accent,
                 onPressed: () async {
                   await Clipboard.setData(
-                      ClipboardData(text: item.deliveryCode!));
+                    ClipboardData(text: item.deliveryCode!),
+                  );
                   if (context.mounted) {
                     ShadToaster.of(context).show(
                       ShadToast(
                         title: Row(
                           children: [
-                            Icon(LucideIcons.check,
-                                color: AppTheme.successMoss, size: context.ri(18)),
+                            Icon(
+                              LucideIcons.check,
+                              color: AppTheme.successMoss,
+                              size: context.ri(18),
+                            ),
                             SizedBox(width: context.rw(8)),
                             const Text('Code copied to clipboard'),
                           ],
@@ -823,6 +965,120 @@ class _QrCodeSheet extends StatelessWidget {
         // Instruction text
         Text(
           'Show this QR code to the seller when collecting your item.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: context.rsp(13),
+            color: AppTheme.mutedSteel,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One QR for every pending delivery. Encodes only the buyer id — the seller's
+/// scanner resolves their own items for this buyer server-side, so no other
+/// seller's delivery codes are ever exposed.
+class _GeneralQrSheet extends StatelessWidget {
+  final String payload;
+
+  const _GeneralQrSheet({required this.payload});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Handle bar
+        Container(
+          width: context.rw(40),
+          height: context.rh(4),
+          decoration: BoxDecoration(
+            color: AppTheme.whisperBorder,
+            borderRadius: BorderRadius.circular(context.rr(2)),
+          ),
+        ),
+        SizedBox(height: context.rh(20)),
+
+        // Title
+        Text(
+          'All Pending Deliveries',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: context.rsp(16),
+            fontWeight: FontWeight.w600,
+            color: AppTheme.charcoalInk,
+          ),
+        ),
+        SizedBox(height: context.rh(20)),
+
+        // QR Code
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.grey.withValues(alpha: 0.1),
+              width: 1.5,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x06000000),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              QrImageView(
+                data: payload,
+                version: QrVersions.auto,
+                size: context.rw(200),
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(
+                  eyeShape: QrEyeShape.circle,
+                  color: Colors.black,
+                ),
+                dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.circle,
+                  color: Colors.black,
+                ),
+              ),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/logo_highres.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: context.rh(20)),
+
+        // Instruction text
+        Text(
+          'Show this code to any seller — they can only see and verify the items you bought from them.',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: context.rsp(13),

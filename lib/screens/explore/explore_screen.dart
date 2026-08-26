@@ -688,58 +688,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            // Search button — opens the full search screen
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    Navigator.of(context).pushNamed('/search'),
-                                child: Container(
-                                  height: 37,
-                                  padding: const EdgeInsets.only(left: 12),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.glassSurfaceLight,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: AppTheme.glassBorder,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        LucideIcons.search,
-                                        size: 17,
-                                        color: AppTheme.mutedSteel,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      const Expanded(
-                                        child: Text(
-                                          'Search products...',
-                                          style: TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w500,
-                                            color: AppTheme.mutedSteel,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      // Filters stay one tap away
-                                      GestureDetector(
-                                        onTap: () => _showFilterSheet(context),
-                                        behavior: HitTestBehavior.opaque,
-                                        child: const SizedBox(
-                                          width: 38,
-                                          height: 38,
-                                          child: Icon(
-                                            LucideIcons.slidersHorizontal,
-                                            size: 17,
-                                            color: AppTheme.mutedSteel,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                            // Search — opens the full search screen
+                            ShadIconButton.ghost(
+                              icon: const Icon(
+                                LucideIcons.search,
+                                size: 20,
+                                color: AppTheme.mutedSteel,
                               ),
+                              onPressed: () =>
+                                  Navigator.of(context).pushNamed('/search'),
+                            ),
+                            // Filters stay one tap away
+                            ShadIconButton.ghost(
+                              icon: const Icon(
+                                LucideIcons.slidersHorizontal,
+                                size: 20,
+                                color: AppTheme.mutedSteel,
+                              ),
+                              onPressed: () => _showFilterSheet(context),
                             ),
                             const SizedBox(width: 8),
                             Row(
@@ -1317,11 +1283,16 @@ class _FilterSheet extends StatefulWidget {
 }
 
 class _FilterSheetState extends State<_FilterSheet> {
+  /// Upper bound of the price slider. Values beyond it fall back to the
+  /// plain text inputs.
+  static const double _priceCap = 5000;
+
   late List<String> _conditions;
   late String? _categoryId;
   late TextEditingController _minCtrl;
   late TextEditingController _maxCtrl;
   late String _sortBy;
+  late RangeValues _range;
 
   @override
   void initState() {
@@ -1335,6 +1306,24 @@ class _FilterSheetState extends State<_FilterSheet> {
       text: widget.maxPrice?.toStringAsFixed(0) ?? '',
     );
     _sortBy = widget.sortBy;
+    _range = RangeValues(
+      (widget.minPrice ?? 0).clamp(0, _priceCap).toDouble(),
+      (widget.maxPrice ?? _priceCap).clamp(0, _priceCap).toDouble(),
+    );
+    // Keep the slider in sync when prices are typed instead of dragged.
+    _minCtrl.addListener(_syncRangeFromInputs);
+    _maxCtrl.addListener(_syncRangeFromInputs);
+  }
+
+  void _syncRangeFromInputs() {
+    final min = (double.tryParse(_minCtrl.text) ?? 0)
+        .clamp(0, _priceCap)
+        .toDouble();
+    final max = (double.tryParse(_maxCtrl.text) ?? _priceCap)
+        .clamp(0, _priceCap)
+        .toDouble();
+    final next = RangeValues(min, max >= min ? max : min);
+    if (next != _range) setState(() => _range = next);
   }
 
   @override
@@ -1586,6 +1575,31 @@ class _FilterSheetState extends State<_FilterSheet> {
               fontWeight: FontWeight.w600,
               color: AppTheme.mutedSteel,
             ),
+          ),
+          const SizedBox(height: 8),
+          // Slider writes through to the inputs so Apply stays single-source
+          RangeSlider(
+            values: _range,
+            min: 0,
+            max: _priceCap,
+            divisions: 100,
+            activeColor: AppTheme.accent,
+            inactiveColor: AppTheme.warmMist,
+            labels: RangeLabels(
+              'GH¢${_range.start.round()}',
+              _range.end >= _priceCap
+                  ? 'GH¢${_priceCap.round()}+'
+                  : 'GH¢${_range.end.round()}',
+            ),
+            onChanged: (v) => setState(() {
+              _range = v;
+              _minCtrl.text = v.start.round() == 0
+                  ? ''
+                  : v.start.round().toString();
+              _maxCtrl.text = v.end.round() >= _priceCap
+                  ? ''
+                  : v.end.round().toString();
+            }),
           ),
           const SizedBox(height: 8),
           Row(

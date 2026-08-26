@@ -7,14 +7,14 @@ import '../../providers/providers.dart';
 import '../../providers/sound_provider.dart';
 import '../../services/wallet_lock_service.dart';
 import '../../utils/responsive.dart';
-import '../../widgets/app_button.dart';
 
 class AccountSettingsScreen extends ConsumerStatefulWidget {
   final int initialTab;
   const AccountSettingsScreen({super.key, this.initialTab = 0});
 
   @override
-  ConsumerState<AccountSettingsScreen> createState() => _AccountSettingsScreenState();
+  ConsumerState<AccountSettingsScreen> createState() =>
+      _AccountSettingsScreenState();
 }
 
 class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
@@ -25,11 +25,26 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   final Map<String, bool> _screenLocks = {};
 
   static const _screenConfig = [
-    ('wallet', LucideIcons.wallet, 'Wallet', 'Balance, transfers & withdrawals'),
+    (
+      'wallet',
+      LucideIcons.wallet,
+      'Wallet',
+      'Balance, transfers & withdrawals',
+    ),
     ('orders', LucideIcons.shoppingBag, 'Orders', 'Order history & tracking'),
     ('checkout', LucideIcons.creditCard, 'Checkout', 'Payment confirmation'),
-    ('seller_orders', LucideIcons.store, 'Seller Orders', 'Incoming orders & earnings'),
-    ('seller_dashboard', LucideIcons.layoutDashboard, 'Seller Dashboard', 'Sales stats, listings & drafts'),
+    (
+      'seller_orders',
+      LucideIcons.store,
+      'Seller Orders',
+      'Incoming orders & earnings',
+    ),
+    (
+      'seller_dashboard',
+      LucideIcons.layoutDashboard,
+      'Seller Dashboard',
+      'Sales stats, listings & drafts',
+    ),
     ('messages', LucideIcons.messageSquare, 'Messages', 'Chat conversations'),
   ];
 
@@ -37,9 +52,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 4,
+      length: 3,
       vsync: this,
-      initialIndex: widget.initialTab.clamp(0, 3),
+      initialIndex: widget.initialTab.clamp(0, 2),
     );
     _loadSettings();
   }
@@ -86,7 +101,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
         }
       });
       ShadToaster.of(context).show(
-        ShadToast(title: Text(value ? 'App lock enabled' : 'App lock disabled')),
+        ShadToast(
+          title: Text(value ? 'App lock enabled' : 'App lock disabled'),
+        ),
       );
     }
   }
@@ -108,9 +125,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
-    final ap = ref.watch(authProvider);
     final sp = ref.watch(soundProvider);
-    final user = ap.user;
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
@@ -127,7 +142,10 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                 decoration: BoxDecoration(
                   color: AppTheme.pureSurface.withValues(alpha: 0.7),
                   border: Border(
-                    bottom: BorderSide(color: AppTheme.whisperBorder, width: 0.5),
+                    bottom: BorderSide(
+                      color: AppTheme.whisperBorder,
+                      width: 0.5,
+                    ),
                   ),
                 ),
                 child: TabBar(
@@ -144,7 +162,6 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                     fontWeight: FontWeight.w500,
                   ),
                   tabs: const [
-                    Tab(icon: Icon(LucideIcons.user), text: 'Profile'),
                     Tab(icon: Icon(LucideIcons.bell), text: 'Notifications'),
                     Tab(icon: Icon(LucideIcons.lock), text: 'App Lock'),
                     Tab(icon: Icon(LucideIcons.settings), text: 'General'),
@@ -158,7 +175,6 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildProfileTab(theme, user),
           _buildNotificationsTab(theme, sp),
           _buildAppLockTab(theme),
           _buildGeneralTab(theme),
@@ -167,81 +183,19 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
     );
   }
 
-  Widget _buildProfileTab(ShadThemeData theme, dynamic user) {
-    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
+  Widget _buildNotificationsTab(
+    ShadThemeData theme,
+    SoundProvider soundProvider,
+  ) {
+    final topPad =
+        MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
-      children: [
-        // Profile summary card
-        Container(
-          padding: context.rAll(16),
-          decoration: BoxDecoration(
-            color: AppTheme.pureSurface,
-            borderRadius: BorderRadius.circular(context.rr(16)),
-            border: Border.all(color: AppTheme.whisperBorder),
-          ),
-          child: Column(
-            children: [
-              ShadAvatar(
-                user?.avatarUrl?.isNotEmpty == true ? user!.avatarUrl : null,
-                size: Size.square(context.rw(80)),
-                backgroundColor: AppTheme.accent,
-                placeholder: Text(
-                  (user?.fullName ?? 'U')[0].toUpperCase(),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: context.rsp(32),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              SizedBox(height: context.rh(12)),
-              Text(
-                user?.fullName ?? 'User',
-                style: TextStyle(
-                  fontSize: context.rsp(18),
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.charcoalInk,
-                ),
-              ),
-              if (user?.email?.isNotEmpty == true) ...[
-                SizedBox(height: context.rh(4)),
-                Text(
-                  user!.email!,
-                  style: TextStyle(
-                    fontSize: context.rsp(13),
-                    color: AppTheme.mutedSteel,
-                  ),
-                ),
-              ],
-              if (user?.phoneNumber?.isNotEmpty == true) ...[
-                SizedBox(height: context.rh(4)),
-                Text(
-                  user!.phoneNumber!,
-                  style: TextStyle(
-                    fontSize: context.rsp(13),
-                    color: AppTheme.mutedSteel,
-                  ),
-                ),
-              ],
-              SizedBox(height: context.rh(16)),
-              AppButton(
-                onPressed: () => Navigator.of(context).pushNamed('/edit-profile'),
-                leading: const Icon(LucideIcons.pencil, size: 18),
-                child: const Text('Edit Profile'),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: context.rh(32)),
-      ],
-    );
-  }
-
-  Widget _buildNotificationsTab(ShadThemeData theme, SoundProvider soundProvider) {
-    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
-    return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(
+        context.rw(16),
+        topPad + context.rh(28),
+        context.rw(16),
+        context.rh(16),
+      ),
       children: [
         Container(
           padding: context.rAll(16),
@@ -261,9 +215,21 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('In-App Sounds', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.charcoalInk)),
+                        const Text(
+                          'In-App Sounds',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.charcoalInk,
+                          ),
+                        ),
                         SizedBox(height: context.rh(2)),
-                        Text('Play sounds for notifications within the app', style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
+                        Text(
+                          'Play sounds for notifications within the app',
+                          style: TextStyle(
+                            fontSize: context.rsp(12),
+                            color: AppTheme.mutedSteel,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -278,11 +244,17 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
           ),
         ),
         SizedBox(height: context.rh(24)),
-        Text('Notification Sound', style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          'Notification Sound',
+          style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w600),
+        ),
         SizedBox(height: context.rh(4)),
         Text(
           'Choose the sound that plays when you receive a notification',
-          style: TextStyle(fontSize: context.rsp(13), color: AppTheme.mutedSteel),
+          style: TextStyle(
+            fontSize: context.rsp(13),
+            color: AppTheme.mutedSteel,
+          ),
         ),
         SizedBox(height: context.rh(16)),
         ...SoundProvider.availableSounds.map((sound) {
@@ -297,30 +269,51 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
               ),
             ),
             child: Material(
-              color: isSelected ? AppTheme.accent.withValues(alpha: 0.08) : AppTheme.pureSurface,
+              color: isSelected
+                  ? AppTheme.accent.withValues(alpha: 0.08)
+                  : AppTheme.pureSurface,
               borderRadius: BorderRadius.circular(context.rr(12)),
               child: ListTile(
-                leading: Icon(sound.icon, color: isSelected ? AppTheme.accent : AppTheme.mutedSteel),
-                title: Text(sound.label, style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                  color: isSelected ? AppTheme.accent : AppTheme.charcoalInk,
-                )),
+                leading: Icon(
+                  sound.icon,
+                  color: isSelected ? AppTheme.accent : AppTheme.mutedSteel,
+                ),
+                title: Text(
+                  sound.label,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    color: isSelected ? AppTheme.accent : AppTheme.charcoalInk,
+                  ),
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(LucideIcons.play, size: context.ri(20), color: AppTheme.mutedSteel),
+                      icon: Icon(
+                        LucideIcons.play,
+                        size: context.ri(20),
+                        color: AppTheme.mutedSteel,
+                      ),
                       onPressed: () => soundProvider.previewSound(sound.id),
                     ),
                     if (isSelected)
                       Container(
                         padding: context.rAll(4),
-                        decoration: const BoxDecoration(color: AppTheme.accent, shape: BoxShape.circle),
-                        child: Icon(LucideIcons.check, size: context.ri(14), color: Colors.white),
+                        decoration: const BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          LucideIcons.check,
+                          size: context.ri(14),
+                          color: Colors.white,
+                        ),
                       ),
                   ],
                 ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(context.rr(12))),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(context.rr(12)),
+                ),
                 onTap: () => soundProvider.setSelectedSound(sound.id),
               ),
             ),
@@ -332,11 +325,17 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   }
 
   Widget _buildAppLockTab(ShadThemeData theme) {
-    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
+    final topPad =
+        MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     // Seller screens are only reachable (and lockable) for sellers.
     final isSeller = ref.watch(authProvider).user?.isSeller == true;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(
+        context.rw(16),
+        topPad + context.rh(28),
+        context.rw(16),
+        context.rh(16),
+      ),
       children: [
         Container(
           padding: context.rAll(16),
@@ -356,16 +355,33 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                       color: AppTheme.accent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(context.rr(10)),
                     ),
-                    child: Icon(LucideIcons.lock, size: context.ri(20), color: AppTheme.accent),
+                    child: Icon(
+                      LucideIcons.lock,
+                      size: context.ri(20),
+                      color: AppTheme.accent,
+                    ),
                   ),
                   SizedBox(width: context.rw(12)),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('App Lock', style: TextStyle(fontWeight: FontWeight.w600, fontSize: context.rsp(15), color: AppTheme.charcoalInk)),
+                        Text(
+                          'App Lock',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: context.rsp(15),
+                            color: AppTheme.charcoalInk,
+                          ),
+                        ),
                         SizedBox(height: context.rh(2)),
-                        Text('Require biometrics or screen lock', style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
+                        Text(
+                          'Require biometrics or screen lock',
+                          style: TextStyle(
+                            fontSize: context.rsp(12),
+                            color: AppTheme.mutedSteel,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -377,12 +393,21 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                     )
                   else
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: context.rw(10), vertical: context.rh(4)),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: context.rw(10),
+                        vertical: context.rh(4),
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.warmMist,
                         borderRadius: BorderRadius.circular(context.rr(8)),
                       ),
-                      child: Text('Not supported', style: TextStyle(fontSize: context.rsp(11), color: AppTheme.mutedSteel)),
+                      child: Text(
+                        'Not supported',
+                        style: TextStyle(
+                          fontSize: context.rsp(11),
+                          color: AppTheme.mutedSteel,
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -390,18 +415,25 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
                 SizedBox(height: context.rh(16)),
                 Padding(
                   padding: EdgeInsets.only(left: context.rw(4)),
-                  child: Text('Protected screens', style: TextStyle(fontSize: context.rsp(12), fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
+                  child: Text(
+                    'Protected screens',
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
                 ),
                 SizedBox(height: context.rh(8)),
                 for (final (key, icon, label, detail) in _screenConfig)
                   if (isSeller || !key.startsWith('seller_'))
                     _LockScreenItem(
-                    icon: icon,
-                    label: label,
-                    detail: detail,
-                    enabled: _screenLocks[key] ?? false,
-                    onChanged: (val) => _toggleScreenLock(key, val),
-                  ),
+                      icon: icon,
+                      label: label,
+                      detail: detail,
+                      enabled: _screenLocks[key] ?? false,
+                      onChanged: (val) => _toggleScreenLock(key, val),
+                    ),
               ],
             ],
           ),
@@ -412,19 +444,16 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   }
 
   Widget _buildGeneralTab(ShadThemeData theme) {
-    final topPad = MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
+    final topPad =
+        MediaQuery.paddingOf(context).top + kToolbarHeight + kTextTabBarHeight;
     return ListView(
-      padding: EdgeInsets.fromLTRB(context.rw(16), topPad + context.rh(28), context.rw(16), context.rh(16)),
+      padding: EdgeInsets.fromLTRB(
+        context.rw(16),
+        topPad + context.rh(28),
+        context.rw(16),
+        context.rh(16),
+      ),
       children: [
-        _GeneralLinkRow(
-          icon: LucideIcons.shieldCheck,
-          iconColor: AppTheme.accent,
-          iconBgColor: AppTheme.accent.withValues(alpha: 0.1),
-          title: 'Seller Verification',
-          subtitle: 'Verify your identity to start selling',
-          onTap: () => Navigator.of(context).pushNamed('/seller-profile-verification'),
-        ),
-        SizedBox(height: context.rh(8)),
         _GeneralLinkRow(
           icon: LucideIcons.info,
           iconColor: AppTheme.successMoss,
@@ -512,13 +541,29 @@ class _GeneralLinkRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.charcoalInk)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.charcoalInk,
+                      ),
+                    ),
                     SizedBox(height: context.rh(2)),
-                    Text(subtitle, style: TextStyle(fontSize: context.rsp(12), color: AppTheme.mutedSteel)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: context.rsp(12),
+                        color: AppTheme.mutedSteel,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Icon(LucideIcons.chevronRight, size: context.ri(18), color: AppTheme.mutedSteel),
+              Icon(
+                LucideIcons.chevronRight,
+                size: context.ri(18),
+                color: AppTheme.mutedSteel,
+              ),
             ],
           ),
         ),
@@ -547,7 +592,10 @@ class _LockScreenItem extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: context.rh(6)),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: context.rw(12), vertical: context.rh(10)),
+        padding: EdgeInsets.symmetric(
+          horizontal: context.rw(12),
+          vertical: context.rh(10),
+        ),
         decoration: BoxDecoration(
           color: enabled
               ? AppTheme.accent.withValues(alpha: 0.05)
@@ -561,18 +609,33 @@ class _LockScreenItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: context.ri(18), color: enabled ? AppTheme.accent : AppTheme.mutedSteel),
+            Icon(
+              icon,
+              size: context.ri(18),
+              color: enabled ? AppTheme.accent : AppTheme.mutedSteel,
+            ),
             SizedBox(width: context.rw(10)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(
-                    fontSize: context.rsp(13),
-                    fontWeight: FontWeight.w600,
-                    color: enabled ? AppTheme.charcoalInk : AppTheme.mutedSteel,
-                  )),
-                  Text(detail, style: TextStyle(fontSize: context.rsp(11), color: AppTheme.mutedSteel)),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: context.rsp(13),
+                      fontWeight: FontWeight.w600,
+                      color: enabled
+                          ? AppTheme.charcoalInk
+                          : AppTheme.mutedSteel,
+                    ),
+                  ),
+                  Text(
+                    detail,
+                    style: TextStyle(
+                      fontSize: context.rsp(11),
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
                 ],
               ),
             ),

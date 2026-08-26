@@ -12,10 +12,15 @@ class ScannerScreen extends ConsumerWidget {
   /// value as the route result.
   final bool autoClose;
 
+  final String title;
+  final String subtitle;
+
   const ScannerScreen({
     super.key,
     this.onDetect,
     this.autoClose = false,
+    this.title = 'Scan Delivery Code',
+    this.subtitle = 'Point camera at the QR code to verify delivery',
   });
 
   @override
@@ -23,13 +28,13 @@ class ScannerScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scan Delivery Code'),
+        title: Text(title),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
       body: UniversalScanner(
-        title: 'Scan Delivery Code',
-        subtitle: 'Point camera at the QR code to verify delivery',
+        title: title,
+        subtitle: subtitle,
         autoClose: autoClose,
         onDetect: onDetect,
       ),
