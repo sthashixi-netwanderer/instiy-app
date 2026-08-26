@@ -1134,10 +1134,12 @@ export const Users: React.FC = () => {
 										gap: "0.5rem",
 									}}
 									onClick={async () => {
-										const { error } = await supabase
-											.from("users")
-											.update({ suspended: false, suspended_at: null })
-											.eq("id", selectedUser.id);
+										// RPC lifts the suspension, resolves open
+										// complaints and notifies the user.
+										const { error } = await supabase.rpc(
+											"admin_unsuspend_user",
+											{ p_user_id: selectedUser.id, p_admin_notes: null },
+										);
 										if (error) {
 											showAlert("Error", "Error: " + error.message, "error");
 											return;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
+import '../../providers/account_status_provider.dart';
 import '../../providers/providers.dart';
 import '../../services/report_service.dart';
 import '../../utils/responsive.dart';
@@ -24,6 +25,23 @@ class _SuspendedScreenState extends ConsumerState<SuspendedScreen> {
   void initState() {
     super.initState();
     _complaintController.addListener(() => setState(() {}));
+  }
+
+  /// When the suspended screen is open and the admin unsuspends the user, the
+  /// account-status watcher fires a global navigation to /home, but the user
+  /// would miss the feedback. Show a confirmation toast before the route swap
+  /// lands.
+  void _onAccountStatusChanged(bool? previous, bool next) {
+    if (previous == true && next == false) {
+      ShadToaster.of(context).show(
+        const ShadToast(
+          title: Text('Account Reinstated'),
+          description: Text(
+            'Your account has been reviewed and reinstated. Welcome back!',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -96,6 +114,8 @@ class _SuspendedScreenState extends ConsumerState<SuspendedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(accountStatusProvider, _onAccountStatusChanged);
+
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
       body: SafeArea(

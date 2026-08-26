@@ -13,6 +13,8 @@ import {
 	Ban,
 	Unlock,
 	Circle,
+	ShieldAlert,
+	Mail,
 } from "lucide-react";
 import {
 	Dialog,
@@ -25,13 +27,15 @@ import { useAlert, useConfirm } from '../components/use-alert';
 import { formatCurrency } from "../utils/format";
 
 type ReportStatus = "pending" | "reviewed" | "resolved" | "dismissed" | "";
+type ReportTab = ReportStatus | "suspended";
 
-const STATUS_TABS: { label: string; value: ReportStatus }[] = [
+const STATUS_TABS: { label: string; value: ReportTab }[] = [
 	{ label: "All", value: "" },
 	{ label: "Pending", value: "pending" },
 	{ label: "Reviewed", value: "reviewed" },
 	{ label: "Resolved", value: "resolved" },
 	{ label: "Dismissed", value: "dismissed" },
+	{ label: "Suspended", value: "suspended" },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -80,10 +84,15 @@ export const Reports: React.FC = () => {
 	const [reports, setReports] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [fetchError, setFetchError] = useState<string | null>(null);
-	const [activeTab, setActiveTab] = useState<ReportStatus>("");
+	const [activeTab, setActiveTab] = useState<ReportTab>("");
 	const [selectedReport, setSelectedReport] = useState<any>(null);
 	const [actionLoading, setActionLoading] = useState(false);
 	const [adminNotes, setAdminNotes] = useState("");
+	const [suspendedComplaints, setSuspendedComplaints] = useState<any[]>([]);
+	const [suspendedLoading, setSuspendedLoading] = useState(true);
+	const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
+	const [complaintNotes, setComplaintNotes] = useState("");
+	const [complaintActionLoading, setComplaintActionLoading] = useState(false);
 	const [statusUpdate, setStatusUpdate] = useState<{
 		id: string;
 		status: string;
@@ -93,6 +102,7 @@ export const Reports: React.FC = () => {
 	const { confirm, ConfirmComponent } = useConfirm();
 
 	const fetchReports = useCallback(async () => {
+		if (activeTab === "suspended") return; // reports table not shown on that tab
 		try {
 			setLoading(true);
 			setFetchError(null);
@@ -157,6 +167,71 @@ export const Reports: React.FC = () => {
 	useEffect(() => {
 		fetchReports();
 	}, [fetchReports]);
+
+	const fetchSuspendedComplaints = useCallback(async (silent = false) => {
+		try {
+			if (!silent) setSuspendedLoading(true);
+
+			const { data, error } = await supabase.rpc("get_suspended_complaints");
+			if (error) throw error;
+
+			setSuspendedComplaints(
+				(data || []).map((row: any) => ({
+					id: row.complaint_id,
+					text: row.complaint_text,
+					status: row.complaint_status,
+					admin_notes: row.complaint_admin_notes,
+					created_at: row.complaint_created_at,
+					user: {
+						id: row.user_id,
+						full_name: row.user_name,
+						email: row.user_email,
+						avatar_url: row.user_avatar,
+						university: row.user_university,
+						joined_at: row.user_joined_at,
+						is_seller: row.user_is_seller,
+						is_verified: row.user_is_verified,
+						suspended_at: row.suspended_at,
+					},
+					reports_against_count: row.reports_against_count,
+					report: row.report_id
+						? {
+								id: row.report_id,
+								category: row.report_category,
+								description: row.report_description,
+								status: row.report_status,
+								reporter_name: row.reporter_name,
+							}
+						: null,
+				})),
+			);
+		} catch (error) {
+			console.error("Error fetching suspended complaints:", error);
+		} finally {
+			setSuspendedLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		fetchSuspendedComplaints();
+	}, [fetchSuspendedComplaints]);
+
+	// Keep the suspended queue fresh when complaints arrive in realtime.
+	useEffect(() => {
+		const channel = supabase
+			.channel("admin-user-complaints")
+			.on(
+				"postgres_changes",
+				{ event: "*", schema: "public", table: "user_complaints" },
+				() => {
+					fetchSuspendedComplaints(true);
+				},
+			)
+			.subscribe();
+		return () => {
+			supabase.removeChannel(channel);
+		};
+	}, [fetchSuspendedComplaints]);
 
 	const markAsRead = async (reportId: string) => {
 		try {
@@ -234,12 +309,14 @@ export const Reports: React.FC = () => {
 	const handleUnsuspendUser = async (userId: string) => {
 		try {
 			setSuspendingUserId(userId);
-			const { error } = await supabase
-				.from("users")
-				.update({ suspended: false, suspended_at: null })
-				.eq("id", userId);
+			// RPC lifts the suspension, resolves open complaints and
+			// notifies the user (their app auto-recovers via realtime).
+			const { error } = await supabase.rpc("admin_unsuspend_user", {
+				p_user_id: userId,
+				p_admin_notes: null,
+			});
 			if (error) throw error;
-			await fetchReports();
+			await Promise.all([fetchReports(), fetchSuspendedComplaints(true)]);
 			setSelectedReport((prev: any) =>
 				prev
 					? {
@@ -253,6 +330,65 @@ export const Reports: React.FC = () => {
 		} finally {
 			setSuspendingUserId(null);
 		}
+	};
+
+	// Review actions for the Suspended tab (complaints filed by suspended users).
+
+	const handleComplaintStatusUpdate = async (complaintId: string, status: string) => {
+		try {
+			setComplaintActionLoading(true);
+			const updates: Record<string, any> = {
+				status,
+				updated_at: new Date().toISOString(),
+			};
+			const notes = complaintNotes.trim();
+			if (notes) updates.admin_notes = notes;
+
+			const { error } = await supabase
+				.from("user_complaints")
+				.update(updates)
+				.eq("id", complaintId);
+			if (error) throw error;
+
+			setSelectedComplaint((prev: any) => (prev ? { ...prev, status } : null));
+			await fetchSuspendedComplaints(true);
+		} catch (error) {
+			alert("Error updating complaint", { description: (error as any).message, variant: 'danger' });
+		} finally {
+			setComplaintActionLoading(false);
+		}
+	};
+
+	const handleUnsuspendAccount = (complaint: any) => {
+		confirm(
+			"Unsuspend User",
+			async () => {
+				try {
+					setComplaintActionLoading(true);
+					const { error } = await supabase.rpc("admin_unsuspend_user", {
+						p_user_id: complaint.user.id,
+						p_admin_notes: complaintNotes.trim() || null,
+					});
+					if (error) throw error;
+
+					setSelectedComplaint(null);
+					setComplaintNotes("");
+					await Promise.all([fetchSuspendedComplaints(true), fetchReports()]);
+					alert("User reinstated", {
+						description:
+							"The suspension was lifted, their open complaints were marked resolved, and they've been notified.",
+					});
+				} catch (error) {
+					alert("Error unsuspending user", { description: (error as any).message, variant: 'danger' });
+				} finally {
+					setComplaintActionLoading(false);
+				}
+			},
+			{
+				description: `${complaint.user.full_name} will be able to use Instiy again. Their open complaints will be marked resolved and they will receive a reinstatement notification.`,
+				confirmLabel: "Unsuspend",
+			},
+		);
 	};
 
 	const getStatusBadge = (status: string) => {
@@ -359,11 +495,22 @@ export const Reports: React.FC = () => {
 							key={tab.value}
 							className={`btn btn-sm ${activeTab === tab.value ? "btn-primary" : "btn-secondary"}`}
 							onClick={() => setActiveTab(tab.value)}
+							style={
+								tab.value === "suspended"
+									? { display: "inline-flex", alignItems: "center", gap: 4 }
+									: undefined
+							}
 						>
+							{tab.value === "suspended" && <ShieldAlert size={13} />}
 							{tab.label}
 							{tab.value === "" && (
 								<span style={{ marginLeft: 4, opacity: 0.7 }}>
 									({filteredCount})
+								</span>
+							)}
+							{tab.value === "suspended" && suspendedComplaints.length > 0 && (
+								<span style={{ marginLeft: 4, opacity: 0.7 }}>
+									({suspendedComplaints.length})
 								</span>
 							)}
 						</button>
@@ -371,7 +518,186 @@ export const Reports: React.FC = () => {
 				</div>
 			</div>
 
-			{loading ? (
+			{activeTab === "suspended" ? (
+				suspendedLoading && suspendedComplaints.length === 0 ? (
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							height: "40vh",
+						}}
+					>
+						<Loader
+							className="spin"
+							size={28}
+							style={{ color: "hsl(var(--accent))" }}
+						/>
+					</div>
+				) : suspendedComplaints.length === 0 ? (
+					<div className="card" style={{ textAlign: "center", padding: "3rem" }}>
+						<ShieldAlert
+							size={48}
+							style={{
+								color: "hsl(var(--text-tertiary))",
+								margin: "0 auto 1rem",
+							}}
+						/>
+						<p style={{ color: "hsl(var(--text-tertiary))" }}>
+							No suspended user complaints
+						</p>
+						<p
+							style={{
+								color: "hsl(var(--text-tertiary))",
+								fontSize: "0.85rem",
+							}}
+						>
+							When a suspended user submits a complaint from the app, it will
+							appear here for review.
+						</p>
+					</div>
+				) : (
+					<div className="table-container">
+						<table className="table">
+							<thead>
+								<tr>
+									<th>Suspended User</th>
+									<th>Suspended On</th>
+									<th>Complaint</th>
+									<th>Reports Against</th>
+									<th>Submitted</th>
+									<th style={{ textAlign: "right" }}>Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{suspendedComplaints.map((c) => (
+									<tr key={c.id}>
+										<td>
+											<div
+												style={{
+													display: "flex",
+													alignItems: "center",
+													gap: "0.625rem",
+												}}
+											>
+												<img
+													src={
+														c.user?.avatar_url ||
+														"https://api.dicebear.com/7.x/bottts/svg?seed=" +
+															c.user?.id
+													}
+													alt={c.user?.full_name}
+													style={{
+														width: "34px",
+														height: "34px",
+														borderRadius: "50%",
+														border: "1px solid hsl(var(--border))",
+														objectFit: "cover",
+													}}
+												/>
+												<div>
+													<div
+														style={{
+															fontWeight: 600,
+															fontSize: "0.85rem",
+															display: "flex",
+															alignItems: "center",
+															gap: 6,
+														}}
+													>
+														{c.user?.full_name}
+														<span
+															className="badge badge-danger"
+															style={{
+																fontSize: "0.65rem",
+																padding: "1px 5px",
+															}}
+														>
+															Suspended
+														</span>
+													</div>
+													<div
+														style={{
+															fontSize: "0.72rem",
+															color: "hsl(var(--text-tertiary))",
+														}}
+													>
+														{c.user?.email}
+													</div>
+												</div>
+											</div>
+										</td>
+										<td
+											style={{
+												color: "hsl(var(--text-tertiary))",
+												fontSize: "0.8rem",
+											}}
+										>
+											{c.user?.suspended_at
+												? new Date(c.user.suspended_at).toLocaleDateString()
+												: "—"}
+										</td>
+										<td style={{ maxWidth: "280px" }}>
+											<div
+												style={{
+													fontSize: "0.82rem",
+													overflow: "hidden",
+													textOverflow: "ellipsis",
+													whiteSpace: "nowrap",
+													maxWidth: "260px",
+												}}
+											>
+												{c.text}
+											</div>
+											<span
+												className={`badge ${c.status === "pending" ? "badge-warning" : c.status === "resolved" ? "badge-success" : "badge-secondary"}`}
+												style={{ fontSize: "0.68rem", padding: "1px 6px" }}
+											>
+												{COMPLAINT_STATUS_LABELS[c.status] || c.status}
+											</span>
+										</td>
+										<td
+											style={{
+												color: "hsl(var(--text-tertiary))",
+												fontSize: "0.8rem",
+											}}
+										>
+											{c.reports_against_count}
+										</td>
+										<td
+											style={{
+												color: "hsl(var(--text-tertiary))",
+												fontSize: "0.8rem",
+											}}
+										>
+											{new Date(c.created_at).toLocaleDateString()}
+										</td>
+										<td>
+											<div
+												style={{
+													display: "flex",
+													gap: "0.375rem",
+													justifyContent: "flex-end",
+												}}
+											>
+												<button
+													className="btn btn-secondary btn-sm"
+													onClick={() => {
+														setSelectedComplaint(c);
+														setComplaintNotes(c.admin_notes || "");
+													}}
+												>
+													<Eye size={13} /> Review
+												</button>
+											</div>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)
+			) : loading ? (
 				<div
 					style={{
 						display: "flex",
@@ -669,9 +995,9 @@ export const Reports: React.FC = () => {
 								</tr>
 							))}
 						</tbody>
-					</table>
-				</div>
-			)}
+						</table>
+					</div>
+				)}
 
 			{/* Detail Drawer */}
 			{selectedReport && (
@@ -1163,6 +1489,362 @@ export const Reports: React.FC = () => {
 									Dismiss
 								</button>
 							)}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Suspended Complaint Review Drawer */}
+			{selectedComplaint && (
+				<div
+					className="drawer-backdrop"
+					onClick={() => setSelectedComplaint(null)}
+				>
+					<div
+						className="drawer"
+						onClick={(e) => e.stopPropagation()}
+						style={{ maxWidth: "560px" }}
+					>
+						<div
+							style={{
+								display: "flex",
+								justifyContent: "space-between",
+								alignItems: "center",
+								borderBottom: "1px solid hsl(var(--border))",
+								paddingBottom: "0.875rem",
+							}}
+						>
+							<h2
+								style={{ fontSize: "1.2rem", fontFamily: "var(--font-title)" }}
+							>
+								Suspended Account Review
+							</h2>
+							<button
+								style={{
+									background: "none",
+									border: "none",
+									cursor: "pointer",
+									color: "hsl(var(--text-secondary))",
+									padding: "4px",
+								}}
+								onClick={() => setSelectedComplaint(null)}
+							>
+								<X size={20} />
+							</button>
+						</div>
+
+						{/* User account under review */}
+						<div
+							className="card"
+							style={{ background: "hsl(var(--bg-surface))" }}
+						>
+							<h4
+								style={{
+									fontSize: "0.78rem",
+									color: "hsl(var(--text-tertiary))",
+									textTransform: "uppercase",
+									letterSpacing: "0.05em",
+									fontWeight: 600,
+									marginBottom: "0.75rem",
+								}}
+							>
+								User Account
+							</h4>
+							<div
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: "0.75rem",
+									marginBottom: "0.75rem",
+								}}
+							>
+								<img
+									src={
+										selectedComplaint.user?.avatar_url ||
+										"https://api.dicebear.com/7.x/bottts/svg?seed=" +
+											selectedComplaint.user?.id
+									}
+									alt=""
+									style={{
+										width: "44px",
+										height: "44px",
+										borderRadius: "50%",
+										objectFit: "cover",
+									}}
+								/>
+								<div>
+									<div
+										style={{
+											fontWeight: 600,
+											fontSize: "0.9rem",
+											display: "flex",
+											alignItems: "center",
+											gap: 6,
+											flexWrap: "wrap",
+										}}
+									>
+										{selectedComplaint.user?.full_name}
+										<span
+											className="badge badge-danger"
+											style={{ fontSize: "0.65rem", padding: "1px 5px" }}
+										>
+											Suspended
+										</span>
+										{selectedComplaint.user?.is_seller && (
+											<span
+												className="badge badge-info"
+												style={{ fontSize: "0.65rem", padding: "1px 5px" }}
+											>
+												Seller
+											</span>
+										)}
+										{selectedComplaint.user?.is_verified && (
+											<span
+												className="badge badge-success"
+												style={{ fontSize: "0.65rem", padding: "1px 5px" }}
+											>
+												Verified
+											</span>
+										)}
+									</div>
+									<div
+										style={{
+											fontSize: "0.75rem",
+											color: "hsl(var(--text-tertiary))",
+											display: "flex",
+											alignItems: "center",
+											gap: 4,
+											marginTop: 2,
+										}}
+									>
+										<Mail size={11} />
+										{selectedComplaint.user?.email}
+									</div>
+								</div>
+							</div>
+							{(
+								[
+									[
+										"University",
+										selectedComplaint.user?.university || "—",
+									],
+									[
+										"Joined",
+										selectedComplaint.user?.joined_at
+											? new Date(
+													selectedComplaint.user.joined_at,
+												).toLocaleDateString()
+											: "—",
+									],
+									[
+										"Suspended on",
+										selectedComplaint.user?.suspended_at
+											? new Date(
+													selectedComplaint.user.suspended_at,
+												).toLocaleString()
+											: "—",
+									],
+									[
+										"Reports against",
+										String(selectedComplaint.reports_against_count ?? 0),
+									],
+								] as [string, string][]
+							).map(([label, value]) => (
+								<div
+									key={label}
+									style={{
+										display: "flex",
+										justifyContent: "space-between",
+										fontSize: "0.8rem",
+										padding: "0.25rem 0",
+									}}
+								>
+									<span style={{ color: "hsl(var(--text-tertiary))" }}>
+										{label}:
+									</span>
+									<span style={{ fontWeight: 500 }}>{value}</span>
+								</div>
+							))}
+						</div>
+
+						{/* The complaint that triggered the review */}
+						<div
+							className="card"
+							style={{ borderLeft: "3px solid hsl(var(--danger))" }}
+						>
+							<h4
+								style={{
+									fontSize: "0.78rem",
+									color: "hsl(var(--text-tertiary))",
+									textTransform: "uppercase",
+									letterSpacing: "0.05em",
+									fontWeight: 600,
+									marginBottom: "0.5rem",
+								}}
+							>
+								User Complaint
+							</h4>
+							<p
+								style={{
+									fontSize: "0.85rem",
+									lineHeight: "1.5",
+									marginBottom: "0.5rem",
+								}}
+							>
+								{selectedComplaint.text}
+							</p>
+							<div
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: "0.5rem",
+								}}
+							>
+								<span
+									style={{
+										fontSize: "0.75rem",
+										color: "hsl(var(--text-tertiary))",
+									}}
+								>
+									Status:
+								</span>
+								<span
+									className={`badge ${selectedComplaint.status === "pending" ? "badge-warning" : selectedComplaint.status === "resolved" ? "badge-success" : "badge-secondary"}`}
+									style={{ fontSize: "0.68rem", padding: "1px 6px" }}
+								>
+									{COMPLAINT_STATUS_LABELS[selectedComplaint.status] ||
+										selectedComplaint.status}
+								</span>
+								<span
+									style={{
+										fontSize: "0.72rem",
+										color: "hsl(var(--text-tertiary))",
+										marginLeft: "auto",
+									}}
+								>
+									{new Date(selectedComplaint.created_at).toLocaleString()}
+								</span>
+							</div>
+						</div>
+
+						{/* The report that led to the suspension (if any) */}
+						{selectedComplaint.report && (
+							<div className="card">
+								<h4
+									style={{
+										fontSize: "0.78rem",
+										color: "hsl(var(--text-tertiary))",
+										textTransform: "uppercase",
+										letterSpacing: "0.05em",
+										fontWeight: 600,
+										marginBottom: "0.5rem",
+									}}
+								>
+									Original Report
+								</h4>
+								<div
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: "0.5rem",
+										marginBottom: "0.5rem",
+										flexWrap: "wrap",
+									}}
+								>
+									{getCategoryBadge(selectedComplaint.report.category)}
+									{getStatusBadge(selectedComplaint.report.status)}
+									{selectedComplaint.report.reporter_name && (
+										<span
+											style={{
+												fontSize: "0.75rem",
+												color: "hsl(var(--text-tertiary))",
+											}}
+										>
+											by {selectedComplaint.report.reporter_name}
+										</span>
+									)}
+								</div>
+								{selectedComplaint.report.description && (
+									<p style={{ fontSize: "0.85rem", lineHeight: "1.5" }}>
+										{selectedComplaint.report.description}
+									</p>
+								)}
+							</div>
+						)}
+
+						{/* Complaint notes */}
+						<div className="form-group" style={{ marginTop: "0.75rem" }}>
+							<label className="form-label">Complaint Notes</label>
+							<textarea
+								className="form-control"
+								rows={3}
+								placeholder="Notes about this complaint / decision..."
+								value={complaintNotes}
+								onChange={(e) => setComplaintNotes(e.target.value)}
+							/>
+						</div>
+
+						{/* Actions */}
+						<div
+							style={{
+								display: "flex",
+								flexDirection: "column",
+								gap: "0.5rem",
+								marginTop: "0.75rem",
+							}}
+						>
+							<button
+								className="btn btn-success"
+								onClick={() => handleUnsuspendAccount(selectedComplaint)}
+								disabled={complaintActionLoading}
+							>
+								{complaintActionLoading ? (
+									<Loader className="spin" size={14} />
+								) : (
+									<Unlock size={14} />
+								)}
+								Unsuspend &amp; Resolve
+							</button>
+							{selectedComplaint.status !== "reviewed" &&
+								selectedComplaint.status !== "resolved" && (
+									<button
+										className="btn btn-primary"
+										onClick={() =>
+											handleComplaintStatusUpdate(
+												selectedComplaint.id,
+												"reviewed",
+											)
+										}
+										disabled={complaintActionLoading}
+									>
+										{complaintActionLoading ? (
+											<Loader className="spin" size={14} />
+										) : (
+											<Eye size={14} />
+										)}
+										Mark Reviewed (keep suspended)
+									</button>
+								)}
+							{selectedComplaint.status !== "dismissed" &&
+								selectedComplaint.status !== "resolved" && (
+									<button
+										className="btn btn-danger"
+										onClick={() =>
+											handleComplaintStatusUpdate(
+												selectedComplaint.id,
+												"dismissed",
+											)
+										}
+										disabled={complaintActionLoading}
+									>
+										{complaintActionLoading ? (
+											<Loader className="spin" size={14} />
+										) : (
+											<XCircle size={14} />
+										)}
+										Dismiss Complaint (keep suspended)
+									</button>
+								)}
 						</div>
 					</div>
 				</div>

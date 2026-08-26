@@ -20,7 +20,7 @@ import 'verification_provider.dart';
 import 'video_provider.dart';
 import 'chat_background_provider.dart';
 
-final authProvider = ChangeNotifierProvider((ref) => AuthProvider());
+final authProvider = ChangeNotifierProvider((ref) => AuthProvider(ref));
 final productProvider = ChangeNotifierProvider((ref) => ProductProvider());
 final cartProvider = ChangeNotifierProvider((ref) => CartProvider());
 final orderProvider = ChangeNotifierProvider((ref) => OrderProvider());

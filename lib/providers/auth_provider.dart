@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
@@ -8,13 +9,14 @@ import '../services/local_notification_service.dart';
 import '../services/navigation_service.dart';
 import '../services/secrets_service.dart';
 import '../services/supabase_service.dart';
+import 'account_status_provider.dart';
 
 class AuthProvider extends ChangeNotifier {
+  final Ref _ref;
   AppUser? _user;
   bool _isLoading = false;
   String? _error;
   RealtimeChannel? _verificationChannel;
-  RealtimeChannel? _suspensionChannel;
   bool _isSuspended = false;
 
   AppUser? get user => _user;
@@ -24,8 +26,26 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isAuthenticated => _user != null && !_isSuspended;
 
-  AuthProvider() {
+  AuthProvider(this._ref) {
+    // Realtime suspension/reinstatement is owned by AccountStatusNotifier;
+    // mirror its flag here so splash/login gating stays in sync.
+    _ref.listen(accountStatusProvider, (previous, next) {
+      if (next != _isSuspended) {
+        _isSuspended = next;
+        _error = null;
+        notifyListeners();
+      }
+    });
     _init();
+  }
+
+  /// Point the account-status watcher at the current user (or stop it when
+  /// signed out). Idempotent — safe to call from every auth path.
+  void _syncAccountStatus() {
+    _ref.read(accountStatusProvider.notifier).watchUser(
+          _user?.id,
+          suspended: _user?.suspended ?? false,
+        );
   }
 
   Future<void> _init() async {
@@ -76,6 +96,8 @@ class AuthProvider extends ChangeNotifier {
                 // Profile may already exist (race condition with trigger)
               }
               _user = await AuthService.getCurrentUserProfile();
+              _syncAccountStatus();
+              _subscribeToVerificationChanges();
               _error = null;
               _isLoading = false;
               unawaited(SecretsService.instance.initialize());
@@ -83,6 +105,8 @@ class AuthProvider extends ChangeNotifier {
             } else {
               // Existing Google user — login flow
               _user = await AuthService.getCurrentUserProfile();
+              _syncAccountStatus();
+              _subscribeToVerificationChanges();
               if (_user != null && _user!.suspended) {
                 _isSuspended = true;
                 _isLoading = false;
@@ -125,6 +149,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       _user = await AuthService.getCurrentUserProfile();
       _error = null;
+      _syncAccountStatus();
 
       // Check if user is suspended
       if (_user != null && _user!.suspended) {
@@ -136,7 +161,6 @@ class AuthProvider extends ChangeNotifier {
 
       _isSuspended = false;
       _subscribeToVerificationChanges();
-      _subscribeToSuspensionChanges();
       unawaited(SecretsService.instance.initialize());
     } catch (e) {
       _error = e.toString();
@@ -186,62 +210,23 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Subscribe to Realtime changes to detect when admin suspends this user.
-  void _subscribeToSuspensionChanges() {
-    _unsubscribeFromSuspension();
+  /// Realtime suspension detection lives in AccountStatusNotifier
+  /// (accountStatusProvider), which navigates globally when the admin flips
+  /// `users.suspended` and reloads the profile on reinstatement.
 
-    final uid = _user?.id;
-    if (uid == null) return;
-
-    _suspensionChannel = Supabase.instance.client
-        .channel('user-suspension:$uid')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'users',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: uid,
-          ),
-          callback: (payload) async {
-            final newRecord = payload.newRecord;
-            if (newRecord['suspended'] == true && !_isSuspended) {
-              await _handleSuspension();
-            }
-          },
-        )
-        .subscribe();
-  }
-
-  void _unsubscribeFromSuspension() {
-    if (_suspensionChannel != null) {
-      Supabase.instance.client.removeChannel(_suspensionChannel!);
-      _suspensionChannel = null;
+  /// Re-fetch the current user's profile after the admin reinstates the
+  /// account, and resync the realtime watcher. Mirrors `loadUserProfile` but
+  /// skips the loading spinner / verification-subscription churn so the
+  /// bounce-back to /home feels instant.
+  Future<void> refreshOnReinstate() async {
+    try {
+      _user = await AuthService.getCurrentUserProfile();
+      _syncAccountStatus();
+      _subscribeToVerificationChanges();
+    } catch (_) {
+      // Fall through; the watcher is already in the correct state and the
+      // next profile load will recover.
     }
-  }
-
-  /// Central handler for when suspension is detected (via Realtime or lifecycle check).
-  /// Navigates to /suspended FIRST, then signs out in the background.
-  Future<void> _handleSuspension() async {
-    if (_isSuspended) return; // already handled
-    _isSuspended = true;
-    _error = null;
-    notifyListeners();
-
-    // Navigate FIRST — before signOut triggers auth state listener that nulls _user.
-    // Using addPostFrameCallback ensures the current frame completes before navigation.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      NavigationService.navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/suspended',
-        (route) => false,
-      );
-    });
-
-    // Then sign out in the background to invalidate the Supabase session.
-    // The auth state listener will set _user = null, but _isSuspended is already true
-    // so isAuthenticated remains false and the suspended screen stays visible.
-    await AuthService.signOut();
   }
 
   /// Called on app resume to re-check suspension from the database.
@@ -252,7 +237,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final profile = await AuthService.getCurrentUserProfile();
       if (profile != null && profile.suspended && !_isSuspended) {
-        await _handleSuspension();
+        _ref.read(accountStatusProvider.notifier).markSuspended();
       }
     } catch (_) {
       // Non-critical — don't crash on resume check
@@ -300,6 +285,8 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       _user = await AuthService.signIn(email: email, password: password);
+      _syncAccountStatus();
+      _subscribeToVerificationChanges();
       if (_user != null && _user!.suspended) {
         _isSuspended = true;
         _isLoading = false;
@@ -322,10 +309,10 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     _unsubscribeFromVerification();
-    _unsubscribeFromSuspension();
     _isSuspended = false;
     await AuthService.signOut();
     _user = null;
+    _syncAccountStatus();
     notifyListeners();
   }
 
@@ -394,7 +381,6 @@ class AuthProvider extends ChangeNotifier {
   @override
   void dispose() {
     _unsubscribeFromVerification();
-    _unsubscribeFromSuspension();
     super.dispose();
   }
 }
