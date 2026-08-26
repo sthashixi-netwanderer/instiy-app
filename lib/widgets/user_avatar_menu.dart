@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
-import '../providers/providers.dart';
 import 'verification_badge.dart';
 
 /// Generic icon button with a count badge (cart, bell, etc.)
@@ -61,24 +59,15 @@ class BadgeIconButton extends StatelessWidget {
   }
 }
 
-/// Reusable avatar with popover dropdown menu.
-/// Shows a user icon for unauthenticated users, or the profile avatar
-/// with a popover menu (Wishlist, Orders, Wallet, Following,
-/// Become a Seller [non-sellers only], Settings, Sign Out) when authenticated.
-class UserAvatarMenu extends ConsumerStatefulWidget {
+/// Header avatar button. Unauthenticated users are sent to login; signed-in
+/// users open the account screen (`/account-menu`), which hosts the actions
+/// that used to live in the avatar's popover dropdown.
+class UserAvatarMenu extends StatelessWidget {
   final String? avatarUrl;
   final String? fullName;
   final String? businessName;
   final bool isVerified;
   final bool isAuthenticated;
-  final VoidCallback onLoginTap;
-  final VoidCallback onWishlistTap;
-  final VoidCallback onOrdersTap;
-  final VoidCallback onWalletTap;
-  final VoidCallback onFollowingTap;
-  final VoidCallback onBecomeSellerTap;
-  final VoidCallback onSettingsTap;
-  final VoidCallback onSignOut;
 
   const UserAvatarMenu({
     super.key,
@@ -87,216 +76,42 @@ class UserAvatarMenu extends ConsumerStatefulWidget {
     this.businessName,
     this.isVerified = false,
     this.isAuthenticated = false,
-    required this.onLoginTap,
-    required this.onWishlistTap,
-    required this.onOrdersTap,
-    required this.onWalletTap,
-    required this.onFollowingTap,
-    required this.onBecomeSellerTap,
-    required this.onSettingsTap,
-    required this.onSignOut,
   });
 
   @override
-  ConsumerState<UserAvatarMenu> createState() => _UserAvatarMenuState();
-}
-
-class _UserAvatarMenuState extends ConsumerState<UserAvatarMenu> {
-  final _popoverController = ShadPopoverController();
-
-  @override
-  void dispose() {
-    _popoverController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool destructive = false,
-    bool highlight = false,
-  }) {
-    final theme = ShadTheme.of(context);
-    final textColor = destructive
-        ? AppTheme.destructive
-        : highlight
-            ? AppTheme.accent
-            : theme.colorScheme.popoverForeground;
-    final iconColor = destructive
-        ? AppTheme.destructive
-        : highlight
-            ? AppTheme.accent
-            : theme.colorScheme.mutedForeground;
-
-    return InkWell(
-      onTap: () {
-        _popoverController.hide();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 44),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: highlight
-            ? BoxDecoration(
-                color: AppTheme.accent.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppTheme.accent.withValues(alpha: 0.35),
-                ),
-              )
-            : null,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: iconColor),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
-                color: textColor,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!widget.isAuthenticated) {
-      return GestureDetector(
-        onTap: widget.onLoginTap,
-        child: ShadAvatar(
-          null,
-          size: const Size(36, 36),
-          backgroundColor: AppTheme.accent,
-          placeholder: const Icon(LucideIcons.user, color: Colors.white, size: 18),
-        ),
-      );
-    }
-
-    final isSeller = ref.watch(authProvider).user?.isSeller == true;
-
-    return ShadPopover(
-      controller: _popoverController,
-      anchor: const ShadAnchor(
-        childAlignment: Alignment.topRight,
-        overlayAlignment: Alignment.bottomRight,
-        offset: Offset(0, 8),
-      ),
-      padding: const EdgeInsets.all(8),
-      popover: (context) => SizedBox(
-        width: 164,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return GestureDetector(
+      onTap: () => Navigator.of(
+        context,
+      ).pushNamed(isAuthenticated ? '/account-menu' : '/login'),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            _buildMenuItem(
-              icon: LucideIcons.heart,
-              label: 'Wishlist',
-              onTap: widget.onWishlistTap,
-            ),
-            _buildMenuItem(
-              icon: LucideIcons.shoppingBag,
-              label: 'My Orders',
-              onTap: widget.onOrdersTap,
-            ),
-            _buildMenuItem(
-              icon: LucideIcons.wallet,
-              label: 'Wallet',
-              onTap: widget.onWalletTap,
-            ),
-            _buildMenuItem(
-              icon: LucideIcons.users,
-              label: 'Following',
-              onTap: widget.onFollowingTap,
-            ),
-            if (!isSeller)
-              _buildMenuItem(
-                icon: LucideIcons.store,
-                label: 'Become a Seller',
-                onTap: widget.onBecomeSellerTap,
-                highlight: true,
-              ),
-            _buildMenuItem(
-              icon: LucideIcons.settings,
-              label: 'Settings',
-              onTap: widget.onSettingsTap,
-            ),
-            InkWell(
-              onTap: () {
-                AppTheme.showGlassDialog(
-                  context: context,
-                  title: const Text('Sign Out'),
-                  description: const Text('Are you sure you want to sign out?'),
-                  actions: [
-                    ShadButton.ghost(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    ShadButton.destructive(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('Sign Out'),
-                    ),
-                  ],
-                ).then((confirmed) {
-                  _popoverController.hide();
-                  if (confirmed == true) widget.onSignOut();
-                });
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 44),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(LucideIcons.logOut, size: 18, color: AppTheme.destructive),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Sign Out',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.destructive,
+            ShadAvatar(
+              isAuthenticated && avatarUrl?.isNotEmpty == true
+                  ? avatarUrl
+                  : null,
+              size: const Size(36, 36),
+              backgroundColor: AppTheme.accent,
+              placeholder: isAuthenticated
+                  ? Text(
+                      (businessName ?? fullName ?? 'S')[0].toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                    )
+                  : const Icon(LucideIcons.user, color: Colors.white, size: 18),
             ),
-          ],
-        ),
-      ),
-      child: GestureDetector(
-        onTap: _popoverController.toggle,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              ShadAvatar(
-                widget.avatarUrl?.isNotEmpty == true ? widget.avatarUrl : null,
-                size: const Size(36, 36),
-                backgroundColor: AppTheme.accent,
-                placeholder: Text(
-                  (widget.businessName ?? widget.fullName ?? 'S')[0].toUpperCase(),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
+            if (isAuthenticated && isVerified)
+              const Positioned(
+                bottom: -2,
+                right: -2,
+                child: VerificationBadge(size: 14),
               ),
-              if (widget.isVerified)
-                const Positioned(
-                  bottom: -2,
-                  right: -2,
-                  child: VerificationBadge(size: 14),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );

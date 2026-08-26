@@ -498,6 +498,23 @@ class ProductService {
         .toList();
   }
 
+  /// Categories paired with their number of available listings, via a
+  /// PostgREST count embed. Throws if the embed is unavailable — callers
+  /// should fall back to [getCategories].
+  static Future<List<(Category, int)>> getCategoriesWithProductCounts() async {
+    final response = await SupabaseService.table('categories')
+        .select('*, products(count)')
+        .eq('products.status', 'available')
+        .order('name');
+
+    return (response as List).map((json) {
+      final embed = json['products'] as List?;
+      final count =
+          int.tryParse('${embed?.firstOrNull?['count'] ?? 0}') ?? 0;
+      return (Category.fromJson(json), count);
+    }).toList();
+  }
+
   static Future<List<Product>> getFeaturedProducts({int limit = 10}) async {
     final response = await SupabaseService.table('products')
         .select('''

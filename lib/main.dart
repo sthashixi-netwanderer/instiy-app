@@ -46,6 +46,7 @@ import 'screens/splash/splash_screen.dart';
 import 'screens/product/product_detail_screen.dart';
 import 'screens/product/create_listing_screen.dart';
 import 'screens/profile/profile_screen.dart';
+import 'screens/profile/account_menu_screen.dart';
 import 'screens/profile/edit_profile_screen.dart';
 import 'screens/seller/dashboard_screen.dart';
 import 'screens/seller/reviews_screen.dart';
@@ -557,6 +558,8 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/account':
               final initialTab = settings.arguments is int ? settings.arguments as int : 0;
               return route(AccountSettingsScreen(initialTab: initialTab));
+            case '/account-menu':
+              return route(const AccountMenuScreen());
             case '/sell':
               return route(const SellerGate(child: SellScreen()));
             case '/curated-collection':

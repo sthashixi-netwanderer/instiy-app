@@ -5,6 +5,7 @@ import '../config/app_theme.dart';
 import '../models/category_model.dart';
 import '../services/category_image_cache_service.dart';
 import 'animated_press.dart';
+import 'auto_scrolling_list.dart';
 
 class CategorySection extends StatelessWidget {
   final String title;
@@ -80,21 +81,18 @@ class CategorySection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
+        AutoScrollingListView(
           height: 110,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: categories.length,
-            itemExtent: 128,
-            itemBuilder: (context, index) {
-              final category = categories[index];
-              return _HorizontalCategoryCard(
-                category: category,
-                onTap: () => onTap(category),
-              );
-            },
-          ),
+          itemExtent: 128,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          itemCount: categories.length,
+          itemBuilder: (context, index) {
+            final category = categories[index];
+            return _HorizontalCategoryCard(
+              category: category,
+              onTap: () => onTap(category),
+            );
+          },
         ),
       ],
     );

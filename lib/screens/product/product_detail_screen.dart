@@ -8,7 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
-import '../../widgets/skeleton.dart';
+import '../../widgets/instiy_logo_placeholder.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
 import '../../services/product_service.dart';
@@ -833,93 +833,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       return ResponsiveLayout(
         type: ResponsiveLayoutType.detail,
         backgroundColor: AppTheme.cleanBackground,
-        child: Column(
-          children: [
-            // Image skeleton
-            Skeleton(
-              width: double.infinity,
-              height: MediaQuery.of(context).size.height * 0.45,
-              borderRadius: BorderRadius.circular(0),
-            ),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  context.rw(16),
-                  context.rh(16),
-                  context.rw(16),
-                  0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Seller row
-                    Row(
-                      children: [
-                        Skeleton(
-                          width: context.ri(32),
-                          height: context.ri(32),
-                          borderRadius: BorderRadius.circular(context.rr(10)),
-                        ),
-                        SizedBox(width: context.rw(8)),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Skeleton(
-                              width: context.rw(100),
-                              height: context.rh(12),
-                            ),
-                            SizedBox(height: context.rh(4)),
-                            Skeleton(
-                              width: context.rw(60),
-                              height: context.rh(8),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: context.rh(16)),
-                    // Title
-                    Skeleton(width: double.infinity, height: context.rh(16)),
-                    SizedBox(height: context.rh(8)),
-                    Skeleton(width: context.rw(200), height: context.rh(16)),
-                    SizedBox(height: context.rh(12)),
-                    // Price
-                    Skeleton(width: context.rw(80), height: context.rh(20)),
-                    SizedBox(height: context.rh(20)),
-                    // Tabs
-                    Row(
-                      children: [
-                        Skeleton(
-                          width: context.rw(70),
-                          height: context.rh(28),
-                          borderRadius: BorderRadius.circular(context.rr(8)),
-                        ),
-                        SizedBox(width: context.rw(8)),
-                        Skeleton(
-                          width: context.rw(90),
-                          height: context.rh(28),
-                          borderRadius: BorderRadius.circular(context.rr(8)),
-                        ),
-                        SizedBox(width: context.rw(8)),
-                        Skeleton(
-                          width: context.rw(60),
-                          height: context.rh(28),
-                          borderRadius: BorderRadius.circular(context.rr(8)),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: context.rh(16)),
-                    // Content lines
-                    Skeleton(width: double.infinity, height: context.rh(10)),
-                    SizedBox(height: context.rh(8)),
-                    Skeleton(width: double.infinity, height: context.rh(10)),
-                    SizedBox(height: context.rh(8)),
-                    Skeleton(width: context.rw(180), height: context.rh(10)),
-                  ],
-                ),
-              ),
-            ),
-          ],
+        child: const InstiyLogoPlaceholder(
+          width: double.infinity,
+          height: double.infinity,
+          animate: true,
         ),
       );
     }
@@ -2021,14 +1938,22 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                       padding: EdgeInsets.only(
                                         right: index < 3 ? context.rw(12) : 0,
                                       ),
-                                      child: SizedBox(
+                                      child: Container(
                                         width: context.rw(160),
-                                        child: Skeleton(
-                                          width: context.rw(160),
-                                          height: context.rh(260),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.pureSurface,
                                           borderRadius: BorderRadius.circular(
                                             context.rr(16),
                                           ),
+                                          border: Border.all(
+                                            color: AppTheme.whisperBorder,
+                                          ),
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: const InstiyLogoPlaceholder(
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          animate: true,
                                         ),
                                       ),
                                     );

@@ -35,14 +35,29 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   bool _isSearching = false;
   bool _isLoading = false;
   Timer? _searchDebounce;
-  String _randomPlaceholder = 'Search products...';
+  Timer? _hintTimer;
+
+  /// Rotating search-bar hints built from real listed product titles.
+  List<String> _hintPool = [];
+  int _hintIndex = 0;
+  String? get _currentHint =>
+      _hintPool.isEmpty ? null : _hintPool[_hintIndex % _hintPool.length];
+
+  /// Available-listing count per category id (empty when counts are
+  /// unavailable — then all categories are shown).
+  final Map<String, int> _categoryCounts = {};
 
   @override
   void initState() {
     super.initState();
     _loadCategories();
     _loadRecentSearches();
-    _fetchRandomActiveKeyword();
+    _loadPlaceholderHints();
+    _hintTimer = Timer.periodic(const Duration(milliseconds: 2800), (_) {
+      if (mounted && _searchController.text.isEmpty) {
+        setState(() => _hintIndex++);
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
@@ -53,14 +68,36 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _searchController.dispose();
     _focusNode.dispose();
     _searchDebounce?.cancel();
+    _hintTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadCategories() async {
     try {
-      final categories = await ProductService.getCategories();
-      if (mounted) setState(() => _categories = categories);
-    } catch (_) {}
+      final withCounts = await ProductService.getCategoriesWithProductCounts();
+      final stocked = withCounts.where((c) => c.$2 > 0).toList()
+        ..sort((a, b) => b.$2.compareTo(a.$2));
+      final list = stocked.isNotEmpty ? stocked : withCounts;
+      if (mounted) {
+        setState(() {
+          _categories = list.map((c) => c.$1).toList();
+          _categoryCounts
+            ..clear()
+            ..addEntries(list.map((c) => MapEntry(c.$1.id, c.$2)));
+        });
+      }
+    } catch (_) {
+      // Count embed unavailable — fall back to the plain category list.
+      try {
+        final categories = await ProductService.getCategories();
+        if (mounted) {
+          setState(() {
+            _categories = categories;
+            _categoryCounts.clear();
+          });
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _loadRecentSearches() async {
@@ -71,28 +108,33 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchRandomActiveKeyword() async {
+  /// Builds the rotating hint pool from titles of products actually listed
+  /// on the marketplace.
+  Future<void> _loadPlaceholderHints() async {
     try {
-      final activeProducts = await ProductService.getProducts(limit: 20);
-      if (activeProducts.isNotEmpty) {
-        activeProducts.shuffle();
-        final randomProduct = activeProducts.first;
-        String keyword = randomProduct.title.trim();
-        if (keyword.length > 25) {
-          final words = keyword.split(' ');
-          if (words.length > 3) {
-            keyword = words.take(3).join(' ');
-          }
-        }
-        if (mounted && keyword.isNotEmpty) {
-          setState(() {
-            _randomPlaceholder = keyword;
-          });
-        }
+      final activeProducts = await ProductService.getProducts(limit: 40);
+      final names = activeProducts
+          .map((p) => _cleanHint(p.title))
+          .whereType<String>()
+          .toSet()
+          .toList()
+        ..shuffle();
+      if (mounted && names.isNotEmpty) {
+        setState(() => _hintPool = names.take(12).toList());
       }
-    } catch (e) {
-      debugPrint('Error fetching active products for placeholder: $e');
+    } catch (_) {
+      // Hints are decorative — leave the pool empty on failure.
     }
+  }
+
+  String? _cleanHint(String title) {
+    var t = title.trim();
+    if (t.isEmpty) return null;
+    if (t.length > 28) {
+      t = t.split(RegExp(r'\s+')).take(3).join(' ');
+      if (t.length > 28) t = t.substring(0, 28);
+    }
+    return t;
   }
 
   Future<void> _saveRecentSearch(String query) async {
@@ -151,10 +193,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _submitSearch(String query) {
     final trimmed = query.trim();
-    if (trimmed.isEmpty && _randomPlaceholder != 'Search products...') {
-      _searchController.text = _randomPlaceholder;
-      _saveRecentSearch(_randomPlaceholder);
-      _performSearch(_randomPlaceholder);
+    if (trimmed.isEmpty) {
+      final hint = _currentHint;
+      if (hint != null) {
+        _searchController.text = hint;
+        _saveRecentSearch(hint);
+        _performSearch(hint);
+      }
     } else if (trimmed.length >= 2) {
       _saveRecentSearch(trimmed);
       _performSearch(trimmed);
@@ -202,49 +247,106 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   color: AppTheme.charcoalInk,
                 ),
                 Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    focusNode: _focusNode,
-                    autofocus: true,
-                    style: TextStyle(
-                      fontSize: context.rsp(15),
-                      color: AppTheme.charcoalInk,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: _randomPlaceholder == 'Search products...'
-                          ? 'Search products...'
-                          : 'Search for "$_randomPlaceholder"...',
-                      hintStyle: TextStyle(
-                        color: AppTheme.mutedSteel,
-                        fontSize: context.rsp(15),
+                  child: Stack(
+                    children: [
+                      TextField(
+                        controller: _searchController,
+                        focusNode: _focusNode,
+                        autofocus: true,
+                        style: TextStyle(
+                          fontSize: context.rsp(15),
+                          color: AppTheme.charcoalInk,
+                        ),
+                        decoration: InputDecoration(
+                          hintStyle: TextStyle(
+                            color: AppTheme.mutedSteel,
+                            fontSize: context.rsp(15),
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: context.rh(10)),
+                          prefixIcon: Padding(
+                            padding: EdgeInsets.only(left: context.rw(4), right: context.rw(8)),
+                            child: Icon(LucideIcons.search, size: context.ri(20), color: AppTheme.mutedSteel),
+                          ),
+                          prefixIconConstraints: BoxConstraints(minWidth: context.rw(32), minHeight: context.rh(24)),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: Icon(LucideIcons.x, size: context.ri(18), color: AppTheme.mutedSteel),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _isSearching = false;
+                                      _searchResults = [];
+                                    });
+                                  },
+                                )
+                              : null,
+                        ),
+                        onChanged: (value) {
+                          setState(() {});
+                          _onSearchChanged(value);
+                        },
+                        onSubmitted: _submitSearch,
                       ),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: context.rh(10)),
-                      prefixIcon: Padding(
-                        padding: EdgeInsets.only(left: context.rw(4), right: context.rw(8)),
-                        child: Icon(LucideIcons.search, size: context.ri(20), color: AppTheme.mutedSteel),
-                      ),
-                      prefixIconConstraints: BoxConstraints(minWidth: context.rw(32), minHeight: context.rh(24)),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: Icon(LucideIcons.x, size: context.ri(18), color: AppTheme.mutedSteel),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _isSearching = false;
-                                  _searchResults = [];
-                                });
-                              },
-                            )
-                          : null,
-                    ),
-                    onChanged: (value) {
-                      setState(() {});
-                      _onSearchChanged(value);
-                    },
-                    onSubmitted: _submitSearch,
+                      // Rotating product-name hint, e-commerce style
+                      if (_searchController.text.isEmpty)
+                        IgnorePointer(
+                          child: Padding(
+                            padding: EdgeInsets.only(left: context.rw(40), right: context.rw(40)),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 450),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                layoutBuilder: (currentChild, previousChildren) {
+                                  return Stack(
+                                    alignment: Alignment.centerLeft,
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      ...previousChildren,
+                                      ?currentChild,
+                                    ],
+                                  );
+                                },
+                                transitionBuilder: (child, animation) {
+                                  final slide = Tween<Offset>(
+                                    begin: const Offset(0, 0.8),
+                                    end: Offset.zero,
+                                  ).animate(animation);
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(position: slide, child: child),
+                                  );
+                                },
+                                child: _currentHint == null
+                                    ? Text(
+                                        'Search products...',
+                                        key: const ValueKey('default-hint'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppTheme.mutedSteel,
+                                          fontSize: context.rsp(15),
+                                        ),
+                                      )
+                                    : Text(
+                                        'Try "${_currentHint!}"',
+                                        key: ValueKey(_currentHint),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppTheme.mutedSteel,
+                                          fontSize: context.rsp(15),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -261,7 +363,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         await Future.wait([
           _loadCategories(),
           _loadRecentSearches(),
-          _fetchRandomActiveKeyword(),
+          _loadPlaceholderHints(),
         ]);
       },
       child: ListView(
@@ -423,6 +525,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   final color = Color(
                     AppTheme.categoryColors[category.colorIndex % AppTheme.categoryColors.length],
                   );
+                  final count = _categoryCounts[category.id] ?? 0;
                   return GestureDetector(
                     onTap: () => Navigator.of(context).pushNamed('/explore', arguments: category.id),
                     child: Container(
@@ -458,6 +561,29 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                     ),
                                   ),
                                 ),
+                                if (count > 0)
+                                  Positioned(
+                                    top: context.rh(5),
+                                    right: context.rw(5),
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: context.rw(6),
+                                        vertical: context.rh(2),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(context.rr(8)),
+                                      ),
+                                      child: Text(
+                                        count > 99 ? '99+' : '$count',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: context.rsp(9),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 Positioned(
                                   left: context.rw(10),
                                   right: context.rw(10),
@@ -508,6 +634,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                       ),
                                     ),
                                   ),
+                                  if (count > 0) ...[
+                                    SizedBox(width: context.rw(4)),
+                                    Text(
+                                      count > 99 ? '99+' : '$count',
+                                      style: TextStyle(
+                                        fontSize: context.rsp(10),
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.mutedSteel,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

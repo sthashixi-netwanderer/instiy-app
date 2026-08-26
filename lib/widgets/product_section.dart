@@ -5,7 +5,9 @@ import '../config/app_theme.dart';
 import '../models/product_model.dart';
 import '../utils/responsive.dart';
 import 'animated_press.dart';
+import 'auto_scrolling_list.dart';
 import 'discount_countdown.dart';
+import 'instiy_logo_placeholder.dart';
 import 'verification_badge.dart';
 
 class ProductSection extends StatelessWidget {
@@ -78,23 +80,20 @@ class ProductSection extends StatelessWidget {
           ),
         ),
         SizedBox(height: context.rh(12)),
-        SizedBox(
+        AutoScrollingListView(
           height: context.rh(210),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: context.rw(12)),
-            itemCount: products.length,
-            itemExtent: context.rw(163),
-            itemBuilder: (context, index) {
-              final product = products[index];
-              return _HorizontalProductCard(
-                product: product,
-                onTap: () => onTap(product),
-                onAddToCart: onAddToCart != null ? () => onAddToCart!(product) : null,
-                showAddButton: canAddToCart?.call(product) ?? true,
-              );
-            },
-          ),
+          itemExtent: context.rw(163),
+          padding: EdgeInsets.symmetric(horizontal: context.rw(12)),
+          itemCount: products.length,
+          itemBuilder: (context, index) {
+            final product = products[index];
+            return _HorizontalProductCard(
+              product: product,
+              onTap: () => onTap(product),
+              onAddToCart: onAddToCart != null ? () => onAddToCart!(product) : null,
+              showAddButton: canAddToCart?.call(product) ?? true,
+            );
+          },
         ),
       ],
     );
@@ -143,16 +142,20 @@ class _HorizontalProductCard extends StatelessWidget {
                       imageUrl: product.effectiveThumbnail!,
                       fit: BoxFit.cover,
                       memCacheWidth: 160,
-                      placeholder: (_, _) => Container(color: AppTheme.warmMist),
-                      errorWidget: (_, _, _) => Container(
-                        color: AppTheme.warmMist,
-                        child: Icon(LucideIcons.image, color: AppTheme.mutedSteel, size: context.ri(24)),
+                      placeholder: (_, _) => const InstiyLogoPlaceholder(
+                        width: double.infinity,
+                        height: double.infinity,
+                        animate: true,
+                      ),
+                      errorWidget: (_, _, _) => const InstiyLogoPlaceholder(
+                        width: double.infinity,
+                        height: double.infinity,
                       ),
                     )
                   else
-                    Container(
-                      color: AppTheme.warmMist,
-                      child: Icon(LucideIcons.image, color: AppTheme.mutedSteel, size: context.ri(24)),
+                    const InstiyLogoPlaceholder(
+                      width: double.infinity,
+                      height: double.infinity,
                     ),
                   // Rating badge on thumbnail
                   if (product.averageRating != null && product.averageRating! > 0)

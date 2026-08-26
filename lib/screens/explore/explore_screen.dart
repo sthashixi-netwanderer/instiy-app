@@ -45,27 +45,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   int _page = 0;
   String? _businessName;
 
-  String _searchQuery = '';
   String? _selectedCategoryId;
   List<String> _selectedConditions = [];
   double? _minPrice;
   double? _maxPrice;
   String _sortBy = 'random';
 
-  final _searchController = TextEditingController();
   final _scrollController = ScrollController();
-  final _searchFocusNode = FocusNode();
   final _overlayKey = GlobalKey();
 
   /// Top gap between the screen top and the product grid. Measured from the
-  /// floating header/search overlay so cards never sit under the search bar.
-  double _gridTopPadding = 120;
+  /// floating header overlay so cards never sit under it.
+  double _gridTopPadding = 96;
 
-  List<Product> _searchSuggestions = [];
   final Map<String, int> _viewCounts = {};
-  bool _showSuggestions = false;
   bool _showScrollToTop = false;
-  Timer? _searchDebounce;
   Timer? _realtimeDebounce;
   bool _isFetching = false;
   ProviderSubscription<List<Product>>? _providerProductsSub;
@@ -78,13 +72,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _loadCategories();
     _loadBusinessName();
     _scrollController.addListener(_onScroll);
-    _searchController.addListener(_onSearchChanged);
-    _searchFocusNode.addListener(() {
-      if (!_searchFocusNode.hasFocus) {
-        setState(() => _showSuggestions = false);
-      }
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateGridTopPadding());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _updateGridTopPadding(),
+    );
     // React to realtime product/category changes pushed by productProvider
     // so the grid updates without leaving and re-entering the screen.
     _providerProductsSub = ref.listenManual(
@@ -103,7 +93,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _loadInstitutions().then((_) {
         final user = ref.read(authProvider).user;
         if (user?.university != null && user!.university!.isNotEmpty) {
-          final match = _institutions.where((i) => i.name.toLowerCase() == user.university!.toLowerCase()).toList();
+          final match = _institutions
+              .where(
+                (i) => i.name.toLowerCase() == user.university!.toLowerCase(),
+              )
+              .toList();
           if (match.isNotEmpty && mounted) {
             setState(() => _selectedInstitutionCode = match.first.code);
           }
@@ -120,7 +114,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Re-measure when status bar / text scale / orientation changes.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateGridTopPadding());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _updateGridTopPadding(),
+    );
   }
 
   /// Measures the floating header/search overlay and keeps the grid padding
@@ -151,10 +147,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     try {
       final uid = SupabaseService.instance.currentUser?.id;
       if (uid == null) return;
-      final data = await SupabaseService.table('business_profiles')
-          .select('business_name')
-          .eq('seller_id', uid)
-          .maybeSingle();
+      final data = await SupabaseService.table(
+        'business_profiles',
+      ).select('business_name').eq('seller_id', uid).maybeSingle();
       if (mounted && data != null) {
         setState(() => _businessName = data['business_name'] as String?);
       }
@@ -184,11 +179,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   @override
   void dispose() {
-    _searchController.removeListener(_onSearchChanged);
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     _scrollController.dispose();
-    _searchDebounce?.cancel();
     _realtimeDebounce?.cancel();
     _providerProductsSub?.close();
     _providerCategoriesSub?.close();
@@ -217,38 +208,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
   }
 
-  void _onSearchChanged() {
-    final query = _searchController.text.trim();
-    _searchDebounce?.cancel();
-    if (query.isEmpty) {
-      setState(() {
-        _showSuggestions = false;
-        _searchSuggestions = [];
-      });
-      return;
-    }
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      _loadSuggestions(query);
-    });
-  }
-
-  Future<void> _loadSuggestions(String query) async {
-    try {
-      final results = await ProductService.getProducts(
-        searchQuery: query,
-        limit: 5,
-      );
-      if (mounted) {
-        setState(() {
-          _searchSuggestions = results;
-          _showSuggestions = results.isNotEmpty;
-        });
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
   Future<void> _loadProducts({bool reset = false, bool silent = false}) async {
     if (_isFetching && silent) return;
     _isFetching = true;
@@ -266,17 +225,23 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     try {
       final dbConditions = _selectedConditions.map((cond) {
         switch (cond) {
-          case 'Brand New': return 'brandNew';
-          case 'Used': return 'used';
-          case 'Refurbished': return 'refurbished';
-          default: return 'used';
+          case 'Brand New':
+            return 'brandNew';
+          case 'Used':
+            return 'used';
+          case 'Refurbished':
+            return 'refurbished';
+          default:
+            return 'used';
         }
       }).toList();
 
       // Build campus filter from selected institution
       List<String>? campusFilter;
       if (_selectedInstitutionCode != null) {
-        final inst = _institutions.where((i) => i.code == _selectedInstitutionCode).toList();
+        final inst = _institutions
+            .where((i) => i.code == _selectedInstitutionCode)
+            .toList();
         if (inst.isNotEmpty) {
           campusFilter = [inst.first.name];
         }
@@ -285,7 +250,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       final isRandom = _sortBy == 'random';
       final result = await ProductService.getProducts(
         categoryId: _selectedCategoryId,
-        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
         conditions: dbConditions.isEmpty ? null : dbConditions,
         minPrice: _minPrice,
         maxPrice: _maxPrice,
@@ -344,7 +308,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   void _showInstitutionPicker(BuildContext context) {
-    final totalProducts = _institutions.fold<int>(0, (sum, i) => sum + i.productCount);
+    final totalProducts = _institutions.fold<int>(
+      0,
+      (sum, i) => sum + i.productCount,
+    );
     final searchCtrl = TextEditingController();
 
     showShadSheet(
@@ -355,124 +322,179 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             final query = searchCtrl.text.toLowerCase();
             final filtered = query.isEmpty
                 ? _institutions
-                : _institutions.where((i) =>
-                    i.code.toLowerCase().contains(query) ||
-                    i.name.toLowerCase().contains(query) ||
-                    (i.location?.toLowerCase().contains(query) ?? false)).toList();
+                : _institutions
+                      .where(
+                        (i) =>
+                            i.code.toLowerCase().contains(query) ||
+                            i.name.toLowerCase().contains(query) ||
+                            (i.location?.toLowerCase().contains(query) ??
+                                false),
+                      )
+                      .toList();
 
             return ShadSheet(
               title: const Text('Select Institution'),
               child: Padding(
-                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: SizedBox(
                   height: 450,
                   child: Material(
-                  color: Colors.transparent,
-                  child: Column(
-                    children: [
-                      // Search field
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: ShadInput(
-                          controller: searchCtrl,
-                          placeholder: const Text('Search institutions...'),
-                          leading: const Padding(
-                            padding: EdgeInsets.only(left: 12, right: 8),
-                            child: Icon(LucideIcons.search, size: 18),
+                    color: Colors.transparent,
+                    child: Column(
+                      children: [
+                        // Search field
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ShadInput(
+                            controller: searchCtrl,
+                            placeholder: const Text('Search institutions...'),
+                            leading: const Padding(
+                              padding: EdgeInsets.only(left: 12, right: 8),
+                              child: Icon(LucideIcons.search, size: 18),
+                            ),
+                            onChanged: (_) => setSheetState(() {}),
                           ),
-                          onChanged: (_) => setSheetState(() {}),
                         ),
-                      ),
-                      Expanded(
-                        child: ListView(
-                          children: [
-                            // All Institutions option (only when not searching)
-                            if (query.isEmpty)
-                              ListTile(
-                                leading: const Icon(LucideIcons.building2, color: AppTheme.accent),
-                                title: const Text('All Institutions'),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accent.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(10),
+                        Expanded(
+                          child: ListView(
+                            children: [
+                              // All Institutions option (only when not searching)
+                              if (query.isEmpty)
+                                ListTile(
+                                  leading: const Icon(
+                                    LucideIcons.building2,
+                                    color: AppTheme.accent,
                                   ),
-                                  child: Text(
-                                    '$totalProducts',
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.accent),
+                                  title: const Text('All Institutions'),
+                                  trailing: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.accent.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '$totalProducts',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.accent,
+                                      ),
+                                    ),
                                   ),
+                                  selected: _selectedInstitutionCode == null,
+                                  selectedTileColor: AppTheme.accent.withValues(
+                                    alpha: 0.05,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  onTap: () {
+                                    Navigator.of(sheetCtx).pop();
+                                    if (_selectedInstitutionCode != null) {
+                                      setState(
+                                        () => _selectedInstitutionCode = null,
+                                      );
+                                      _loadProducts(reset: true);
+                                    }
+                                  },
                                 ),
-                                selected: _selectedInstitutionCode == null,
-                                selectedTileColor: AppTheme.accent.withValues(alpha: 0.05),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                onTap: () {
-                                  Navigator.of(sheetCtx).pop();
-                                  if (_selectedInstitutionCode != null) {
-                                    setState(() => _selectedInstitutionCode = null);
-                                    _loadProducts(reset: true);
-                                  }
-                                },
-                              ),
-                            if (query.isEmpty) const Divider(),
-                            // Empty state
-                            if (filtered.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(24),
-                                child: Center(
-                                  child: Text('No institutions found', style: TextStyle(color: AppTheme.mutedSteel)),
-                                ),
-                              ),
-                            // Filtered institutions
-                            ...filtered.map((inst) {
-                              return ListTile(
-                                leading: inst.logoUrl != null
-                                    ? CachedNetworkImage(
-                                        imageUrl: inst.logoUrl!,
-                                        width: 24,
-                                        height: 24,
-                                        fit: BoxFit.contain,
-                                        memCacheWidth: 24,
-                                        errorWidget: (_, _, _) => const Icon(LucideIcons.graduationCap, size: 20, color: AppTheme.accent),
-                                      )
-                                    : const Icon(LucideIcons.graduationCap, size: 20, color: AppTheme.accent),
-                                title: Text(inst.code),
-                                subtitle: Text(inst.name),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: inst.productCount > 0
-                                        ? AppTheme.accent.withValues(alpha: 0.1)
-                                        : AppTheme.mutedSteel.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '${inst.productCount}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: inst.productCount > 0 ? AppTheme.accent : AppTheme.mutedSteel,
+                              if (query.isEmpty) const Divider(),
+                              // Empty state
+                              if (filtered.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(24),
+                                  child: Center(
+                                    child: Text(
+                                      'No institutions found',
+                                      style: TextStyle(
+                                        color: AppTheme.mutedSteel,
+                                      ),
                                     ),
                                   ),
                                 ),
-                                selected: _selectedInstitutionCode == inst.code,
-                                selectedTileColor: AppTheme.accent.withValues(alpha: 0.05),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                onTap: () {
-                                  Navigator.of(sheetCtx).pop();
-                                  if (_selectedInstitutionCode != inst.code) {
-                                    setState(() => _selectedInstitutionCode = inst.code);
-                                    _loadProducts(reset: true);
-                                  }
-                                },
-                              );
-                            }),
-                          ],
+                              // Filtered institutions
+                              ...filtered.map((inst) {
+                                return ListTile(
+                                  leading: inst.logoUrl != null
+                                      ? CachedNetworkImage(
+                                          imageUrl: inst.logoUrl!,
+                                          width: 24,
+                                          height: 24,
+                                          fit: BoxFit.contain,
+                                          memCacheWidth: 24,
+                                          errorWidget: (_, _, _) => const Icon(
+                                            LucideIcons.graduationCap,
+                                            size: 20,
+                                            color: AppTheme.accent,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          LucideIcons.graduationCap,
+                                          size: 20,
+                                          color: AppTheme.accent,
+                                        ),
+                                  title: Text(inst.code),
+                                  subtitle: Text(inst.name),
+                                  trailing: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: inst.productCount > 0
+                                          ? AppTheme.accent.withValues(
+                                              alpha: 0.1,
+                                            )
+                                          : AppTheme.mutedSteel.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '${inst.productCount}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: inst.productCount > 0
+                                            ? AppTheme.accent
+                                            : AppTheme.mutedSteel,
+                                      ),
+                                    ),
+                                  ),
+                                  selected:
+                                      _selectedInstitutionCode == inst.code,
+                                  selectedTileColor: AppTheme.accent.withValues(
+                                    alpha: 0.05,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  onTap: () {
+                                    Navigator.of(sheetCtx).pop();
+                                    if (_selectedInstitutionCode != inst.code) {
+                                      setState(
+                                        () => _selectedInstitutionCode =
+                                            inst.code,
+                                      );
+                                      _loadProducts(reset: true);
+                                    }
+                                  },
+                                );
+                              }),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
               ),
             );
           },
@@ -505,33 +527,37 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     child: const ProductGridSkeleton(count: 6),
                   )
                 : _products.isEmpty
-                    ? Padding(
-                        padding: EdgeInsets.only(top: _gridTopPadding),
-                        child: _buildEmptyState(),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () => _loadProducts(reset: true),
-                        child: GridView.builder(
-                          controller: _scrollController,
-                          padding: EdgeInsets.fromLTRB(12, _gridTopPadding, 12, 100),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: context.isDesktop
-                                ? 4
-                                : (context.isTablet ? 3 : 2),
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.72,
-                          ),
-                          itemCount: _products.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == _products.length) {
-                              return const ProductCardSkeleton();
-                            }
-                            return _buildProductCard(_products[index]);
-                          },
-                        ),
+                ? Padding(
+                    padding: EdgeInsets.only(top: _gridTopPadding),
+                    child: _buildEmptyState(),
+                  )
+                : RefreshIndicator(
+                    onRefresh: () => _loadProducts(reset: true),
+                    child: GridView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.fromLTRB(
+                        12,
+                        _gridTopPadding,
+                        12,
+                        100,
                       ),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: context.isDesktop
+                            ? 4
+                            : (context.isTablet ? 3 : 2),
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 0.72,
+                      ),
+                      itemCount: _products.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == _products.length) {
+                          return const ProductCardSkeleton();
+                        }
+                        return _buildProductCard(_products[index]);
+                      },
+                    ),
+                  ),
           ),
           // Floating overlay: header + search bar (transparent gap between them)
           Positioned(
@@ -544,74 +570,171 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               children: [
                 // Floating glass header
                 Padding(
-                  padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + 8, 12, 0),
+                  padding: EdgeInsets.fromLTRB(
+                    12,
+                    MediaQuery.paddingOf(context).top + 8,
+                    12,
+                    0,
+                  ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: AppTheme.glassBlur, sigmaY: AppTheme.glassBlur),
+                      filter: ImageFilter.blur(
+                        sigmaX: AppTheme.glassBlur,
+                        sigmaY: AppTheme.glassBlur,
+                      ),
                       child: Container(
                         decoration: AppTheme.glassDecoration(radius: 20),
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                         child: Row(
                           children: [
-                            // Institution filter dropdown
+                            // Institution filter — compact pill with the
+                            // institution's initials/code (e.g. HTU)
+                            GestureDetector(
+                              onTap: () => _showInstitutionPicker(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.glassSurfaceLight,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppTheme.glassBorder,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_selectedInstitutionCode != null)
+                                      Builder(
+                                        builder: (context) {
+                                          final inst = _institutions
+                                              .where(
+                                                (i) =>
+                                                    i.code ==
+                                                    _selectedInstitutionCode,
+                                              )
+                                              .toList();
+                                          if (inst.isEmpty) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          return inst.first.logoUrl != null
+                                              ? Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 6,
+                                                      ),
+                                                  child: CachedNetworkImage(
+                                                    imageUrl:
+                                                        inst.first.logoUrl!,
+                                                    width: 18,
+                                                    height: 18,
+                                                    fit: BoxFit.contain,
+                                                    memCacheWidth: 18,
+                                                    errorWidget: (_, _, _) =>
+                                                        const Icon(
+                                                          LucideIcons
+                                                              .graduationCap,
+                                                          size: 16,
+                                                          color:
+                                                              AppTheme.accent,
+                                                        ),
+                                                  ),
+                                                )
+                                              : const Padding(
+                                                  padding: EdgeInsets.only(
+                                                    right: 6,
+                                                  ),
+                                                  child: Icon(
+                                                    LucideIcons.graduationCap,
+                                                    size: 16,
+                                                    color: AppTheme.accent,
+                                                  ),
+                                                );
+                                        },
+                                      )
+                                    else
+                                      const Padding(
+                                        padding: EdgeInsets.only(right: 6),
+                                        child: Icon(
+                                          LucideIcons.building2,
+                                          size: 16,
+                                          color: AppTheme.accent,
+                                        ),
+                                      ),
+                                    Text(
+                                      _selectedInstitutionCode ?? 'All',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.3,
+                                        color: _selectedInstitutionCode != null
+                                            ? AppTheme.charcoalInk
+                                            : AppTheme.mutedSteel,
+                                      ),
+                                    ),
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 2),
+                                      child: Icon(
+                                        LucideIcons.chevronDown,
+                                        size: 14,
+                                        color: AppTheme.mutedSteel,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Search button — opens the full search screen
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => _showInstitutionPicker(context),
+                                onTap: () =>
+                                    Navigator.of(context).pushNamed('/search'),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  height: 37,
+                                  padding: const EdgeInsets.only(left: 12),
                                   decoration: BoxDecoration(
                                     color: AppTheme.glassSurfaceLight,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: AppTheme.glassBorder),
+                                    border: Border.all(
+                                      color: AppTheme.glassBorder,
+                                    ),
                                   ),
                                   child: Row(
-                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (_selectedInstitutionCode != null) ...[
-                                        Builder(
-                                          builder: (context) {
-                                            final inst = _institutions.where((i) => i.code == _selectedInstitutionCode).toList();
-                                            if (inst.isEmpty) return const SizedBox.shrink();
-                                            return inst.first.logoUrl != null
-                                                ? Padding(
-                                                    padding: const EdgeInsets.only(right: 8),
-                                                    child: CachedNetworkImage(
-                                                      imageUrl: inst.first.logoUrl!,
-                                                      width: 20,
-                                                      height: 20,
-                                                      fit: BoxFit.contain,
-                                                      memCacheWidth: 20,
-                                                      errorWidget: (_, _, _) => const Icon(LucideIcons.graduationCap, size: 16, color: AppTheme.accent),
-                                                    ),
-                                                  )
-                                                : const Padding(
-                                                    padding: EdgeInsets.only(right: 8),
-                                                    child: Icon(LucideIcons.graduationCap, size: 16, color: AppTheme.accent),
-                                                  );
-                                          },
-                                        ),
-                                      ] else
-                                        const Padding(
-                                          padding: EdgeInsets.only(right: 8),
-                                          child: Icon(LucideIcons.building2, size: 16, color: AppTheme.accent),
-                                        ),
-                                      Flexible(
+                                      const Icon(
+                                        LucideIcons.search,
+                                        size: 17,
+                                        color: AppTheme.mutedSteel,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Expanded(
                                         child: Text(
-                                          _selectedInstitutionCode != null
-                                              ? (_institutions.where((i) => i.code == _selectedInstitutionCode).map((i) => i.name).firstOrNull ?? _selectedInstitutionCode!)
-                                              : 'All Institutions',
+                                          'Search products...',
                                           style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: _selectedInstitutionCode != null ? AppTheme.charcoalInk : AppTheme.mutedSteel,
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w500,
+                                            color: AppTheme.mutedSteel,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                      const Padding(
-                                        padding: EdgeInsets.only(left: 4),
-                                        child: Icon(LucideIcons.chevronDown, size: 16, color: AppTheme.mutedSteel),
+                                      // Filters stay one tap away
+                                      GestureDetector(
+                                        onTap: () => _showFilterSheet(context),
+                                        behavior: HitTestBehavior.opaque,
+                                        child: const SizedBox(
+                                          width: 38,
+                                          height: 38,
+                                          child: Icon(
+                                            LucideIcons.slidersHorizontal,
+                                            size: 17,
+                                            color: AppTheme.mutedSteel,
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -625,16 +748,28 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   icon: LucideIcons.shoppingCart,
                                   count: cartCount,
                                   activeColor: AppTheme.accent,
-                                  onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/cart')),
+                                  onPressed: () => _requireAuth(
+                                    context,
+                                    () => Navigator.of(
+                                      context,
+                                    ).pushNamed('/cart'),
+                                  ),
                                 ),
                                 Builder(
                                   builder: (context) {
-                                    final unreadNotifs = ref.watch(messageProvider).unreadNotificationsCount;
+                                    final unreadNotifs = ref
+                                        .watch(messageProvider)
+                                        .unreadNotificationsCount;
                                     return BadgeIconButton(
                                       icon: LucideIcons.bell,
                                       count: unreadNotifs,
                                       activeColor: AppTheme.accent,
-                                      onPressed: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/notifications')),
+                                      onPressed: () => _requireAuth(
+                                        context,
+                                        () => Navigator.of(
+                                          context,
+                                        ).pushNamed('/notifications'),
+                                      ),
                                     );
                                   },
                                 ),
@@ -644,88 +779,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   businessName: _businessName,
                                   isVerified: auth.user?.isVerified == true,
                                   isAuthenticated: auth.isAuthenticated,
-                                  onLoginTap: () => Navigator.of(context).pushNamed('/login'),
-                                  onWishlistTap: () => Navigator.of(context).pushNamed('/wishlist'),
-                                  onOrdersTap: () => Navigator.of(context).pushNamed('/orders'),
-                                  onWalletTap: () => Navigator.of(context).pushNamed('/wallet'),
-                                  onFollowingTap: () => Navigator.of(context).pushNamed('/following'),
-                                  onBecomeSellerTap: () => Navigator.of(context).pushNamed('/become-seller'),
-                                  onSettingsTap: () => Navigator.of(context).pushNamed('/account'),
-                                  onSignOut: () async {
-                                    await auth.signOut();
-                                    if (context.mounted) {
-                                    unawaited(Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false));
-                                    }
-                                  },
                                 ),
                               ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Floating glass search bar
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: AppTheme.glassBlurLight, sigmaY: AppTheme.glassBlurLight),
-                      child: Container(
-                        decoration: AppTheme.glassDecoration(radius: 16),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: ShadInput(
-                                controller: _searchController,
-                                focusNode: _searchFocusNode,
-                                placeholder: const Text('Search products...'),
-                                leading: const Padding(
-                                  padding: EdgeInsets.only(left: 8),
-                                  child: Icon(LucideIcons.search, size: 20, color: AppTheme.mutedSteel),
-                                ),
-                                trailing: _searchController.text.isNotEmpty
-                                    ? ShadIconButton.ghost(
-                                        icon: const Icon(LucideIcons.x, size: 18, color: AppTheme.mutedSteel),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          setState(() {
-                                            _searchQuery = '';
-                                            _showSuggestions = false;
-                                            _searchSuggestions = [];
-                                          });
-                                          _loadProducts(reset: true);
-                                        },
-                                      )
-                                    : null,
-                                textInputAction: TextInputAction.search,
-                                onSubmitted: (value) {
-                                  setState(() {
-                                    _searchQuery = value;
-                                    _showSuggestions = false;
-                                  });
-                                  _loadProducts(reset: true);
-                                },
-                                onChanged: (value) {
-                                  setState(() => _searchQuery = value);
-                                  if (value.length >= 2) {
-                                    _loadSuggestions(value);
-                                  } else {
-                                    setState(() {
-                                      _showSuggestions = false;
-                                      _searchSuggestions = [];
-                                    });
-                                  }
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ShadIconButton.ghost(
-                              icon: const Icon(LucideIcons.slidersHorizontal, size: 20, color: AppTheme.mutedSteel),
-                              onPressed: () => _showFilterSheet(context),
                             ),
                           ],
                         ),
@@ -736,33 +791,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               ],
             ),
           ),
-          // Search suggestions dropdown
-          if (_showSuggestions)
-            Positioned(
-              left: 12,
-              right: 12,
-              top: _gridTopPadding,
-              child: Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(12),
-                color: AppTheme.pureSurface,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.35,
-                  ),
-                  child: ListView.separated(
-                    padding: EdgeInsets.zero,
-                    shrinkWrap: true,
-                    itemCount: _searchSuggestions.length,
-                    separatorBuilder: (_, _) =>
-                        const Divider(height: 1, indent: 12, endIndent: 12),
-                    itemBuilder: (ctx, i) {
-                      return _buildSuggestionTile(_searchSuggestions[i]);
-                    },
-                  ),
-                ),
-              ),
-            ),
           // Scroll to top button (raised above the floating bottom nav pill)
           if (_showScrollToTop)
             Positioned(
@@ -801,7 +829,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final viewCount = _viewCounts[product.id] ?? 0;
 
     return AnimatedPress(
-      onTap: () => Navigator.of(context).pushNamed('/product', arguments: product.id),
+      onTap: () =>
+          Navigator.of(context).pushNamed('/product', arguments: product.id),
       child: Container(
         decoration: BoxDecoration(
           color: AppTheme.pureSurface,
@@ -825,23 +854,35 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       width: double.infinity,
                       height: double.infinity,
                       memCacheWidth: 160,
-                      placeholder: (_, _) => Container(color: AppTheme.warmMist),
+                      placeholder: (_, _) =>
+                          Container(color: AppTheme.warmMist),
                       errorWidget: (_, _, _) => Container(
                         color: AppTheme.warmMist,
-                        child: Icon(LucideIcons.image, color: AppTheme.mutedSteel, size: context.ri(24)),
+                        child: Icon(
+                          LucideIcons.image,
+                          color: AppTheme.mutedSteel,
+                          size: context.ri(24),
+                        ),
                       ),
                     )
                   else
                     Container(
                       color: AppTheme.warmMist,
-                      child: Icon(LucideIcons.image, color: AppTheme.mutedSteel, size: context.ri(24)),
+                      child: Icon(
+                        LucideIcons.image,
+                        color: AppTheme.mutedSteel,
+                        size: context.ri(24),
+                      ),
                     ),
                   if (inCart)
                     Positioned(
                       top: context.rh(8),
                       left: context.rw(8),
                       child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: context.rw(8), vertical: context.rh(4)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.rw(8),
+                          vertical: context.rh(4),
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.accent,
                           borderRadius: BorderRadius.circular(context.rr(12)),
@@ -849,7 +890,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(LucideIcons.shoppingCart, size: context.ri(10), color: Colors.white),
+                            Icon(
+                              LucideIcons.shoppingCart,
+                              size: context.ri(10),
+                              color: Colors.white,
+                            ),
                             SizedBox(width: context.rw(4)),
                             Text(
                               'In Cart',
@@ -864,12 +909,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       ),
                     ),
                   // Rating badge on thumbnail
-                  if (product.averageRating != null && product.averageRating! > 0)
+                  if (product.averageRating != null &&
+                      product.averageRating! > 0)
                     Positioned(
                       top: context.rh(inCart ? 36 : 8),
                       left: context.rw(8),
                       child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: context.rw(6), vertical: context.rh(3)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.rw(6),
+                          vertical: context.rh(3),
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black54,
                           borderRadius: BorderRadius.circular(context.rr(10)),
@@ -877,7 +926,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.star, size: context.ri(10), color: const Color(0xFFFFD700)),
+                            Icon(
+                              Icons.star,
+                              size: context.ri(10),
+                              color: const Color(0xFFFFD700),
+                            ),
                             SizedBox(width: context.rw(3)),
                             Text(
                               product.averageRating!.toStringAsFixed(1),
@@ -887,7 +940,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            if (product.reviewCount != null && product.reviewCount! > 0) ...[
+                            if (product.reviewCount != null &&
+                                product.reviewCount! > 0) ...[
                               SizedBox(width: context.rw(2)),
                               Text(
                                 '(${product.reviewCount})',
@@ -912,7 +966,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       child: Container(
                         padding: EdgeInsets.all(context.rw(6)),
                         decoration: BoxDecoration(
-                          color: isFavorited ? AppTheme.destructive : Colors.black26,
+                          color: isFavorited
+                              ? AppTheme.destructive
+                              : Colors.black26,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -928,7 +984,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       top: context.rh(44),
                       right: context.rw(8),
                       child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: context.rw(8), vertical: context.rh(4)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.rw(8),
+                          vertical: context.rh(4),
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.destructive,
                           borderRadius: BorderRadius.circular(context.rr(12)),
@@ -969,7 +1028,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                           color: Colors.black54,
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(LucideIcons.play, size: context.ri(12), color: Colors.white),
+                        child: Icon(
+                          LucideIcons.play,
+                          size: context.ri(12),
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   if (product.status != ProductStatus.available)
@@ -979,7 +1042,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       right: inCart ? null : context.rw(8),
                       bottom: hasDiscount ? context.rh(8) : null,
                       child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: context.rw(8), vertical: context.rh(4)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.rw(8),
+                          vertical: context.rh(4),
+                        ),
                         decoration: BoxDecoration(
                           color: product.status == ProductStatus.sold
                               ? AppTheme.destructive
@@ -1010,15 +1076,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       right: context.rw(8),
                       child: GestureDetector(
                         onTap: () {
-                          ref.read(cartProvider).addToCart(
-                            productId: product.id,
-                            title: product.title,
-                            price: product.effectivePrice,
-                            thumbnail: product.effectiveThumbnail,
-                            sellerId: product.sellerId,
-                            sellerName: product.sellerName,
-                            campuses: product.campuses,
-                          );
+                          ref
+                              .read(cartProvider)
+                              .addToCart(
+                                productId: product.id,
+                                title: product.title,
+                                price: product.effectivePrice,
+                                thumbnail: product.effectiveThumbnail,
+                                sellerId: product.sellerId,
+                                sellerName: product.sellerName,
+                                campuses: product.campuses,
+                              );
                         },
                         child: Container(
                           padding: EdgeInsets.all(context.rw(8)),
@@ -1040,7 +1108,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             Expanded(
               flex: 2,
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: context.rw(6), vertical: context.rh(4)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.rw(6),
+                  vertical: context.rh(4),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -1092,7 +1163,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                 ),
                         ),
                         if (viewCount > 0) ...[
-                          Icon(LucideIcons.eye, size: context.ri(11), color: AppTheme.mutedSteel),
+                          Icon(
+                            LucideIcons.eye,
+                            size: context.ri(11),
+                            color: AppTheme.mutedSteel,
+                          ),
                           SizedBox(width: context.rw(3)),
                           Text(
                             '$viewCount',
@@ -1110,11 +1185,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       Row(
                         children: [
                           ShadAvatar(
-                            product.sellerAvatar?.isNotEmpty == true ? product.sellerAvatar : null,
+                            product.sellerAvatar?.isNotEmpty == true
+                                ? product.sellerAvatar
+                                : null,
                             size: Size(context.ri(16), context.ri(16)),
                             backgroundColor: AppTheme.accent,
                             placeholder: Text(
-                              (product.businessName ?? product.sellerName ?? 'S')[0].toUpperCase(),
+                              (product.businessName ??
+                                      product.sellerName ??
+                                      'S')[0]
+                                  .toUpperCase(),
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -1164,7 +1244,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       actionLabel: 'Clear Filters',
       onActionPressed: () {
         setState(() {
-          _searchQuery = '';
           _selectedCategoryId = null;
           _selectedConditions = [];
           _minPrice = null;
@@ -1175,102 +1254,29 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
-  Widget _buildSuggestionTile(Product product) {
-    return InkWell(
-      onTap: () {
-        setState(() => _showSuggestions = false);
-        _searchFocusNode.unfocus();
-        Navigator.of(context).pushNamed('/product', arguments: product.id);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: product.effectiveThumbnail != null
-                    ? CachedNetworkImage(
-                        imageUrl: product.effectiveThumbnail!,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 40,
-                        placeholder: (_, _) => Container(color: AppTheme.warmMist),
-                        errorWidget: (_, _, _) => Container(
-                          color: AppTheme.warmMist,
-                          child: const Icon(LucideIcons.image, size: 20, color: AppTheme.mutedSteel),
-                        ),
-                      )
-                    : Container(
-                        color: AppTheme.warmMist,
-                        child: const Icon(LucideIcons.image, size: 20, color: AppTheme.mutedSteel),
-                      ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.charcoalInk,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    formatGhs(product.price),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.accent,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (product.isSellerVerified)
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  color: AppTheme.successMoss,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(LucideIcons.check, color: Colors.white, size: 10),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showFilterSheet(BuildContext context) {
     showShadSheet(
       context: context,
       builder: (ctx) => ShadSheet(
         title: const Text('Filters'),
         child: Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
           child: _FilterSheet(
-          categories: _categories,
-          selectedCategoryId: _selectedCategoryId,
-          selectedConditions: _selectedConditions,
-          minPrice: _minPrice,
-          maxPrice: _maxPrice,
-          sortBy: _sortBy,
-          onCategoryChanged: (v) => _selectedCategoryId = v,
-          onConditionsChanged: (v) => _selectedConditions = v,
-          onMinPriceChanged: (v) => _minPrice = v,
-          onMaxPriceChanged: (v) => _maxPrice = v,
-          onSortChanged: (v) => _sortBy = v,
-          onApply: _applyFilters,
-        ),
+            categories: _categories,
+            selectedCategoryId: _selectedCategoryId,
+            selectedConditions: _selectedConditions,
+            minPrice: _minPrice,
+            maxPrice: _maxPrice,
+            sortBy: _sortBy,
+            onCategoryChanged: (v) => _selectedCategoryId = v,
+            onConditionsChanged: (v) => _selectedConditions = v,
+            onMinPriceChanged: (v) => _minPrice = v,
+            onMaxPriceChanged: (v) => _maxPrice = v,
+            onSortChanged: (v) => _sortBy = v,
+            onApply: _applyFilters,
+          ),
         ),
       ),
     );
@@ -1322,8 +1328,12 @@ class _FilterSheetState extends State<_FilterSheet> {
     super.initState();
     _conditions = List.from(widget.selectedConditions);
     _categoryId = widget.selectedCategoryId;
-    _minCtrl = TextEditingController(text: widget.minPrice?.toStringAsFixed(0) ?? '');
-    _maxCtrl = TextEditingController(text: widget.maxPrice?.toStringAsFixed(0) ?? '');
+    _minCtrl = TextEditingController(
+      text: widget.minPrice?.toStringAsFixed(0) ?? '',
+    );
+    _maxCtrl = TextEditingController(
+      text: widget.maxPrice?.toStringAsFixed(0) ?? '',
+    );
     _sortBy = widget.sortBy;
   }
 
@@ -1356,68 +1366,92 @@ class _FilterSheetState extends State<_FilterSheet> {
             return ShadSheet(
               title: const Text('Select Category'),
               child: Padding(
-                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: SizedBox(
                   height: MediaQuery.of(context).size.height * 0.5,
                   child: Column(
-                  children: [
-                    ShadInput(
-                      controller: searchCtrl,
-                      placeholder: const Text('Search categories...'),
-                      leading: const Icon(LucideIcons.search, size: 18),
-                      onChanged: (query) {
-                        setSheetState(() {
-                          filtered = query.isEmpty
-                              ? widget.categories
-                              : widget.categories
-                                  .where((c) => c.name.toLowerCase().contains(query.toLowerCase()))
-                                  .toList();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: Material(
-                        color: Colors.transparent,
-                        child: ListView(
-                          children: [
-                            ListTile(
-                              leading: Icon(
-                                _categoryId == null ? LucideIcons.checkCircle : LucideIcons.circle,
-                                color: _categoryId == null ? AppTheme.accent : null,
-                                size: 20,
-                              ),
-                              title: const Text('All Categories'),
-                              selected: _categoryId == null,
-                              selectedTileColor: AppTheme.accent.withValues(alpha: 0.08),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              onTap: () {
-                                setState(() => _categoryId = null);
-                                Navigator.of(ctx).pop();
-                              },
-                            ),
-                            ...filtered.map((cat) => ListTile(
-                            leading: Icon(
-                              _categoryId == cat.id ? LucideIcons.checkCircle : LucideIcons.circle,
-                              color: _categoryId == cat.id ? AppTheme.accent : null,
-                              size: 20,
-                            ),
-                            title: Text(cat.name),
-                            selected: _categoryId == cat.id,
-                            selectedTileColor: AppTheme.accent.withValues(alpha: 0.08),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            onTap: () {
-                              setState(() => _categoryId = cat.id);
-                              Navigator.of(ctx).pop();
-                            },
-                          )),
-                        ],
-                       ),
+                    children: [
+                      ShadInput(
+                        controller: searchCtrl,
+                        placeholder: const Text('Search categories...'),
+                        leading: const Icon(LucideIcons.search, size: 18),
+                        onChanged: (query) {
+                          setSheetState(() {
+                            filtered = query.isEmpty
+                                ? widget.categories
+                                : widget.categories
+                                      .where(
+                                        (c) => c.name.toLowerCase().contains(
+                                          query.toLowerCase(),
+                                        ),
+                                      )
+                                      .toList();
+                          });
+                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: ListView(
+                            children: [
+                              ListTile(
+                                leading: Icon(
+                                  _categoryId == null
+                                      ? LucideIcons.checkCircle
+                                      : LucideIcons.circle,
+                                  color: _categoryId == null
+                                      ? AppTheme.accent
+                                      : null,
+                                  size: 20,
+                                ),
+                                title: const Text('All Categories'),
+                                selected: _categoryId == null,
+                                selectedTileColor: AppTheme.accent.withValues(
+                                  alpha: 0.08,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                onTap: () {
+                                  setState(() => _categoryId = null);
+                                  Navigator.of(ctx).pop();
+                                },
+                              ),
+                              ...filtered.map(
+                                (cat) => ListTile(
+                                  leading: Icon(
+                                    _categoryId == cat.id
+                                        ? LucideIcons.checkCircle
+                                        : LucideIcons.circle,
+                                    color: _categoryId == cat.id
+                                        ? AppTheme.accent
+                                        : null,
+                                    size: 20,
+                                  ),
+                                  title: Text(cat.name),
+                                  selected: _categoryId == cat.id,
+                                  selectedTileColor: AppTheme.accent.withValues(
+                                    alpha: 0.08,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  onTap: () {
+                                    setState(() => _categoryId = cat.id);
+                                    Navigator.of(ctx).pop();
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               ),
             );
           },
@@ -1438,7 +1472,13 @@ class _FilterSheetState extends State<_FilterSheet> {
         shrinkWrap: true,
         children: [
           // Category
-          const Text('Category', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
+          const Text(
+            'Category',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.mutedSteel,
+            ),
+          ),
           const SizedBox(height: 8),
           GestureDetector(
             onTap: () => _showCategorySearchSheet(context),
@@ -1456,9 +1496,15 @@ class _FilterSheetState extends State<_FilterSheet> {
                     child: Text(
                       _categoryId == null
                           ? 'All Categories'
-                          : (widget.categories.where((c) => c.id == _categoryId).firstOrNull?.name ?? 'All Categories'),
+                          : (widget.categories
+                                    .where((c) => c.id == _categoryId)
+                                    .firstOrNull
+                                    ?.name ??
+                                'All Categories'),
                       style: TextStyle(
-                        color: _categoryId == null ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                        color: _categoryId == null
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF1E293B),
                         fontWeight: FontWeight.w500,
                         fontSize: 14,
                       ),
@@ -1473,51 +1519,74 @@ class _FilterSheetState extends State<_FilterSheet> {
           const SizedBox(height: 20),
 
           // Sort
-          const Text('Sort By', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
+          const Text(
+            'Sort By',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.mutedSteel,
+            ),
+          ),
           const SizedBox(height: 8),
           ShadSelect<String>(
             initialValue: _sortBy,
             options: const [
               ShadOption(value: 'newest', child: Text('Newest Arrivals')),
               ShadOption(value: 'price_asc', child: Text('Price: Low to High')),
-              ShadOption(value: 'price_desc', child: Text('Price: High to Low')),
+              ShadOption(
+                value: 'price_desc',
+                child: Text('Price: High to Low'),
+              ),
             ],
             onChanged: (v) => setState(() => _sortBy = v ?? 'newest'),
             selectedOptionBuilder: (context, value) => Text(
               value == 'newest'
                   ? 'Newest Arrivals'
                   : value == 'price_asc'
-                      ? 'Price: Low to High'
-                      : 'Price: High to Low',
+                  ? 'Price: Low to High'
+                  : 'Price: High to Low',
             ),
           ),
 
           const SizedBox(height: 20),
 
           // Condition
-          const Text('Condition', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
+          const Text(
+            'Condition',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.mutedSteel,
+            ),
+          ),
           const SizedBox(height: 8),
-          ..._exploreConditions.map((cond) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    ShadCheckbox(
-                      value: _conditions.contains(cond),
-                      onChanged: (_) => _toggleCondition(cond),
-                    ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: () => _toggleCondition(cond),
-                      child: Text(cond, style: const TextStyle(fontSize: 14)),
-                    ),
-                  ],
-                ),
-              )),
+          ..._exploreConditions.map(
+            (cond) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  ShadCheckbox(
+                    value: _conditions.contains(cond),
+                    onChanged: (_) => _toggleCondition(cond),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () => _toggleCondition(cond),
+                    child: Text(cond, style: const TextStyle(fontSize: 14)),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
           const SizedBox(height: 16),
 
           // Price Range
-          const Text('Price Range', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.mutedSteel)),
+          const Text(
+            'Price Range',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.mutedSteel,
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -1550,15 +1619,22 @@ class _FilterSheetState extends State<_FilterSheet> {
               widget.onCategoryChanged(_categoryId);
               widget.onConditionsChanged(_conditions);
               widget.onMinPriceChanged(
-                _minCtrl.text.isNotEmpty ? double.tryParse(_minCtrl.text) : null,
+                _minCtrl.text.isNotEmpty
+                    ? double.tryParse(_minCtrl.text)
+                    : null,
               );
               widget.onMaxPriceChanged(
-                _maxCtrl.text.isNotEmpty ? double.tryParse(_maxCtrl.text) : null,
+                _maxCtrl.text.isNotEmpty
+                    ? double.tryParse(_maxCtrl.text)
+                    : null,
               );
               widget.onSortChanged(_sortBy);
               widget.onApply();
             },
-            child: const Text('Apply Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            child: const Text(
+              'Apply Filters',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
           ),
           const SizedBox(height: 8),
         ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../config/app_theme.dart';
+import 'instiy_logo_placeholder.dart';
 
 /// A shimmer-animated placeholder for loading states.
 class Skeleton extends StatefulWidget {
@@ -68,7 +69,8 @@ class _SkeletonState extends State<Skeleton>
   }
 }
 
-/// Skeleton for a product card (grid item).
+/// Skeleton for a product card (grid item) — a breathing Instiy logo fills
+/// the card until the product loads.
 class ProductCardSkeleton extends StatelessWidget {
   const ProductCardSkeleton({super.key});
 
@@ -81,47 +83,10 @@ class ProductCardSkeleton extends StatelessWidget {
         border: Border.all(color: AppTheme.whisperBorder),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Expanded(
-            flex: 3,
-            child: Skeleton(
-              width: double.infinity,
-              height: double.infinity,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(14),
-                topRight: Radius.circular(14),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Skeleton(width: 100, height: 12),
-                  const SizedBox(height: 6),
-                  const Skeleton(width: 60, height: 10),
-                  const Spacer(),
-                  Row(
-                    children: [
-                      const Skeleton(width: 50, height: 14),
-                      const Spacer(),
-                      Skeleton(
-                        width: 40,
-                        height: 20,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+      child: const InstiyLogoPlaceholder(
+        width: double.infinity,
+        height: double.infinity,
+        animate: true,
       ),
     );
   }

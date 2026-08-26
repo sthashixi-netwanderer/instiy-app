@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/adaptive_nav.dart';
 import '../../widgets/home_carousel.dart';
 import '../../widgets/featured_carousel.dart';
+import '../../widgets/instiy_logo_placeholder.dart';
 import '../../widgets/product_section.dart';
 import '../../widgets/category_section.dart';
 import '../../widgets/user_avatar_menu.dart';
@@ -27,7 +28,8 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with WidgetsBindingObserver {
   late final ScrollController _scrollController;
 
   @override
@@ -89,19 +91,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   void _handleCarouselButtonTap(CarouselSlide slide) {
     if (slide.buttonLinkType == 'product' && slide.buttonLinkValue != null) {
-      Navigator.of(context).pushNamed('/product', arguments: slide.buttonLinkValue);
-    } else if (slide.buttonLinkType == 'category' && slide.buttonLinkValue != null) {
-      Navigator.of(context).pushNamed('/explore', arguments: slide.buttonLinkValue);
+      Navigator.of(
+        context,
+      ).pushNamed('/product', arguments: slide.buttonLinkValue);
+    } else if (slide.buttonLinkType == 'category' &&
+        slide.buttonLinkValue != null) {
+      Navigator.of(
+        context,
+      ).pushNamed('/explore', arguments: slide.buttonLinkValue);
     } else if (slide.buttonLinkType == 'url' && slide.buttonLinkValue != null) {
       // Guard against URL injection: only allow http(s) schemes.
       final uri = Uri.tryParse(slide.buttonLinkValue!);
       if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
-        unawaited(launchUrl(uri, mode: LaunchMode.externalApplication).catchError((e) {
-          debugPrint('Could not launch carousel URL: $e');
-          return false;
-        }));
+        unawaited(
+          launchUrl(uri, mode: LaunchMode.externalApplication).catchError((e) {
+            debugPrint('Could not launch carousel URL: $e');
+            return false;
+          }),
+        );
       } else {
-        debugPrint('Carousel URL blocked (invalid scheme): ${slide.buttonLinkValue}');
+        debugPrint(
+          'Carousel URL blocked (invalid scheme): ${slide.buttonLinkValue}',
+        );
       }
     }
   }
@@ -110,10 +121,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
 
-    if (auth.isAuthenticated && (auth.user?.university == null ||
-        auth.user!.university!.isEmpty ||
-        auth.user?.phoneNumber == null ||
-        auth.user!.phoneNumber!.isEmpty)) {
+    if (auth.isAuthenticated &&
+        (auth.user?.university == null ||
+            auth.user!.university!.isEmpty ||
+            auth.user?.phoneNumber == null ||
+            auth.user!.phoneNumber!.isEmpty)) {
       return const GoogleOnboardingView();
     }
 
@@ -157,7 +169,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.only(top: context.rh(carouselState.slides.isNotEmpty ? 16 : 20)),
+                    padding: EdgeInsets.only(
+                      top: context.rh(
+                        carouselState.slides.isNotEmpty ? 16 : 20,
+                      ),
+                    ),
                     child: home.isLoading && home.featuredProducts.isEmpty
                         ? _buildCarouselSkeleton()
                         : FeaturedCarousel(
@@ -167,9 +183,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   ),
                 ),
                 ..._buildCuratedSections(),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 120),
-                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 120)),
               ],
             ),
           ),
@@ -181,20 +195,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             isVerified: auth.user?.isVerified == true,
             isAuthenticated: auth.isAuthenticated,
             onCartTap: () => Navigator.of(context).pushNamed('/cart'),
-            onNotificationTap: () => _requireAuth(context, () => Navigator.of(context).pushNamed('/notifications')),
-            onLoginTap: () => Navigator.of(context).pushNamed('/login'),
-            onWishlistTap: () => Navigator.of(context).pushNamed('/wishlist'),
-            onOrdersTap: () => Navigator.of(context).pushNamed('/orders'),
-            onWalletTap: () => Navigator.of(context).pushNamed('/wallet'),
-            onFollowingTap: () => Navigator.of(context).pushNamed('/following'),
-            onBecomeSellerTap: () => Navigator.of(context).pushNamed('/become-seller'),
-            onSettingsTap: () => Navigator.of(context).pushNamed('/account'),
-            onSignOut: () async {
-              await auth.signOut();
-              if (context.mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false); // ignore: unawaited_futures
-              }
-            },
+            onNotificationTap: () => _requireAuth(
+              context,
+              () => Navigator.of(context).pushNamed('/notifications'),
+            ),
           ),
         ],
       ),
@@ -226,7 +230,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       return [
         SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(context.rw(16), context.rh(28), context.rw(16), 0),
+            padding: EdgeInsets.fromLTRB(
+              context.rw(16),
+              context.rh(28),
+              context.rw(16),
+              0,
+            ),
             child: Container(
               padding: context.rAll(12),
               decoration: BoxDecoration(
@@ -236,14 +245,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               ),
               child: Row(
                 children: [
-                  Icon(LucideIcons.alertTriangle, size: context.ri(16), color: Colors.red),
+                  Icon(
+                    LucideIcons.alertTriangle,
+                    size: context.ri(16),
+                    color: Colors.red,
+                  ),
                   SizedBox(width: context.rw(8)),
                   Expanded(
                     child: Text(
                       curated.error!.contains('function')
                           ? 'Collections not available yet'
                           : 'Failed to load collections: ${curated.error}',
-                      style: TextStyle(fontSize: context.rsp(13), color: Colors.red),
+                      style: TextStyle(
+                        fontSize: context.rsp(13),
+                        color: Colors.red,
+                      ),
                     ),
                   ),
                 ],
@@ -273,10 +289,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 titleIcon: iconData,
                 categories: categories,
                 maxItems: section.maxItems,
-                onTap: (cat) => Navigator.of(context).pushNamed(
-                  '/explore',
-                  arguments: cat.id,
-                ),
+                onTap: (cat) => Navigator.of(
+                  context,
+                ).pushNamed('/explore', arguments: cat.id),
               ),
             ),
           );
@@ -294,16 +309,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 products: products,
                 onTap: _navigateToProduct,
                 canAddToCart: _canAddToCart,
-                onAddToCart: (product) => ref.read(cartProvider).addToCart(
-                  productId: product.id,
-                  title: product.title,
-                  price: product.effectivePrice,
-                  thumbnail: product.effectiveThumbnail,
-                  sellerId: product.sellerId,
-                  sellerName: product.sellerName,
-                  campuses: product.campuses,
-                ),
-                onSeeAll: () => Navigator.of(context).pushNamed('/curated-collection', arguments: section.id),
+                onAddToCart: (product) => ref
+                    .read(cartProvider)
+                    .addToCart(
+                      productId: product.id,
+                      title: product.title,
+                      price: product.effectivePrice,
+                      thumbnail: product.effectiveThumbnail,
+                      sellerId: product.sellerId,
+                      sellerName: product.sellerName,
+                      campuses: product.campuses,
+                    ),
+                onSeeAll: () => Navigator.of(
+                  context,
+                ).pushNamed('/curated-collection', arguments: section.id),
               ),
             ),
           );
@@ -323,10 +342,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 subtitle: section.subtitle,
                 titleIcon: iconData,
                 categories: categories,
-                onTap: (cat) => Navigator.of(context).pushNamed(
-                  '/explore',
-                  arguments: cat.id,
-                ),
+                onTap: (cat) => Navigator.of(
+                  context,
+                ).pushNamed('/explore', arguments: cat.id),
               ),
             ),
           );
@@ -344,16 +362,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 products: products,
                 onTap: _navigateToProduct,
                 canAddToCart: _canAddToCart,
-                onAddToCart: (product) => ref.read(cartProvider).addToCart(
-                  productId: product.id,
-                  title: product.title,
-                  price: product.effectivePrice,
-                  thumbnail: product.effectiveThumbnail,
-                  sellerId: product.sellerId,
-                  sellerName: product.sellerName,
-                  campuses: product.campuses,
-                ),
-                onSeeAll: () => Navigator.of(context).pushNamed('/curated-collection', arguments: section.id),
+                onAddToCart: (product) => ref
+                    .read(cartProvider)
+                    .addToCart(
+                      productId: product.id,
+                      title: product.title,
+                      price: product.effectivePrice,
+                      thumbnail: product.effectiveThumbnail,
+                      sellerId: product.sellerId,
+                      sellerName: product.sellerName,
+                      campuses: product.campuses,
+                    ),
+                onSeeAll: () => Navigator.of(
+                  context,
+                ).pushNamed('/curated-collection', arguments: section.id),
               ),
             ),
           );
@@ -395,73 +417,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   }
 
   Widget _buildCarouselSkeleton() {
-    return Column(
-      children: [
-        Container(
-          height: context.rh(200),
-          margin: EdgeInsets.symmetric(horizontal: context.rw(16)),
-          decoration: BoxDecoration(
-            color: AppTheme.warmMist,
-            borderRadius: BorderRadius.circular(context.rr(16)),
-          ),
-        ),
-        SizedBox(height: context.rh(10)),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-            3,
-            (i) => Container(
-              width: context.rw(i == 0 ? 20 : 6),
-              height: context.rh(6),
-              margin: EdgeInsets.symmetric(horizontal: context.rw(3)),
-              decoration: BoxDecoration(
-                color: AppTheme.whisperBorder,
-                borderRadius: BorderRadius.circular(context.rr(3)),
-              ),
-            ),
-          ),
-        ),
-      ],
+    return Container(
+      height: context.rh(200),
+      margin: EdgeInsets.symmetric(horizontal: context.rw(16)),
+      child: InstiyLogoPlaceholder(
+        width: double.infinity,
+        height: double.infinity,
+        animate: true,
+        borderRadius: BorderRadius.all(Radius.circular(context.rr(16))),
+      ),
     );
   }
 
   Widget _buildSectionSkeleton() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: context.rw(16)),
-          child: Container(
-            width: context.rw(120),
-            height: context.rh(20),
+    return SizedBox(
+      height: context.rh(210),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: context.rw(12)),
+        itemCount: 3,
+        itemExtent: context.rw(163),
+        itemBuilder: (context, index) {
+          return Container(
+            width: context.rw(155),
+            margin: EdgeInsets.symmetric(horizontal: context.rw(4)),
             decoration: BoxDecoration(
-              color: AppTheme.warmMist,
-              borderRadius: BorderRadius.circular(context.rr(6)),
+              color: AppTheme.pureSurface,
+              borderRadius: BorderRadius.circular(context.rr(14)),
+              border: Border.all(color: AppTheme.whisperBorder),
             ),
-          ),
-        ),
-        SizedBox(height: context.rh(12)),
-        SizedBox(
-          height: context.rh(210),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: context.rw(12)),
-            itemCount: 3,
-            itemExtent: context.rw(163),
-            itemBuilder: (context, index) {
-              return Container(
-                width: context.rw(155),
-                margin: EdgeInsets.symmetric(horizontal: context.rw(4)),
-                decoration: BoxDecoration(
-                  color: AppTheme.warmMist,
-                  borderRadius: BorderRadius.circular(context.rr(14)),
-                  border: Border.all(color: AppTheme.whisperBorder),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+            clipBehavior: Clip.antiAlias,
+            child: const InstiyLogoPlaceholder(
+              width: double.infinity,
+              height: double.infinity,
+              animate: true,
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -475,14 +468,6 @@ class _HomeGlassHeader extends ConsumerWidget {
   final bool isAuthenticated;
   final VoidCallback onCartTap;
   final VoidCallback onNotificationTap;
-  final VoidCallback onLoginTap;
-  final VoidCallback onWishlistTap;
-  final VoidCallback onOrdersTap;
-  final VoidCallback onWalletTap;
-  final VoidCallback onFollowingTap;
-  final VoidCallback onBecomeSellerTap;
-  final VoidCallback onSettingsTap;
-  final VoidCallback onSignOut;
 
   const _HomeGlassHeader({
     required this.greeting,
@@ -493,14 +478,6 @@ class _HomeGlassHeader extends ConsumerWidget {
     this.isAuthenticated = false,
     required this.onCartTap,
     required this.onNotificationTap,
-    required this.onLoginTap,
-    required this.onWishlistTap,
-    required this.onOrdersTap,
-    required this.onWalletTap,
-    required this.onFollowingTap,
-    required this.onBecomeSellerTap,
-    required this.onSettingsTap,
-    required this.onSignOut,
   });
 
   @override
@@ -517,7 +494,9 @@ class _HomeGlassHeader extends ConsumerWidget {
         child: BackdropFilter(
           filter: ImageFilter.compose(
             outer: ImageFilter.blur(
-                sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+              sigmaX: AppTheme.glassBlurHeavy,
+              sigmaY: AppTheme.glassBlurHeavy,
+            ),
             inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
           ),
           child: Container(
@@ -528,7 +507,8 @@ class _HomeGlassHeader extends ConsumerWidget {
                 Expanded(
                   child: _GreetingSection(
                     greeting: greeting,
-                    businessName: businessName ?? fullName?.split(' ').first ?? 'Student',
+                    businessName:
+                        businessName ?? fullName?.split(' ').first ?? 'Student',
                   ),
                 ),
                 SizedBox(width: context.rw(12)),
@@ -550,14 +530,6 @@ class _HomeGlassHeader extends ConsumerWidget {
                   businessName: businessName,
                   isVerified: isVerified,
                   isAuthenticated: isAuthenticated,
-                  onLoginTap: onLoginTap,
-                  onWishlistTap: onWishlistTap,
-                  onOrdersTap: onOrdersTap,
-                  onWalletTap: onWalletTap,
-                  onFollowingTap: onFollowingTap,
-                  onBecomeSellerTap: onBecomeSellerTap,
-                  onSettingsTap: onSettingsTap,
-                  onSignOut: onSignOut,
                 ),
               ],
             ),
@@ -572,10 +544,7 @@ class _GreetingSection extends StatelessWidget {
   final String greeting;
   final String businessName;
 
-  const _GreetingSection({
-    required this.greeting,
-    required this.businessName,
-  });
+  const _GreetingSection({required this.greeting, required this.businessName});
 
   @override
   Widget build(BuildContext context) {
@@ -601,10 +570,12 @@ class _GreetingSection extends StatelessWidget {
         SizedBox(height: context.rh(2)),
         Text(
           'Find what you need today',
-          style: TextStyle(fontSize: context.rsp(13), color: AppTheme.mutedSteel),
+          style: TextStyle(
+            fontSize: context.rsp(13),
+            color: AppTheme.mutedSteel,
+          ),
         ),
       ],
     );
   }
 }
-

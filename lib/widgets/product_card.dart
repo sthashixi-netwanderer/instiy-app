@@ -9,6 +9,7 @@ import '../utils/purchase_access.dart';
 import '../utils/responsive.dart';
 import 'animated_press.dart';
 import 'discount_countdown.dart';
+import 'instiy_logo_placeholder.dart';
 import 'verification_badge.dart';
 import 'package:instiy/utils/formatters.dart';
 
@@ -86,18 +87,20 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                       width: double.infinity,
                       height: double.infinity,
                       memCacheWidth: 160,
-                      placeholder: (_, _) =>
-                          Container(color: AppTheme.warmMist),
-                      errorWidget: (_, _, _) => Container(
-                        color: AppTheme.warmMist,
-                        child: Icon(LucideIcons.image, color: AppTheme.mutedSteel, size: context.ri(24)),
+                      placeholder: (_, _) => const InstiyLogoPlaceholder(
+                        width: double.infinity,
+                        height: double.infinity,
+                        animate: true,
+                      ),
+                      errorWidget: (_, _, _) => const InstiyLogoPlaceholder(
+                        width: double.infinity,
+                        height: double.infinity,
                       ),
                     )
-                  else
-                    Container(
-                      color: AppTheme.warmMist,
-                      child: Icon(LucideIcons.image, color: AppTheme.mutedSteel, size: context.ri(24)),
-                    ),
+                  else const InstiyLogoPlaceholder(
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
                   if (inCart)
                     Positioned(
                       top: context.rh(8),

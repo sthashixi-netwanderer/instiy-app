@@ -16,7 +16,6 @@ import '../../services/supabase_service.dart';
 import '../../services/navigation_service.dart';
 import '../../models/seller_review_model.dart';
 import '../../widgets/adaptive_nav.dart';
-import '../../widgets/skeleton.dart';
 import '../../widgets/instiy_logo_placeholder.dart';
 import '../../widgets/review_section.dart';
 import '../../widgets/verification_badge.dart';
@@ -1111,63 +1110,19 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
   }
 }
 
+/// Full-screen placeholder while the clip feed loads — dark backdrop matching
+/// the video surface with a breathing Instiy logo.
 class VideoFeedSkeleton extends StatelessWidget {
   const VideoFeedSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Shimmering background
-        const Positioned.fill(
-          child: Skeleton(
-            width: double.infinity,
-            height: double.infinity,
-            borderRadius: BorderRadius.zero,
-          ),
-        ),
-        // Overlay outlines
-        Positioned(
-          right: 16,
-          bottom: 120,
-          child: Column(
-            children: [
-              const Skeleton(width: 44, height: 44, borderRadius: BorderRadius.all(Radius.circular(22))),
-              const SizedBox(height: 20),
-              const Skeleton(width: 40, height: 40, borderRadius: BorderRadius.all(Radius.circular(20))),
-              const SizedBox(height: 20),
-              const Skeleton(width: 40, height: 40, borderRadius: BorderRadius.all(Radius.circular(20))),
-              const SizedBox(height: 20),
-              const Skeleton(width: 40, height: 40, borderRadius: BorderRadius.all(Radius.circular(20))),
-              const SizedBox(height: 20),
-              const Skeleton(width: 40, height: 40, borderRadius: BorderRadius.all(Radius.circular(20))),
-            ],
-          ),
-        ),
-        Positioned(
-          left: 16,
-          right: 80,
-          bottom: 110,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Skeleton(width: 120, height: 16),
-              const SizedBox(height: 8),
-              const Skeleton(width: 200, height: 14),
-              const SizedBox(height: 4),
-              const Skeleton(width: double.infinity, height: 14),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Skeleton(width: 80, height: 28),
-                  const SizedBox(width: 12),
-                  const Skeleton(width: 100, height: 28),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+    return const InstiyLogoPlaceholder(
+      width: double.infinity,
+      height: double.infinity,
+      animate: true,
+      backgroundColor: Colors.black,
+      logoColor: AppTheme.whisperBorder,
     );
   }
 }
