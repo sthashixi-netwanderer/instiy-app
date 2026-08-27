@@ -364,68 +364,88 @@ class SellerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _notifyDeliverySuccess({
+    required String? orderItemId,
+    required num? amount,
+  }) async {
+    if (orderItemId == null) return;
+    try {
+      final orderItem = await SupabaseService.client
+          .from('order_items')
+          .select('order_id, product_title')
+          .eq('id', orderItemId)
+          .maybeSingle();
+
+      if (orderItem != null) {
+        final order = await SupabaseService.client
+            .from('orders')
+            .select('buyer_id, delivery_fee, delivery_mode')
+            .eq('id', orderItem['order_id'])
+            .maybeSingle();
+
+        if (order != null) {
+          final buyer = await SupabaseService.client
+              .from('users')
+              .select('full_name, email')
+              .eq('id', order['buyer_id'])
+              .maybeSingle();
+
+          final seller = await SupabaseService.client
+              .from('users')
+              .select('full_name')
+              .eq('id', SupabaseService.auth.currentUser?.id ?? '')
+              .maybeSingle();
+
+          if (buyer != null && seller != null) {
+            final buyerEmail = buyer['email'] as String?;
+            final buyerName = buyer['full_name'] as String? ?? 'Buyer';
+            final sellerName = seller['full_name'] as String? ?? 'Seller';
+            final productTitle = orderItem['product_title'] as String? ?? 'Product';
+            final deliveryFee = order['delivery_mode'] == 'delivery'
+                ? (order['delivery_fee'] as num?)?.toDouble() ?? 0.0
+                : 0.0;
+
+            await LocalNotificationService.notifyDeliveryApproved(
+              productTitle: productTitle,
+              amount: amount?.toDouble() ?? 0,
+              deliveryFee: deliveryFee,
+            );
+
+            if (buyerEmail != null) {
+              await EmailService.sendDeliveryConfirmed(
+                buyerEmail: buyerEmail,
+                buyerName: buyerName,
+                sellerName: sellerName,
+                productTitle: productTitle,
+                amount: amount?.toDouble() ?? 0,
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<Map<String, dynamic>> verifyDelivery(String orderItemId, String code) async {
     try {
       final result = await SellerService.verifyDelivery(orderItemId, code);
       if (result['success'] == true) {
         final amount = result['amount'] as num?;
+        await _notifyDeliverySuccess(orderItemId: orderItemId, amount: amount);
+      }
+      return result;
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 
-        // Get buyer info for email
-        final orderItem = await SupabaseService.client
-            .from('order_items')
-            .select('order_id, product_title')
-            .eq('id', orderItemId)
-            .maybeSingle();
-
-        if (orderItem != null) {
-          final order = await SupabaseService.client
-              .from('orders')
-              .select('buyer_id, delivery_fee, delivery_mode')
-              .eq('id', orderItem['order_id'])
-              .maybeSingle();
-
-          if (order != null) {
-            final buyer = await SupabaseService.client
-                .from('users')
-                .select('full_name, email')
-                .eq('id', order['buyer_id'])
-                .maybeSingle();
-
-            final seller = await SupabaseService.client
-                .from('users')
-                .select('full_name')
-                .eq('id', SupabaseService.auth.currentUser?.id ?? '')
-                .maybeSingle();
-
-            if (buyer != null && seller != null) {
-              final buyerEmail = buyer['email'] as String?;
-              final buyerName = buyer['full_name'] as String? ?? 'Buyer';
-              final sellerName = seller['full_name'] as String? ?? 'Seller';
-              final productTitle = orderItem['product_title'] as String? ?? 'Product';
-              final deliveryFee = order['delivery_mode'] == 'delivery'
-                  ? (order['delivery_fee'] as num?)?.toDouble() ?? 0.0
-                  : 0.0;
-
-              // Send notification
-              await LocalNotificationService.notifyDeliveryApproved(
-                productTitle: productTitle,
-                amount: amount?.toDouble() ?? 0,
-                deliveryFee: deliveryFee,
-              );
-
-              // Send email to buyer
-              if (buyerEmail != null) {
-                await EmailService.sendDeliveryConfirmed(
-                  buyerEmail: buyerEmail,
-                  buyerName: buyerName,
-                  sellerName: sellerName,
-                  productTitle: productTitle,
-                  amount: amount?.toDouble() ?? 0,
-                );
-              }
-            }
-          }
-        }
+  Future<Map<String, dynamic>> verifyDeliveryByCode(String code) async {
+    try {
+      final result = await SellerService.verifyDeliveryByCode(code);
+      if (result['success'] == true) {
+        final amount = result['amount'] as num?;
+        final orderItemId = result['order_item_id'] as String? ?? result['item_id'] as String?;
+        await _notifyDeliverySuccess(orderItemId: orderItemId, amount: amount);
       }
       return result;
     } catch (e) {

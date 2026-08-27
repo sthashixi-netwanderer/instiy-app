@@ -274,8 +274,13 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
   }
 
   Future<void> _verifyAndComplete(OrderItem item, String code) async {
+    final cleanCode = code
+        .trim()
+        .replaceFirst(RegExp(r'^instiy-(code|item|gqr):', caseSensitive: false), '')
+        .trim()
+        .toUpperCase();
     try {
-      final result = await SellerService.verifyDelivery(item.id, code);
+      final result = await SellerService.verifyDelivery(item.id, cleanCode);
       if (!mounted) return;
       if (result['success'] == true) {
         ShadToaster.of(context).show(

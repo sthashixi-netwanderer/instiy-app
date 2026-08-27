@@ -338,6 +338,18 @@ class SellerService {
     return result as Map<String, dynamic>;
   }
 
+  /// Verifies an order item delivery using only the delivery code.
+  /// Resolves the matching order item for the calling seller server-side.
+  static Future<Map<String, dynamic>> verifyDeliveryByCode(
+    String code,
+  ) async {
+    final result = await SupabaseService.client.rpc(
+      'verify_delivery_by_code',
+      params: {'p_code': code.trim().toUpperCase()},
+    );
+    return _asMap(result);
+  }
+
   /// General delivery QR: the given buyer's pending items that belong to the
   /// calling seller. Seller matching is enforced server-side (auth.uid()).
   static Future<Map<String, dynamic>> getBuyerPendingItems(

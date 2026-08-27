@@ -124,32 +124,112 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
     await _verifyCode(item, code);
   }
 
-  /// General buyer QR: one scan resolves every pending item this buyer
-  /// purchased from THIS store (server-enforced seller match), so the seller
-  /// can deliver everything at once instead of scrolling for codes.
-  Future<void> _scanBuyerQr() async {
-    const prefix = 'instiy-gqr:';
+  /// Universal delivery QR scanner: one scanner works with BOTH general buyer QR codes
+  /// (`instiy-gqr:<buyerId>`) AND specific ordered products (`item.deliveryCode`,
+  /// `instiy-code:<codeText>`, `instiy-item:<codeText>`, or raw delivery codes).
+  Future<void> _scanUniversalQr() async {
     final code = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => const ScannerScreen(
           autoClose: true,
-          title: 'Scan Buyer QR',
-          subtitle: 'Point camera at the buyer\'s delivery QR code',
+          title: 'Scan Delivery QR',
+          subtitle: 'Point camera at buyer QR or product delivery code',
         ),
       ),
     );
     if (!mounted || code == null || code.trim().isEmpty) return;
+    await _handleScannedCode(code.trim());
+  }
 
-    if (!code.startsWith(prefix)) {
-      ShadToaster.of(context).show(
-        const ShadToast(
-          backgroundColor: AppTheme.destructive,
-          title: Text('Not a buyer delivery QR code'),
-        ),
-      );
+  Future<void> _handleScannedCode(String raw) async {
+    const gqrPrefix = 'instiy-gqr:';
+    if (raw.startsWith(gqrPrefix)) {
+      final buyerId = raw.substring(gqrPrefix.length).trim();
+      await _openBuyerItems(buyerId);
       return;
     }
-    await _openBuyerItems(code.substring(prefix.length).trim());
+
+    // Clean any prefixes that might be part of an item QR
+    String cleanCode = raw;
+    if (cleanCode.toLowerCase().startsWith('instiy-code:')) {
+      cleanCode = cleanCode.substring('instiy-code:'.length).trim();
+    } else if (cleanCode.toLowerCase().startsWith('instiy-item:')) {
+      cleanCode = cleanCode.substring('instiy-item:'.length).trim();
+    } else if (cleanCode.toLowerCase().startsWith('code:')) {
+      cleanCode = cleanCode.substring('code:'.length).trim();
+    }
+
+    final sellerProv = ref.read(sellerProvider);
+    final allItems = sellerProv.sellerOrders.expand((o) => o.items).toList();
+    OrderItem? matchedItem = allItems.cast<OrderItem?>().firstWhere(
+      (item) =>
+          item != null &&
+          (item.deliveryCode?.toUpperCase() == cleanCode.toUpperCase() ||
+              item.id.toLowerCase() == cleanCode.toLowerCase()),
+      orElse: () => null,
+    );
+
+    if (matchedItem != null) {
+      if (matchedItem.status == 'delivered') {
+        if (!mounted) return;
+        ShadToaster.of(context).show(
+          ShadToast(
+            backgroundColor: AppTheme.warningAmber,
+            title: Text('Already Delivered: "${matchedItem.productTitle}"'),
+            description: const Text(
+              'This item was already verified and funds released to your wallet.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (matchedItem.status == 'cancelled') {
+        if (!mounted) return;
+        ShadToaster.of(context).show(
+          ShadToast(
+            backgroundColor: AppTheme.destructive,
+            title: Text('Order Item Cancelled: "${matchedItem.productTitle}"'),
+          ),
+        );
+        return;
+      }
+
+      await _verifyCode(matchedItem, cleanCode);
+      return;
+    }
+
+    // Fallback: verify server-side via verifyDeliveryByCode RPC
+    final result = await sellerProv.verifyDeliveryByCode(cleanCode);
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      final amount = (result['amount'] as num?) ?? 0;
+      final productTitle = result['product_title'] as String?;
+      final titleText = productTitle != null && productTitle.isNotEmpty
+          ? 'Verified "$productTitle"! ${formatGhs(amount.toDouble())} released to wallet.'
+          : 'Verified! ${formatGhs(amount.toDouble())} released to wallet.';
+
+      ShadToaster.of(context).show(
+        ShadToast(
+          backgroundColor: AppTheme.successMoss,
+          title: Text(titleText),
+        ),
+      );
+      final user = ref.read(authProvider).user;
+      if (user != null) {
+        sellerProv.loadSellerOrders(user.id); // ignore: unawaited_futures
+      }
+    } else {
+      ShadToaster.of(context).show(
+        ShadToast(
+          backgroundColor: AppTheme.destructive,
+          title: Text(
+            result['error'] as String? ??
+                'Invalid delivery code or item does not belong to your store',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _openBuyerItems(String buyerId) async {
@@ -262,18 +342,16 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
       appBar: AppTheme.glassAppBar(
         context: context,
         title: const Text('Verify Deliveries'),
-        // General buyer QR scanner lives in the header — one scan collects
-        // every pending item a buyer bought from this store. Hidden when
-        // this seller has nothing to deliver.
+        // Universal delivery QR scanner: scans both general buyer QR codes and specific item delivery codes
         actions: [
           if (pendingItems.isNotEmpty || processingItems.isNotEmpty)
             ShadIconButton.ghost(
-              icon: Icon(
+              icon: const Icon(
                 LucideIcons.scanLine,
                 size: 22,
                 color: AppTheme.accent,
               ),
-              onPressed: _scanBuyerQr,
+              onPressed: _scanUniversalQr,
             ),
         ],
       ),
