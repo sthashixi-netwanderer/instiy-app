@@ -20,4 +20,7 @@ interface Env {
 	APP_VERSION?: string;
 	ANDROID_CERT_SHA256?: string;
 	APPLE_TEAM_ID?: string;
+	TURN_URL?: string;
+	TURN_USERNAME?: string;
+	TURN_CREDENTIAL?: string;
 }

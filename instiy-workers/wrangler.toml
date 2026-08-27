@@ -25,6 +25,9 @@ R2_BUCKET_NAME = "instiy"
 # GIPHY_API_KEY
 # REDIRECT_URL
 # APP_VERSION
+# TURN_URL — TURN server URLs, comma-separated (e.g. turn:turn.instiy.com:3478,turns:turn.instiy.com:5349)
+# TURN_USERNAME
+# TURN_CREDENTIAL
 # ANDROID_CERT_SHA256 — SHA-256 signing cert fingerprint(s), comma-separated
 #   (upload keystore + Play signing key). Enables verified Android App Links
 #   so instiy.com links open the app directly instead of via the browser.

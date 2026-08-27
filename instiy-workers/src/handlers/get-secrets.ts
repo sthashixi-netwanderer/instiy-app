@@ -33,6 +33,9 @@ export async function handleGetSecrets(request: Request, env: Env, _corsHeaders:
       supabase_redirect_url: env.REDIRECT_URL || '',
       giphy_api_key: env.GIPHY_API_KEY || '',
       app_version: env.APP_VERSION || '',
+      turn_url: env.TURN_URL || '',
+      turn_username: env.TURN_USERNAME || '',
+      turn_credential: env.TURN_CREDENTIAL || '',
     }),
     {
       status: 200,

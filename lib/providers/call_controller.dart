@@ -95,8 +95,18 @@ class CallController extends ChangeNotifier {
     required bool video,
   }) async {
     final me = currentUserId;
-    if (me == null || me == peerId) return;
-    if (hasActiveCall) return;
+    if (me == null) {
+      debugPrint('CallController: startCall aborted — not authenticated');
+      return;
+    }
+    if (me == peerId) {
+      debugPrint('CallController: startCall aborted — cannot call self');
+      return;
+    }
+    if (hasActiveCall) {
+      debugPrint('CallController: startCall aborted — already in call ${_session?.id}');
+      return;
+    }
 
     _resetControlState();
 
@@ -112,8 +122,14 @@ class CallController extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
 
+    debugPrint('CallController: startCall ${session.id} ${video ? 'video' : 'audio'} to $peerId');
+    if (SecretsService.instance.turnUrl.isEmpty) {
+      debugPrint('CallController: TURN not configured — STUN-only mode, NAT traversal may fail. Set TURN_URL env.');
+    }
+
     final granted = await WebRtcCallEngine.requestPermissions(session.type);
     if (!granted) {
+      debugPrint('CallController: permissions denied for ${session.type}');
       _finishLocally(session, CallEndReason.declinedPermission);
       return;
     }
@@ -123,6 +139,7 @@ class CallController extends ChangeNotifier {
 
     try {
       await WebRtcCallEngine.instance.startLocalMedia(session.type);
+      debugPrint('CallController: local media started for ${session.id}');
     } catch (e) {
       debugPrint('CallController: media init failed: $e');
       await _teardownMedia();
@@ -136,10 +153,12 @@ class CallController extends ChangeNotifier {
     );
 
     if (!sent) {
+      debugPrint('CallController: sendInvite failed for ${session.id} to $peerId — check Realtime RLS/subscription');
       await _leaveAndDispose();
       _finishLocally(session, CallEndReason.connectionFailed);
       return;
     }
+    debugPrint('CallController: invite sent ${session.id} to $peerId');
 
     unawaited(_playSound(outgoing: true));
     _armTimeout(CallEndReason.noAnswer);
@@ -220,17 +239,24 @@ class CallController extends ChangeNotifier {
   // ── Incoming invite ──────────────────────────────────────────────────────
 
   Future<void> _handleIncomingInvite(Map<String, dynamic> payload) async {
+    debugPrint('CallController: incoming invite raw=$payload');
     final callId = payload['call_id'] as String?;
     final callerId = payload['caller_id'] as String?;
     final me = currentUserId;
-    if (callId == null || callerId == null || me == null) return;
+    if (callId == null || callerId == null || me == null) {
+      debugPrint('CallController: invite dropped — missing ids callId=$callId callerId=$callerId me=$me');
+      return;
+    }
     if (callId == _session?.id) return;
 
     if (hasActiveCall) {
+      debugPrint('CallController: invite busy — already in ${_session?.id}, rejecting $callId');
       final busyChannel = await _signaling.joinCallChannel(callId, handlers: {});
       try {
         await busyChannel.sendBroadcastMessage(event: 'busy', payload: {'by': me});
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('CallController: busy send failed: $e');
+      }
       await _signaling.leaveCallChannel(callId);
       return;
     }
@@ -320,6 +346,7 @@ class CallController extends ChangeNotifier {
   }
 
   void _onPeerRejected(String callId, Map<String, dynamic> payload) {
+    debugPrint('CallController: peer rejected $callId payload=$payload');
     final session = _session;
     if (session == null || session.id != callId || session.isIncoming) return;
     _stopSound();
@@ -329,6 +356,7 @@ class CallController extends ChangeNotifier {
   }
 
   void _onPeerBusy(String callId) {
+    debugPrint('CallController: peer busy $callId');
     final session = _session;
     if (session == null || session.id != callId || session.isIncoming) return;
     _stopSound();
@@ -338,6 +366,7 @@ class CallController extends ChangeNotifier {
   }
 
   void _onPeerEnded(String callId) {
+    debugPrint('CallController: peer ended $callId status=${_session?.status}');
     final session = _session;
     if (session == null || session.id != callId) return;
     _stopSound();
@@ -446,6 +475,7 @@ class CallController extends ChangeNotifier {
   void _onConnectionStateChanged(String callId, RTCPeerConnectionState state) {
     final session = _session;
     if (session == null || session.id != callId) return;
+    debugPrint('CallController: peerConnectionState $state for $callId status=${session.status}');
 
     if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
       if (session.status != CallStatus.active) {
@@ -457,7 +487,9 @@ class CallController extends ChangeNotifier {
     }
 
     if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-        state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        state == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
+        state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+      debugPrint('CallController: connection failed/closed/disconnected $state — ending call');
       if (session.isActiveOrRinging) {
         _leaveAndDispose();
         _showEnded(

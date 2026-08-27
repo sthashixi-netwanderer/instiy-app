@@ -25,6 +25,31 @@ class CallSignalingService {
   static String ringTopic(String userId) => '$_ringPrefix$userId';
   static String callTopic(String callId) => '$_callPrefix$callId';
 
+  static Map<String, dynamic> _unwrap(Map<String, dynamic> raw) {
+    // Supabase Realtime versions differ: some deliver {payload:{...}} envelope,
+    // some deliver the payload directly. Handle both so invite/offer/answer are not lost.
+    if (raw.containsKey('payload') && raw['payload'] is Map) {
+      final hasDirectKeys = raw.containsKey('call_id') ||
+          raw.containsKey('sdp') ||
+          raw.containsKey('candidate') ||
+          raw.containsKey('reason');
+      if (!hasDirectKeys) {
+        return Map<String, dynamic>.from(raw['payload'] as Map);
+      }
+    }
+    return raw;
+  }
+
+  static SignalHandler _wrap(SignalHandler h) {
+    return (Map<String, dynamic> raw) {
+      try {
+        h(_unwrap(raw));
+      } catch (e) {
+        debugPrint('CallSignaling: handler error: $e raw=$raw');
+      }
+    };
+  }
+
   Future<void> listenForInvites(
     String userId, {
     required SignalHandler onInvite,
@@ -40,16 +65,23 @@ class CallSignalingService {
     );
 
     _ringChannel!
-        .onBroadcast(event: 'invite', callback: onInvite)
-        .onBroadcast(event: 'cancel', callback: onCancel);
+        .onBroadcast(event: 'invite', callback: _wrap(onInvite))
+        .onBroadcast(event: 'cancel', callback: _wrap(onCancel));
 
     final joined = Completer<bool>();
+    String lastStatus = 'pending';
     _ringChannel!.subscribe((status, error) {
+      lastStatus = status.name;
+      if (error != null) debugPrint('CallSignaling: ring subscribe error $error status=$status');
       if (!joined.isCompleted) {
         joined.complete(status == RealtimeSubscribeStatus.subscribed);
       }
     });
-    await joined.future.timeout(const Duration(seconds: 6), onTimeout: () => false);
+    final ok = await joined.future.timeout(const Duration(seconds: 10), onTimeout: () => false);
+    debugPrint('CallSignaling: ring ${ringTopic(userId)} subscribe=$ok status=$lastStatus');
+    if (!ok) {
+      debugPrint('CallSignaling: ring subscribe timeout/failed for $userId — invites will be missed');
+    }
   }
 
   Future<void> stopListening() async {
@@ -97,16 +129,25 @@ class CallSignalingService {
     channel = newChannel;
 
     handlers.forEach((event, handler) {
-      newChannel.onBroadcast(event: event, callback: handler);
+      newChannel.onBroadcast(event: event, callback: _wrap(handler));
     });
 
     final joined = Completer<bool>();
+    String lastStatus = 'pending';
+    Object? lastError;
     newChannel.subscribe((status, error) {
+      lastStatus = status.name;
+      lastError = error;
+      if (error != null) debugPrint('CallSignaling: call $callId subscribe error $error status=$status');
       if (!joined.isCompleted) {
         joined.complete(status == RealtimeSubscribeStatus.subscribed);
       }
     });
-    await joined.future.timeout(const Duration(seconds: 6), onTimeout: () => false);
+    final ok = await joined.future.timeout(const Duration(seconds: 10), onTimeout: () => false);
+    debugPrint('CallSignaling: call ${callTopic(callId)} subscribe=$ok status=$lastStatus err=$lastError');
+    if (!ok) {
+      debugPrint('CallSignaling: call $callId subscribe failed — signals may be lost');
+    }
 
     _callChannels[callId] = channel;
     return channel;
@@ -118,14 +159,20 @@ class CallSignalingService {
     Map<String, dynamic> payload,
   ) async {
     final channel = _callChannels[callId];
-    if (channel == null) return false;
+    if (channel == null) {
+      debugPrint('CallSignaling: send "$event" no channel for $callId');
+      return false;
+    }
     try {
       final status = await channel
           .sendBroadcastMessage(event: event, payload: payload)
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 10));
+      if (status != ChannelResponse.ok) {
+        debugPrint('CallSignaling: send "$event" status=$status for $callId');
+      }
       return status == ChannelResponse.ok;
     } catch (e) {
-      debugPrint('CallSignaling: send "$event" failed: $e');
+      debugPrint('CallSignaling: send "$event" failed: $e for $callId');
       return false;
     }
   }
@@ -153,20 +200,31 @@ class CallSignalingService {
     final channel = _client.channel(topic, opts: const RealtimeChannelConfig(private: true));
     try {
       final joined = Completer<bool>();
+      String lastStatus = 'pending';
+      Object? lastError;
       channel.subscribe((status, error) {
+        lastStatus = status.name;
+        lastError = error;
+        if (error != null) debugPrint('CallSignaling: _sendToRing $event subscribe error $error status=$status topic=$topic');
         if (!joined.isCompleted) {
           joined.complete(status == RealtimeSubscribeStatus.subscribed);
         }
       });
       final ok = await joined.future.timeout(
-        const Duration(seconds: 6),
+        const Duration(seconds: 10),
         onTimeout: () => false,
       );
-      if (!ok) return false;
+      if (!ok) {
+        debugPrint('CallSignaling: _sendToRing $event subscribe failed topic=$topic status=$lastStatus err=$lastError');
+        return false;
+      }
 
       final status = await channel
           .sendBroadcastMessage(event: event, payload: payload)
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 10));
+      if (status != ChannelResponse.ok) {
+        debugPrint('CallSignaling: _sendToRing $event status=$status topic=$topic payload=$payload');
+      }
       return status == ChannelResponse.ok;
     } catch (e) {
       debugPrint('CallSignaling: $event to $topic failed: $e');

@@ -37,11 +37,15 @@ class WebRtcCallEngine {
     ];
     final turnUrls = SecretsService.instance.turnUrl;
     if (turnUrls.isNotEmpty) {
+      final urls = turnUrls.split(',').map((u) => u.trim()).where((u) => u.isNotEmpty).toList();
+      debugPrint('WebRtcEngine: using TURN $urls user=${SecretsService.instance.turnUsername}');
       servers.add({
-        'urls': turnUrls.split(',').map((u) => u.trim()).toList(),
+        'urls': urls,
         'username': SecretsService.instance.turnUsername,
         'credential': SecretsService.instance.turnCredential,
       });
+    } else {
+      debugPrint('WebRtcEngine: TURN not configured — STUN-only (set TURN_URL/USERNAME/CREDENTIAL)');
     }
     return servers;
   }
@@ -96,8 +100,10 @@ class WebRtcCallEngine {
     required void Function(RTCPeerConnectionState) onConnectionState,
     required void Function(MediaStream) onRemoteStream,
   }) async {
+    final ice = _iceServers();
+    debugPrint('WebRtcEngine: creating PeerConnection iceServers=$ice');
     _pc = await createPeerConnection({
-      'iceServers': _iceServers(),
+      'iceServers': ice,
       'sdpSemantics': 'unified-plan',
       'iceCandidatePoolSize': 4,
     });
