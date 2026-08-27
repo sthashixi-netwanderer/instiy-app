@@ -98,12 +98,14 @@ class CallSignalingService {
   Future<bool> sendInvite({
     required String calleeId,
     required CallSession session,
+    String? callerName,
+    String? callerAvatar,
   }) {
     return _sendToRing(ringTopic(calleeId), 'invite', {
       'call_id': session.id,
       'caller_id': session.localUserId,
-      'caller_name': session.peerName,
-      'caller_avatar': session.peerAvatar,
+      'caller_name': callerName,
+      'caller_avatar': callerAvatar,
       'call_type': session.type == CallType.video ? 'video' : 'audio',
       'created_at': session.createdAt.toIso8601String(),
     });

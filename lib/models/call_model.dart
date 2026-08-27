@@ -4,6 +4,7 @@ enum CallType { audio, video }
 
 enum CallStatus {
   idle,
+  callingOutgoing,
   ringingOutgoing,
   ringingIncoming,
   connecting,
@@ -70,6 +71,7 @@ class CallSession {
   }
 
   bool get isActiveOrRinging =>
+      status == CallStatus.callingOutgoing ||
       status == CallStatus.ringingOutgoing ||
       status == CallStatus.ringingIncoming ||
       status == CallStatus.connecting ||
@@ -79,8 +81,10 @@ class CallSession {
     switch (status) {
       case CallStatus.idle:
         return '';
-      case CallStatus.ringingOutgoing:
+      case CallStatus.callingOutgoing:
         return 'Calling…';
+      case CallStatus.ringingOutgoing:
+        return 'Ringing…';
       case CallStatus.ringingIncoming:
         return type == CallType.video
             ? 'Incoming video call'

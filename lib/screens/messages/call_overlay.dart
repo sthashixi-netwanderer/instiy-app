@@ -40,6 +40,7 @@ class CallOverlay extends ConsumerWidget {
             child: switch (session.status) {
               CallStatus.ringingIncoming =>
                 _IncomingCallView(session: session, controller: controller),
+              CallStatus.callingOutgoing ||
               CallStatus.ringingOutgoing ||
               CallStatus.connecting =>
                 _WaitingCallView(session: session, controller: controller),

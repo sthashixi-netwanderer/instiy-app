@@ -121,6 +121,27 @@ class CallController extends ChangeNotifier {
 
     _resetControlState();
 
+    // Fetch caller's own profile (name & avatar) so the receiver sees who is calling
+    final meUser = SupabaseService.client.auth.currentUser;
+    var myName = (meUser?.userMetadata?['full_name'] as String?) ??
+        (meUser?.userMetadata?['name'] as String?);
+    var myAvatar = (meUser?.userMetadata?['avatar_url'] as String?) ??
+        (meUser?.userMetadata?['picture'] as String?);
+
+    if (myName == null || myName.isEmpty) {
+      try {
+        final row = await SupabaseService.client
+            .from('users')
+            .select('full_name, avatar_url')
+            .eq('id', me)
+            .maybeSingle();
+        if (row != null) {
+          myName = row['full_name'] as String?;
+          myAvatar ??= row['avatar_url'] as String?;
+        }
+      } catch (_) {}
+    }
+
     final session = CallSession(
       id: _uuid.v4(),
       type: video ? CallType.video : CallType.audio,
@@ -129,11 +150,11 @@ class CallController extends ChangeNotifier {
       peerId: peerId,
       peerName: peerName,
       peerAvatar: peerAvatar,
-      status: CallStatus.ringingOutgoing,
+      status: CallStatus.callingOutgoing,
       createdAt: DateTime.now(),
     );
 
-    debugPrint('CallController: startCall ${session.id} ${video ? 'video' : 'audio'} to $peerId');
+    debugPrint('CallController: startCall ${session.id} ${video ? 'video' : 'audio'} to $peerId (caller: $myName)');
     if (SecretsService.instance.turnUrl.isEmpty) {
       debugPrint('CallController: TURN not configured — STUN-only mode, NAT traversal may fail. Set TURN_URL env.');
     }
@@ -161,6 +182,8 @@ class CallController extends ChangeNotifier {
     final sent = await _signaling.sendInvite(
       calleeId: peerId,
       session: session,
+      callerName: myName,
+      callerAvatar: myAvatar,
     );
 
     if (!sent) {
@@ -175,14 +198,14 @@ class CallController extends ChangeNotifier {
     unawaited(
       SupabaseService.client.rpc('create_notification', params: {
         'p_user_id': peerId,
-        'p_title': session.peerName ?? 'Instiy User',
+        'p_title': myName ?? 'Instiy User',
         'p_body': video ? 'Incoming video call…' : 'Incoming voice call…',
         'p_type': 'call',
         'p_data': {
           'call_id': session.id,
           'caller_id': me,
-          'caller_name': session.peerName,
-          'caller_avatar': session.peerAvatar,
+          'caller_name': myName,
+          'caller_avatar': myAvatar,
           'call_type': video ? 'video' : 'voice',
         },
       }).catchError((e) {
@@ -310,14 +333,32 @@ class CallController extends ChangeNotifier {
         ? DateTime.tryParse(createdAtRaw)?.toLocal() ?? DateTime.now()
         : DateTime.now();
 
+    var callerName = payload['caller_name'] as String?;
+    var callerAvatar = payload['caller_avatar'] as String?;
+
+    // If caller name is missing from payload, query the users table directly
+    if (callerName == null || callerName.isEmpty || callerName == 'Instiy User') {
+      try {
+        final row = await SupabaseService.client
+            .from('users')
+            .select('full_name, avatar_url')
+            .eq('id', callerId)
+            .maybeSingle();
+        if (row != null) {
+          callerName = (row['full_name'] as String?) ?? callerName;
+          callerAvatar ??= row['avatar_url'] as String?;
+        }
+      } catch (_) {}
+    }
+
     final session = CallSession(
       id: callId,
       type: type,
       isIncoming: true,
       localUserId: me,
       peerId: callerId,
-      peerName: payload['caller_name'] as String?,
-      peerAvatar: payload['caller_avatar'] as String?,
+      peerName: callerName ?? 'Instiy User',
+      peerAvatar: callerAvatar,
       status: CallStatus.ringingIncoming,
       createdAt: createdAt,
     );
@@ -326,13 +367,16 @@ class CallController extends ChangeNotifier {
 
     await _joinChannelFor(session);
 
+    // Notify caller that receiver's device received the call and is ringing
+    unawaited(_send('ringing', {'call_id': callId, 'by': me}));
+
     // Show full-screen WhatsApp-style incoming call notification
     unawaited(
       LocalNotificationService.showIncomingCallNotification(
         callId: callId,
-        callerName: payload['caller_name'] as String? ?? 'Instiy User',
+        callerName: callerName ?? 'Instiy User',
         callType: type == CallType.video ? 'video' : 'voice',
-        callerAvatar: payload['caller_avatar'] as String?,
+        callerAvatar: callerAvatar,
       ),
     );
 
@@ -355,6 +399,7 @@ class CallController extends ChangeNotifier {
 
   Future<void> _joinChannelFor(CallSession session) async {
     await _signaling.joinCallChannel(session.id, handlers: {
+      'ringing': (_) => _onPeerRinging(session.id),
       'accept': (_) => _onPeerAccepted(session.id),
       'reject': (p) => _onPeerRejected(session.id, p),
       'busy': (_) => _onPeerBusy(session.id),
@@ -363,6 +408,16 @@ class CallController extends ChangeNotifier {
       'answer': (p) => _onAnswer(session.id, p),
       'ice': (p) => _onIceCandidate(session.id, p),
     });
+  }
+
+  void _onPeerRinging(String callId) {
+    final session = _session;
+    if (session == null || session.id != callId) return;
+    if (session.isIncoming) return;
+    if (session.status == CallStatus.callingOutgoing) {
+      debugPrint('CallController: peer acknowledged ringing for $callId — changing Calling… to Ringing…');
+      _updateStatus(CallStatus.ringingOutgoing);
+    }
   }
 
   Future<bool> _send(String event, Map<String, dynamic> payload) async {
