@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/call_model.dart';
 import '../services/call_signaling_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/message_service.dart';
 import '../services/secrets_service.dart';
 import '../services/supabase_service.dart';
 import '../services/webrtc_call_service.dart';
@@ -613,7 +614,44 @@ class CallController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _callLogRecorded = false;
+
+  void _recordCallLog(CallSession session, CallEndReason reason) {
+    if (_callLogRecorded) return;
+    _callLogRecorded = true;
+
+    final durationSeconds = _connectedAt != null
+        ? DateTime.now().difference(_connectedAt!).inSeconds
+        : 0;
+
+    String status = 'completed';
+    if (reason == CallEndReason.rejected) {
+      status = 'declined';
+    } else if (reason == CallEndReason.noAnswer) {
+      status = 'no_answer';
+    } else if (reason == CallEndReason.cancelled) {
+      status = 'cancelled';
+    } else if (reason == CallEndReason.busy) {
+      status = 'busy';
+    } else if (durationSeconds == 0) {
+      status = 'missed';
+    }
+
+    final peerId = session.peerId;
+    final callType = session.type == CallType.video ? 'video' : 'voice';
+
+    unawaited(
+      MessageService.sendCallLog(
+        peerId: peerId,
+        callType: callType,
+        durationSeconds: durationSeconds,
+        status: status,
+      ),
+    );
+  }
+
   void _resetControlState() {
+    _callLogRecorded = false;
     micMuted = false;
     cameraOff = false;
     speakerOn = false;
@@ -625,6 +663,7 @@ class CallController extends ChangeNotifier {
 
   /// Ends without notifying the peer (they are gone / never reached).
   void _finishLocally(CallSession session, CallEndReason reason) {
+    _recordCallLog(session, reason);
     _cancelNotification(session.id);
     _stopSound();
     _cancelTimeout();
@@ -635,6 +674,7 @@ class CallController extends ChangeNotifier {
   void _showEnded(CallEndReason reason) {
     final s = _session;
     if (s == null) return;
+    _recordCallLog(s, reason);
     _cancelNotification(s.id);
     _session = s.copyWith(status: CallStatus.ended, endReason: reason);
     notifyListeners();

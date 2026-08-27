@@ -186,6 +186,8 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
         automaticallyImplyLeading: false,
         actions: [
           PopupMenuButton<String>(
+            position: PopupMenuPosition.under,
+            offset: const Offset(0, 8),
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
               if (value == 'archived') {
@@ -1846,6 +1848,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
               actions: [
                 PopupMenuButton<String>(
                   tooltip: 'Call',
+                  position: PopupMenuPosition.under,
+                  offset: const Offset(0, 8),
                   icon: const Icon(LucideIcons.phone, size: 20),
                   enabled: !isBlocked,
                   onSelected: (value) {
@@ -1881,6 +1885,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                   ],
                 ),
                 PopupMenuButton<String>(
+                  position: PopupMenuPosition.under,
+                  offset: const Offset(0, 8),
                   icon: const Icon(LucideIcons.ellipsis, size: 20),
                   onSelected: (value) => _handleMenuAction(value, otherUserId, isBlocked),
                   itemBuilder: (context) => [
@@ -2067,6 +2073,15 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                             },
                                             onSwipeReply: () => _setReplyTo(msg),
                                             onReplyTap: msg.isReply ? () => _scrollToMessage(msg.replyToMessageId!) : null,
+                                            onCallback: (isVideo) {
+                                              if (isBlocked) return;
+                                              ref.read(callProvider.notifier).startCall(
+                                                peerId: otherUserId,
+                                                peerName: widget.conversation.displayName,
+                                                peerAvatar: widget.conversation.otherUserAvatar,
+                                                video: isVideo,
+                                              );
+                                            },
                                           );
 
                                           if (isFirstUnread) {
@@ -2780,6 +2795,7 @@ class _MessageBubble extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onSwipeReply;
   final VoidCallback? onReplyTap;
+  final void Function(bool isVideo)? onCallback;
 
   const _MessageBubble({
     required this.message,
@@ -2795,6 +2811,7 @@ class _MessageBubble extends StatefulWidget {
     this.onTap,
     this.onSwipeReply,
     this.onReplyTap,
+    this.onCallback,
   });
 
   @override
@@ -2931,10 +2948,11 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
   @override
   Widget build(BuildContext context) {
     final msg = widget.message;
-    final hasMedia = msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty;
-    final hasProduct = msg.productReference != null;
-    final hasContent = msg.content.isNotEmpty;
-    final isVoice = msg.mediaType == 'voice';
+    final isCall = msg.isCall;
+    final hasMedia = msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty && !isCall;
+    final hasProduct = msg.productReference != null && !isCall;
+    final hasContent = msg.content.isNotEmpty && !isCall;
+    final isVoice = msg.mediaType == 'voice' && !isCall;
 
     return GestureDetector(
       onLongPress: widget.onLongPress,
@@ -3025,7 +3043,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                   vertical: hasMedia && !isVoice && !hasContent && !hasProduct ? 4 : 10,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  maxWidth: MediaQuery.of(context).size.width * 0.78,
                 ),
                 decoration: BoxDecoration(
                   color: widget.isSelected
@@ -3043,53 +3061,62 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (msg.isReply) _buildReplyQuote(),
-                    if (hasMedia)
-                      if (isVoice)
-                        _VoiceBubbleContent(message: msg, isMe: widget.isMe, chatColor: widget.chatColor)
-                      else
-                        _MediaBubbleContent(
-                          message: msg,
-                          isMe: widget.isMe,
-                          mediaUrls: widget.conversationMediaUrls,
-                          thumbnails: widget.conversationMediaThumbnails,
-                          initialIndex: widget.conversationMediaIndex,
-                        ),
-                    if (hasProduct)
-                      _InlineProductCard(
-                        reference: msg.productReference,
+                    if (isCall)
+                      _CallBubbleContent(
+                        message: msg,
                         isMe: widget.isMe,
                         chatColor: widget.chatColor,
-                      ),
-                    if (hasContent)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          top: (hasProduct || (hasMedia && !isVoice) || msg.isReply) ? 8 : 0,
-                          left: hasMedia && !isVoice ? 10 : 0,
-                          right: hasMedia && !isVoice ? 10 : 0,
-                        ),
-                        child: Linkify(
-                          onOpen: (link) async {
-                            final uri = Uri.parse(link.url);
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                            }
-                          },
-                          text: msg.content,
-                          style: TextStyle(
-                            color: widget.isMe ? Colors.white : AppTheme.charcoalInk,
+                        onCallback: widget.onCallback,
+                      )
+                    else ...[
+                      if (msg.isReply) _buildReplyQuote(),
+                      if (hasMedia)
+                        if (isVoice)
+                          _VoiceBubbleContent(message: msg, isMe: widget.isMe, chatColor: widget.chatColor)
+                        else
+                          _MediaBubbleContent(
+                            message: msg,
+                            isMe: widget.isMe,
+                            mediaUrls: widget.conversationMediaUrls,
+                            thumbnails: widget.conversationMediaThumbnails,
+                            initialIndex: widget.conversationMediaIndex,
                           ),
-                          linkStyle: TextStyle(
-                            color: widget.isMe ? Colors.yellow : widget.chatColor,
-                            decoration: TextDecoration.underline,
+                      if (hasProduct)
+                        _InlineProductCard(
+                          reference: msg.productReference,
+                          isMe: widget.isMe,
+                          chatColor: widget.chatColor,
+                        ),
+                      if (hasContent)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            top: (hasProduct || (hasMedia && !isVoice) || msg.isReply) ? 8 : 0,
+                            left: hasMedia && !isVoice ? 10 : 0,
+                            right: hasMedia && !isVoice ? 10 : 0,
+                          ),
+                          child: Linkify(
+                            onOpen: (link) async {
+                              final uri = Uri.parse(link.url);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            text: msg.content,
+                            style: TextStyle(
+                              color: widget.isMe ? Colors.white : AppTheme.charcoalInk,
+                            ),
+                            linkStyle: TextStyle(
+                              color: widget.isMe ? Colors.yellow : widget.chatColor,
+                              decoration: TextDecoration.underline,
+                            ),
                           ),
                         ),
-                      ),
+                    ],
                     Padding(
                       padding: EdgeInsets.only(
-                        left: hasMedia ? 10 : 0,
-                        right: hasMedia ? 10 : 0,
-                        top: 4,
+                        left: (hasMedia || isCall) ? 8 : 0,
+                        right: (hasMedia || isCall) ? 8 : 0,
+                        top: isCall ? 2 : 4,
                         bottom: hasMedia ? 6 : 0,
                       ),
                       child: Row(
@@ -3563,6 +3590,181 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot> with SingleTickerProvi
         decoration: const BoxDecoration(
           color: Colors.red,
           shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+class _CallBubbleContent extends StatelessWidget {
+  final Message message;
+  final bool isMe;
+  final Color chatColor;
+  final void Function(bool isVideo)? onCallback;
+
+  const _CallBubbleContent({
+    required this.message,
+    required this.isMe,
+    required this.chatColor,
+    this.onCallback,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isVideo = message.callType == 'video';
+    final status = message.callStatus;
+    final duration = message.callDuration;
+
+    final isMissed = status == 'missed' || status == 'no_answer';
+    final isDeclined = status == 'declined';
+    final isCancelled = status == 'cancelled';
+    final isBusy = status == 'busy';
+    final isFailed = isMissed || isDeclined || isCancelled || isBusy;
+
+    // WhatsApp-style Title
+    final String title;
+    if (!isMe && isMissed) {
+      title = isVideo ? 'Missed video call' : 'Missed voice call';
+    } else if (!isMe && isDeclined) {
+      title = isVideo ? 'Declined video call' : 'Declined voice call';
+    } else if (isMe && isMissed) {
+      title = isVideo ? 'Unanswered video call' : 'Unanswered voice call';
+    } else if (isMe && isDeclined) {
+      title = isVideo ? 'Declined video call' : 'Declined voice call';
+    } else if (isCancelled) {
+      title = isVideo ? 'Cancelled video call' : 'Cancelled voice call';
+    } else if (isBusy) {
+      title = isVideo ? 'Busy video call' : 'Busy voice call';
+    } else {
+      title = isVideo ? 'Video call' : 'Voice call';
+    }
+
+    // WhatsApp-style Subtitle (Duration if > 0, formatted with hours if > 60m)
+    final String subtitle;
+    if (duration > 0) {
+      subtitle = formatCallDuration(duration);
+    } else if (isMissed) {
+      subtitle = isMe ? 'No answer' : 'Missed';
+    } else if (isDeclined) {
+      subtitle = 'Declined';
+    } else if (isCancelled) {
+      subtitle = 'Cancelled';
+    } else if (isBusy) {
+      subtitle = 'Busy';
+    } else {
+      subtitle = 'Ended';
+    }
+
+    // Call icon & tinting
+    final IconData iconData;
+    final Color iconColor;
+    if (isVideo) {
+      if (isFailed && !isMe) {
+        iconData = LucideIcons.videoOff;
+        iconColor = Colors.redAccent;
+      } else {
+        iconData = LucideIcons.video;
+        iconColor = isMe
+            ? Colors.white
+            : (isFailed ? Colors.redAccent : chatColor);
+      }
+    } else {
+      if (!isMe && isMissed) {
+        iconData = LucideIcons.phoneMissed;
+        iconColor = Colors.redAccent;
+      } else if (!isMe && isDeclined) {
+        iconData = LucideIcons.phoneOff;
+        iconColor = Colors.redAccent;
+      } else if (!isMe && !isFailed) {
+        iconData = LucideIcons.phoneIncoming;
+        iconColor = isMe ? Colors.white : AppTheme.successMoss;
+      } else if (isMe && isFailed) {
+        iconData = LucideIcons.phoneOff;
+        iconColor = isMe ? Colors.white.withValues(alpha: 0.85) : Colors.redAccent;
+      } else {
+        iconData = LucideIcons.phoneOutgoing;
+        iconColor = isMe ? Colors.white : chatColor;
+      }
+    }
+
+    final badgeBg = isMe
+        ? Colors.white.withValues(alpha: 0.18)
+        : (isFailed && !isMe
+            ? Colors.red.withValues(alpha: 0.1)
+            : chatColor.withValues(alpha: 0.1));
+
+    return InkWell(
+      onTap: onCallback != null ? () => onCallback!(isVideo) : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: badgeBg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                iconData,
+                size: 19,
+                color: iconColor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isMe
+                          ? Colors.white
+                          : (isFailed && !isMe ? Colors.redAccent : AppTheme.charcoalInk),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isMe
+                          ? Colors.white.withValues(alpha: 0.8)
+                          : AppTheme.mutedSteel,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.22)
+                    : chatColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(
+                  isVideo ? LucideIcons.video : LucideIcons.phone,
+                  size: 16,
+                  color: isMe ? Colors.white : chatColor,
+                ),
+                onPressed: onCallback != null ? () => onCallback!(isVideo) : null,
+                tooltip: isVideo ? 'Video call back' : 'Call back',
+              ),
+            ),
+          ],
         ),
       ),
     );

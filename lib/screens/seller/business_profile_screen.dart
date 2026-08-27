@@ -1316,6 +1316,8 @@ class _StoreReviewCard extends StatelessWidget {
               ),
               if (isOwn)
                 PopupMenuButton(
+                  position: PopupMenuPosition.under,
+                  offset: const Offset(0, 4),
                   padding: EdgeInsets.zero,
                   icon: const Icon(LucideIcons.ellipsis, size: 18, color: AppTheme.mutedSteel),
                   itemBuilder: (_) => [

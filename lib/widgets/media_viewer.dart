@@ -702,6 +702,8 @@ class _MediaViewerState extends State<MediaViewer>
                         ),
                         const Spacer(),
                         PopupMenuButton<String>(
+                          position: PopupMenuPosition.under,
+                          offset: const Offset(0, 8),
                           icon: _isSaving
                               ? SizedBox(
                                   width: context.rw(24),

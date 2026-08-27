@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'supabase_service.dart';
 import 'storage_service.dart';
 import '../models/message_model.dart';
+import '../utils/formatters.dart';
 import 'local_db_service.dart';
 
 class MessageService {
@@ -537,6 +540,66 @@ class MessageService {
     }).eq('id', conversationId);
 
     return message;
+  }
+
+  /// Sends a call event log message into the conversation (WhatsApp style).
+  static Future<Message?> sendCallLog({
+    required String peerId,
+    required String callType, // 'voice' or 'video'
+    required int durationSeconds,
+    required String status, // 'completed', 'missed', 'declined', 'cancelled', 'no_answer', 'busy'
+  }) async {
+    final supabase = SupabaseService.instance;
+    final uid = supabase.currentUser?.id;
+    if (uid == null) return null;
+
+    try {
+      final convResult = await createConversation(buyerId: uid, sellerId: peerId);
+      final conversationId = convResult['conversation']?['id'] as String?;
+      if (conversationId == null) return null;
+
+      final isVideo = callType == 'video';
+      final formattedDuration = formatCallDuration(durationSeconds);
+
+      String snippet;
+      if (status == 'completed') {
+        final durStr = formattedDuration.isNotEmpty ? ' ($formattedDuration)' : '';
+        snippet = isVideo ? '📹 Video call$durStr' : '📞 Voice call$durStr';
+      } else if (status == 'missed' || status == 'no_answer') {
+        snippet = isVideo ? '📹 Missed video call' : '📞 Missed voice call';
+      } else if (status == 'declined') {
+        snippet = isVideo ? '📹 Declined video call' : '📞 Declined voice call';
+      } else {
+        snippet = isVideo ? '📹 Cancelled video call' : '📞 Cancelled voice call';
+      }
+
+      final payload = <String, dynamic>{
+        'conversation_id': conversationId,
+        'sender_id': uid,
+        'content': snippet,
+        'media_type': 'call',
+        'media_url': jsonEncode({
+          'call_type': callType,
+          'duration': durationSeconds,
+          'status': status,
+          'caller_id': uid,
+          'callee_id': peerId,
+        }),
+      };
+
+      final row = await supabase.from('messages').insert(payload).select().single();
+      final message = Message.fromJson(row);
+
+      await supabase.from('conversations').update({
+        'last_message': snippet,
+        'last_message_at': DateTime.now().toIso8601String(),
+      }).eq('id', conversationId);
+
+      return message;
+    } catch (e) {
+      debugPrint('MessageService: sendCallLog error: $e');
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>> createConversation({

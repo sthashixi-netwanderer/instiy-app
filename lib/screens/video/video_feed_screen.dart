@@ -1319,6 +1319,8 @@ class _CommentItem extends StatelessWidget {
                     if (isOwn) ...[
                       const Spacer(),
                       PopupMenuButton(
+                        position: PopupMenuPosition.under,
+                        offset: const Offset(0, 4),
                         padding: EdgeInsets.zero,
                         icon: Icon(Icons.more_vert, size: 16, color: AppTheme.mutedSteel),
                         itemBuilder: (_) => [

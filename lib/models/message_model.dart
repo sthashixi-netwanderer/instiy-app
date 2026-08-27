@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class Conversation {
   final String id;
   final String otherUserId;
@@ -180,6 +182,25 @@ class Message {
   /// True when this video was recorded inside the app (camera source).
   /// Legacy videos (null source) could only come from the gallery.
   bool get isCameraVideo => mediaType == 'video' && mediaSource == 'camera';
+
+  /// True when this message represents a voice/video call log.
+  bool get isCall => mediaType == 'call';
+
+  Map<String, dynamic>? get callData {
+    final raw = _mediaUrlField;
+    if (!isCall || raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
+  }
+
+  String get callType => (callData?['call_type'] as String?) ?? 'voice';
+  int get callDuration => (callData?['duration'] as num?)?.toInt() ?? 0;
+  String get callStatus => (callData?['status'] as String?) ?? 'completed';
+  String? get callCallerId => callData?['caller_id'] as String?;
+  String? get callCalleeId => callData?['callee_id'] as String?;
 
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(

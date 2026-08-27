@@ -634,6 +634,8 @@ class _ReviewCardState extends ConsumerState<_ReviewCard> {
               ),
               if (widget.isOwn)
                 PopupMenuButton(
+                  position: PopupMenuPosition.under,
+                  offset: const Offset(0, 4),
                   padding: EdgeInsets.zero,
                   icon: Icon(LucideIcons.ellipsis, size: context.ri(18), color: AppTheme.mutedSteel),
                   itemBuilder: (_) => [

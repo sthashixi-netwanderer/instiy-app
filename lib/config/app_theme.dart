@@ -552,14 +552,13 @@ class AppTheme {
   /// items for easy tapping.
   static PopupMenuThemeData popupMenuTheme({required bool isDark}) {
     return PopupMenuThemeData(
+      position: PopupMenuPosition.under,
       color: isDark
           ? const Color(0xF01C1917)
           : Colors.white.withValues(alpha: 0.9),
       surfaceTintColor: Colors.transparent,
       elevation: 8,
       shadowColor: isDark ? const Color(0x66000000) : glassShadow,
-      // Roomy menu padding so the first/last items aren't cramped (≥8px list
-      // spacing per UX guidance).
       menuPadding: const EdgeInsets.symmetric(vertical: 8),
       // Bigger label text + comfortable item height for easy tapping.
       labelTextStyle: WidgetStateProperty.all(
