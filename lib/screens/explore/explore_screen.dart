@@ -19,6 +19,7 @@ import '../../widgets/animated_press.dart';
 import '../../widgets/user_avatar_menu.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/discount_countdown.dart';
+import '../../widgets/instiy_logo_placeholder.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/empty_state.dart';
 import '../../utils/formatters.dart';
@@ -50,6 +51,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   double? _minPrice;
   double? _maxPrice;
   String _sortBy = 'random';
+
+  /// Product layout preference — grid of cards or full-width list rows.
+  bool _isGridView = true;
 
   final _scrollController = ScrollController();
   final _overlayKey = GlobalKey();
@@ -516,7 +520,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
-      bottomNavigationBar: const AdaptiveNav(currentIndex: 1),
+      bottomNavigationBar: AdaptiveNav(
+        currentIndex: ref.watch(shellTabProvider),
+        onTabSelected: (i) => ref.read(shellTabProvider.notifier).state = i,
+      ),
       child: Stack(
         children: [
           // Scrollable product grid that extends behind the header/search
@@ -533,30 +540,54 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   )
                 : RefreshIndicator(
                     onRefresh: () => _loadProducts(reset: true),
-                    child: GridView.builder(
-                      controller: _scrollController,
-                      padding: EdgeInsets.fromLTRB(
-                        12,
-                        _gridTopPadding,
-                        12,
-                        100,
-                      ),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: context.isDesktop
-                            ? 4
-                            : (context.isTablet ? 3 : 2),
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.72,
-                      ),
-                      itemCount: _products.length + (_hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == _products.length) {
-                          return const ProductCardSkeleton();
-                        }
-                        return _buildProductCard(_products[index]);
-                      },
-                    ),
+                    child: _isGridView
+                        ? GridView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              12,
+                              _gridTopPadding,
+                              12,
+                              100,
+                            ),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: context.isDesktop
+                                      ? 4
+                                      : (context.isTablet ? 3 : 2),
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
+                                  childAspectRatio: 0.72,
+                                ),
+                            itemCount: _products.length + (_hasMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index == _products.length) {
+                                return const ProductCardSkeleton();
+                              }
+                              return _buildProductCard(_products[index]);
+                            },
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              12,
+                              _gridTopPadding,
+                              12,
+                              100,
+                            ),
+                            itemCount: _products.length + (_hasMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index == _products.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: _buildListSkeleton(),
+                                );
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _buildProductListTile(_products[index]),
+                              );
+                            },
+                          ),
                   ),
           ),
           // Floating overlay: header + search bar (transparent gap between them)
@@ -588,126 +619,155 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                         child: Row(
                           children: [
-                            // Institution filter — compact pill with the
-                            // institution's initials/code (e.g. HTU)
-                            GestureDetector(
-                              onTap: () => _showInstitutionPicker(context),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.glassSurfaceLight,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: AppTheme.glassBorder,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_selectedInstitutionCode != null)
-                                      Builder(
-                                        builder: (context) {
-                                          final inst = _institutions
-                                              .where(
-                                                (i) =>
-                                                    i.code ==
-                                                    _selectedInstitutionCode,
+                            // Left cluster expands so the action buttons
+                            // (and the avatar) stay pinned to the right edge
+                            // however wide the institution pill gets.
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  // Institution filter — compact pill with
+                                  // the institution's initials/code (e.g. HTU)
+                                  Flexible(
+                                    child: GestureDetector(
+                                      onTap: () =>
+                                          _showInstitutionPicker(context),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.glassSurfaceLight,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: AppTheme.glassBorder,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (_selectedInstitutionCode !=
+                                                null)
+                                              Builder(
+                                                builder: (context) {
+                                                  final inst = _institutions
+                                                      .where(
+                                                        (i) =>
+                                                            i.code ==
+                                                            _selectedInstitutionCode,
+                                                      )
+                                                      .toList();
+                                                  if (inst.isEmpty) {
+                                                    return const SizedBox.shrink();
+                                                  }
+                                                  return inst.first.logoUrl !=
+                                                          null
+                                                      ? Padding(
+                                                          padding:
+                                                              const EdgeInsets.only(
+                                                                right: 6,
+                                                              ),
+                                                          child: CachedNetworkImage(
+                                                            imageUrl: inst
+                                                                .first
+                                                                .logoUrl!,
+                                                            width: 18,
+                                                            height: 18,
+                                                            fit: BoxFit.contain,
+                                                            memCacheWidth: 18,
+                                                            errorWidget:
+                                                                (
+                                                                  _,
+                                                                  _,
+                                                                  _,
+                                                                ) => const Icon(
+                                                                  LucideIcons
+                                                                      .graduationCap,
+                                                                  size: 16,
+                                                                  color: AppTheme
+                                                                      .accent,
+                                                                ),
+                                                          ),
+                                                        )
+                                                      : const Padding(
+                                                          padding:
+                                                              EdgeInsets.only(
+                                                                right: 6,
+                                                              ),
+                                                          child: Icon(
+                                                            LucideIcons
+                                                                .graduationCap,
+                                                            size: 16,
+                                                            color:
+                                                                AppTheme.accent,
+                                                          ),
+                                                        );
+                                                },
                                               )
-                                              .toList();
-                                          if (inst.isEmpty) {
-                                            return const SizedBox.shrink();
-                                          }
-                                          return inst.first.logoUrl != null
-                                              ? Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        right: 6,
-                                                      ),
-                                                  child: CachedNetworkImage(
-                                                    imageUrl:
-                                                        inst.first.logoUrl!,
-                                                    width: 18,
-                                                    height: 18,
-                                                    fit: BoxFit.contain,
-                                                    memCacheWidth: 18,
-                                                    errorWidget: (_, _, _) =>
-                                                        const Icon(
-                                                          LucideIcons
-                                                              .graduationCap,
-                                                          size: 16,
-                                                          color:
-                                                              AppTheme.accent,
-                                                        ),
-                                                  ),
-                                                )
-                                              : const Padding(
-                                                  padding: EdgeInsets.only(
-                                                    right: 6,
-                                                  ),
-                                                  child: Icon(
-                                                    LucideIcons.graduationCap,
-                                                    size: 16,
-                                                    color: AppTheme.accent,
-                                                  ),
-                                                );
-                                        },
-                                      )
-                                    else
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 6),
-                                        child: Icon(
-                                          LucideIcons.building2,
-                                          size: 16,
-                                          color: AppTheme.accent,
+                                            else
+                                              const Padding(
+                                                padding: EdgeInsets.only(
+                                                  right: 6,
+                                                ),
+                                                child: Icon(
+                                                  LucideIcons.building2,
+                                                  size: 16,
+                                                  color: AppTheme.accent,
+                                                ),
+                                              ),
+                                            Text(
+                                              _selectedInstitutionCode ?? 'All',
+                                              style: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.3,
+                                                color:
+                                                    _selectedInstitutionCode !=
+                                                        null
+                                                    ? AppTheme.charcoalInk
+                                                    : AppTheme.mutedSteel,
+                                              ),
+                                            ),
+                                            const Padding(
+                                              padding: EdgeInsets.only(left: 2),
+                                              child: Icon(
+                                                LucideIcons.chevronDown,
+                                                size: 14,
+                                                color: AppTheme.mutedSteel,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                    Text(
-                                      _selectedInstitutionCode ?? 'All',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.3,
-                                        color: _selectedInstitutionCode != null
-                                            ? AppTheme.charcoalInk
-                                            : AppTheme.mutedSteel,
-                                      ),
                                     ),
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 2),
-                                      child: Icon(
-                                        LucideIcons.chevronDown,
-                                        size: 14,
-                                        color: AppTheme.mutedSteel,
-                                      ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Search — opens the full search screen
+                                  ShadIconButton.ghost(
+                                    icon: const Icon(
+                                      LucideIcons.search,
+                                      size: 20,
+                                      color: AppTheme.mutedSteel,
                                     ),
-                                  ],
-                                ),
+                                    onPressed: () => Navigator.of(
+                                      context,
+                                    ).pushNamed('/search'),
+                                  ),
+                                  // Filters stay one tap away
+                                  ShadIconButton.ghost(
+                                    icon: const Icon(
+                                      LucideIcons.slidersHorizontal,
+                                      size: 20,
+                                      color: AppTheme.mutedSteel,
+                                    ),
+                                    onPressed: () => _showFilterSheet(context),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            // Search — opens the full search screen
-                            ShadIconButton.ghost(
-                              icon: const Icon(
-                                LucideIcons.search,
-                                size: 20,
-                                color: AppTheme.mutedSteel,
-                              ),
-                              onPressed: () =>
-                                  Navigator.of(context).pushNamed('/search'),
-                            ),
-                            // Filters stay one tap away
-                            ShadIconButton.ghost(
-                              icon: const Icon(
-                                LucideIcons.slidersHorizontal,
-                                size: 20,
-                                color: AppTheme.mutedSteel,
-                              ),
-                              onPressed: () => _showFilterSheet(context),
-                            ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 4),
                             Row(
                               children: [
                                 BadgeIconButton(
@@ -757,6 +817,44 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               ],
             ),
           ),
+          // Floating grid/list layout toggle — overlays the content at the
+          // top-right instead of crowding the header.
+          Positioned(
+            top: _gridTopPadding + 4,
+            right: 12,
+            child: GestureDetector(
+              onTap: () => setState(() => _isGridView = !_isGridView),
+              child: ClipOval(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: AppTheme.glassBlur,
+                    sigmaY: AppTheme.glassBlur,
+                  ),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppTheme.pureSurface.withValues(alpha: 0.75),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.glassBorder),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isGridView ? LucideIcons.list : LucideIcons.layoutGrid,
+                      size: 20,
+                      color: AppTheme.accent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
           // Scroll to top button (raised above the floating bottom nav pill)
           if (_showScrollToTop)
             Positioned(
@@ -780,6 +878,229 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 child: const Icon(LucideIcons.arrowUp, size: 20),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Full-width product row for list view — thumbnail, two-line title,
+  /// price (with crossed-out original when discounted), seller line and
+  /// view count. Heights are fixed to the thumbnail so nothing is cut off.
+  Widget _buildProductListTile(Product product) {
+    final viewCount = _viewCounts[product.id] ?? 0;
+    final hasDiscount = product.isDiscountActive;
+    final thumb = context.rw(92);
+
+    return AnimatedPress(
+      onTap: () =>
+          Navigator.of(context).pushNamed('/product', arguments: product.id),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.whisperBorder),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: thumb,
+                height: thumb,
+                child: product.effectiveThumbnail != null
+                    ? CachedNetworkImage(
+                        imageUrl: product.effectiveThumbnail!,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 184,
+                        placeholder: (_, _) => const InstiyLogoPlaceholder(
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                        errorWidget: (_, _, _) => const InstiyLogoPlaceholder(
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                      )
+                    : const InstiyLogoPlaceholder(
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: thumb,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: context.rsp(14),
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.charcoalInk,
+                        height: 1.25,
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Text(
+                          formatGhs(product.effectivePrice),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: context.rsp(14),
+                            fontWeight: FontWeight.bold,
+                            color: hasDiscount
+                                ? AppTheme.destructive
+                                : AppTheme.charcoalInk,
+                          ),
+                        ),
+                        if (hasDiscount) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              formatGhs(product.price),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: context.rsp(11),
+                                color: AppTheme.mutedSteel,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.warmMist,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            product.condition.displayName.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: context.rsp(8),
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        if (product.sellerName != null) ...[
+                          ShadAvatar(
+                            product.sellerAvatar?.isNotEmpty == true
+                                ? product.sellerAvatar
+                                : null,
+                            size: Size(context.ri(16), context.ri(16)),
+                            backgroundColor: AppTheme.accent,
+                            placeholder: Text(
+                              (product.businessName ??
+                                      product.sellerName ??
+                                      'S')[0]
+                                  .toUpperCase(),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: context.rsp(7),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              product.businessName ?? product.sellerName!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: context.rsp(11),
+                                color: AppTheme.mutedSteel,
+                              ),
+                            ),
+                          ),
+                          if (product.isSellerVerified) ...[
+                            const SizedBox(width: 4),
+                            VerificationBadge(size: context.ri(11)),
+                          ],
+                        ],
+                        const Spacer(),
+                        if (viewCount > 0) ...[
+                          Icon(
+                            LucideIcons.eye,
+                            size: context.ri(12),
+                            color: AppTheme.mutedSteel,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$viewCount',
+                            style: TextStyle(
+                              fontSize: context.rsp(10),
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Loading row matching the list tile's footprint.
+  Widget _buildListSkeleton() {
+    final thumb = context.rw(92);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.whisperBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Skeleton(
+            width: thumb,
+            height: thumb,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SizedBox(
+              height: thumb,
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Skeleton(width: double.infinity, height: 14),
+                  SizedBox(height: 6),
+                  Skeleton(width: 140, height: 14),
+                  Spacer(),
+                  Skeleton(width: 90, height: 14),
+                  SizedBox(height: 8),
+                  Skeleton(width: 120, height: 12),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

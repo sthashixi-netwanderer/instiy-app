@@ -19,6 +19,7 @@ import 'service_provider.dart';
 import 'verification_provider.dart';
 import 'video_provider.dart';
 import 'chat_background_provider.dart';
+import 'call_controller.dart';
 
 final authProvider = ChangeNotifierProvider((ref) => AuthProvider(ref));
 final productProvider = ChangeNotifierProvider((ref) => ProductProvider());
@@ -29,14 +30,28 @@ final messageProvider = ChangeNotifierProvider((ref) => MessageProvider());
 final sellerProvider = ChangeNotifierProvider((ref) => SellerProvider());
 final soundProvider = ChangeNotifierProvider((ref) => SoundProvider());
 final homeProvider = ChangeNotifierProvider((ref) => HomeProvider());
-final businessProfileProvider = ChangeNotifierProvider((ref) => BusinessProfileProvider());
+final businessProfileProvider = ChangeNotifierProvider(
+  (ref) => BusinessProfileProvider(),
+);
 final curatedProvider = ChangeNotifierProvider((ref) => CuratedProvider());
 final carouselProvider = ChangeNotifierProvider((ref) => CarouselProvider());
 final blockProvider = ChangeNotifierProvider((ref) => BlockProvider());
-final purchasePermissionProvider = ChangeNotifierProvider((ref) => PurchasePermissionProvider());
+final purchasePermissionProvider = ChangeNotifierProvider(
+  (ref) => PurchasePermissionProvider(),
+);
 final exploreProvider = ChangeNotifierProvider((ref) => ExploreState());
 final serviceProvider = ChangeNotifierProvider((ref) => ServiceProvider());
-final verificationProvider = ChangeNotifierProvider((ref) => VerificationProvider());
+final verificationProvider = ChangeNotifierProvider(
+  (ref) => VerificationProvider(),
+);
 final videoProvider = ChangeNotifierProvider((ref) => VideoProvider());
-final chatBackgroundProvider = ChangeNotifierProvider((ref) => ChatBackgroundProvider());
+final chatBackgroundProvider = ChangeNotifierProvider(
+  (ref) => ChatBackgroundProvider(),
+);
+final callProvider = ChangeNotifierProvider((ref) => CallController());
 final exploreRefreshProvider = StateProvider<int>((ref) => 0);
+
+/// Active tab of the persistent navigation shell. Tab switches update this
+/// instead of pushing routes, so every tab keeps its state and scroll
+/// position while the user moves between screens.
+final shellTabProvider = StateProvider<int>((ref) => 0);

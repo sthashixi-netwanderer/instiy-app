@@ -104,11 +104,6 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                 ),
               ),
             ),
-            Icon(
-              LucideIcons.chevronRight,
-              size: context.ri(17),
-              color: AppTheme.mutedSteel.withValues(alpha: 0.7),
-            ),
           ],
         ),
       ),
@@ -303,11 +298,6 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                           ),
                         ],
                       ),
-                    ),
-                    Icon(
-                      LucideIcons.chevronRight,
-                      size: context.ri(20),
-                      color: Colors.white.withValues(alpha: 0.9),
                     ),
                   ],
                 ),

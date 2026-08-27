@@ -101,6 +101,9 @@ dependencies:
   # Native system share sheet (share links & files)
   share_plus: ^13.3.0
 
+  # P2P voice/video calling (WebRTC engine; signaling via Supabase Realtime)
+  flutter_webrtc: ^1.6.0
+
   # Temporary file paths
   path_provider: ^2.1.5
   gal: ^2.3.2

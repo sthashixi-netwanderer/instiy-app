@@ -136,7 +136,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       type: ResponsiveLayoutType.general,
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
-      bottomNavigationBar: const AdaptiveNav(currentIndex: 0),
+      bottomNavigationBar: AdaptiveNav(
+        currentIndex: ref.watch(shellTabProvider),
+        onTabSelected: (i) => ref.read(shellTabProvider.notifier).state = i,
+      ),
       child: Stack(
         children: [
           RefreshIndicator(

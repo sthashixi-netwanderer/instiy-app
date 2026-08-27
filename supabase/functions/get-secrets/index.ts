@@ -50,6 +50,9 @@ serve(async (req) => {
     supabase_redirect_url: Deno.env.get("REDIRECT_URL"),
     giphy_api_key: Deno.env.get("GIPHY_API_KEY"),
     app_version: Deno.env.get("APP_VERSION"),
+    turn_url: Deno.env.get("TURN_URL"),
+    turn_username: Deno.env.get("TURN_USERNAME"),
+    turn_credential: Deno.env.get("TURN_CREDENTIAL"),
   };
 
   return new Response(JSON.stringify(secrets), {

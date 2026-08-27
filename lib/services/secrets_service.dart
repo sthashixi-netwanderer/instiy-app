@@ -16,6 +16,9 @@ class SecretsService {
   String? _supabaseRedirectUrl;
   String? _giphyApiKey;
   String? _appVersion;
+  String? _turnUrl;
+  String? _turnUsername;
+  String? _turnCredential;
 
   // Safe non-sensitive defaults only. Sensitive keys (R2 access key, Paystack
   // key, Giphy key) have NO hardcoded fallback — callers must await
@@ -40,6 +43,12 @@ class SecretsService {
   String get giphyApiKey => _giphyApiKey ?? '';
   String get appName => 'Instiy';
   String get appVersion => _appVersion ?? '1.0.0';
+
+  // TURN relay for WebRTC calls (optional). Empty means STUN-only, which
+  // works for most peers but fails on symmetric-NAT networks.
+  String get turnUrl => _turnUrl ?? '';
+  String get turnUsername => _turnUsername ?? '';
+  String get turnCredential => _turnCredential ?? '';
 
   /// Whether the remote secrets have been fetched at least once.
   bool get isLoaded => _loaded;
@@ -84,6 +93,9 @@ class SecretsService {
       _supabaseRedirectUrl = data['supabase_redirect_url'] as String?;
       _giphyApiKey = data['giphy_api_key'] as String?;
       _appVersion = data['app_version'] as String?;
+      _turnUrl = data['turn_url'] as String?;
+      _turnUsername = data['turn_username'] as String?;
+      _turnCredential = data['turn_credential'] as String?;
       _loaded = true;
     } catch (e) {
       debugPrint(

@@ -10,19 +10,38 @@ DateTime _lastTapTime = DateTime.now().subtract(const Duration(seconds: 1));
 class AppBottomNav extends ConsumerWidget {
   final int currentIndex;
 
-  const AppBottomNav({super.key, required this.currentIndex});
+  /// Shell mode — switch tabs locally instead of navigating. See
+  /// [AdaptiveNav.onTabSelected].
+  final ValueChanged<int>? onTabSelected;
+
+  const AppBottomNav({
+    super.key,
+    required this.currentIndex,
+    this.onTabSelected,
+  });
 
   void _handleNavTap(BuildContext context, bool isAuth, int index) {
     if (index == currentIndex) return;
     final now = DateTime.now();
     if (now.difference(_lastTapTime).inMilliseconds < 300) return;
     _lastTapTime = now;
+
+    // Shell mode: switch the persistent shell's tab — no route push, so
+    // every tab keeps its scroll position and loaded state.
+    final select = onTabSelected;
+    if (select != null) {
+      select(index);
+      return;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
       if (!isAuth) {
         switch (index) {
           case 0:
-            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil('/home', (route) => false);
             break;
           case 1:
             Navigator.of(context).pushNamed('/explore');
@@ -38,7 +57,9 @@ class AppBottomNav extends ConsumerWidget {
       }
       switch (index) {
         case 0:
-          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/home', (route) => false);
           break;
         case 1:
           Navigator.of(context).pushNamed('/explore');
@@ -90,7 +111,9 @@ class AppBottomNav extends ConsumerWidget {
         child: BackdropFilter(
           filter: ImageFilter.compose(
             outer: ImageFilter.blur(
-                sigmaX: AppTheme.glassBlurHeavy, sigmaY: AppTheme.glassBlurHeavy),
+              sigmaX: AppTheme.glassBlurHeavy,
+              sigmaY: AppTheme.glassBlurHeavy,
+            ),
             inner: const ColorFilter.matrix(AppTheme.saturateMatrix),
           ),
           child: Container(
@@ -117,20 +140,75 @@ class AppBottomNav extends ConsumerWidget {
                 child: Row(
                   children: isAuth
                       ? [
-                          _navButton(context, isAuth, 0, LucideIcons.home, 'Home'),
-                          _navButton(context, isAuth, 1, LucideIcons.search, 'Explore'),
-                          _navButton(context, isAuth, 2, LucideIcons.video, 'Clips'),
-                          _navButton(context, isAuth, 3, LucideIcons.messageSquare, 'Messages',
-                              badgeCount: unreadCount,
-                              svgAsset: 'assets/message-2-pending-svgrepo-com.svg'),
+                          _navButton(
+                            context,
+                            isAuth,
+                            0,
+                            LucideIcons.home,
+                            'Home',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            1,
+                            LucideIcons.search,
+                            'Explore',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            2,
+                            LucideIcons.video,
+                            'Clips',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            3,
+                            LucideIcons.messageSquare,
+                            'Messages',
+                            badgeCount: unreadCount,
+                            svgAsset:
+                                'assets/message-2-pending-svgrepo-com.svg',
+                          ),
                           if (isSeller)
-                            _navButton(context, isAuth, 4, LucideIcons.layoutDashboard, 'Dashboard'),
+                            _navButton(
+                              context,
+                              isAuth,
+                              4,
+                              LucideIcons.layoutDashboard,
+                              'Dashboard',
+                            ),
                         ]
                       : [
-                          _navButton(context, isAuth, 0, LucideIcons.home, 'Home'),
-                          _navButton(context, isAuth, 1, LucideIcons.search, 'Explore'),
-                          _navButton(context, isAuth, 2, LucideIcons.video, 'Clips'),
-                          _navButton(context, isAuth, 3, LucideIcons.info, 'Info'),
+                          _navButton(
+                            context,
+                            isAuth,
+                            0,
+                            LucideIcons.home,
+                            'Home',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            1,
+                            LucideIcons.search,
+                            'Explore',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            2,
+                            LucideIcons.video,
+                            'Clips',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            3,
+                            LucideIcons.info,
+                            'Info',
+                          ),
                         ],
                 ),
               ),
@@ -197,9 +275,7 @@ class _NavButton extends StatelessWidget {
         : SizedBox(
             width: 34,
             height: 34,
-            child: Center(
-              child: _buildIcon(AppTheme.mutedSteel),
-            ),
+            child: Center(child: _buildIcon(AppTheme.mutedSteel)),
           );
 
     final Widget iconArea = badgeCount > 0
@@ -211,12 +287,18 @@ class _NavButton extends StatelessWidget {
                 right: -4,
                 top: -4,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.destructive,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
                   alignment: Alignment.center,
                   child: Text(
                     '$badgeCount',

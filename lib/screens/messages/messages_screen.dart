@@ -205,7 +205,10 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: const AdaptiveNav(currentIndex: 3),
+      bottomNavigationBar: AdaptiveNav(
+        currentIndex: ref.watch(shellTabProvider),
+        onTabSelected: (i) => ref.read(shellTabProvider.notifier).state = i,
+      ),
       body: RefreshIndicator(
         onRefresh: () => msgProv.loadConversations(),
         child: msgProv.isLoading && conversations.isEmpty
@@ -1026,8 +1029,26 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         _scrollToMessage(_firstUnreadMessageId!, jump: true);
       } else {
         _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+        _settleOnBottom();
       }
     });
+  }
+
+  /// Images/voice notes keep growing the list extent after the first jump to
+  /// the bottom. Re-settle a couple of times so the chat truly opens on the
+  /// latest message — but never yank the view if the user already scrolled
+  /// away from the bottom.
+  void _settleOnBottom() {
+    for (final delay in const [200, 500, 900]) {
+      Future.delayed(Duration(milliseconds: delay), () {
+        if (!mounted || !_scrollCtrl.hasClients) return;
+        final pos = _scrollCtrl.position;
+        final nearBottom = pos.maxScrollExtent - pos.pixels < 120;
+        if (nearBottom && pos.pixels != pos.maxScrollExtent) {
+          _scrollCtrl.jumpTo(pos.maxScrollExtent);
+        }
+      });
+    }
   }
 
   // ─── In-chat search (WhatsApp-style) ─────────────────────────────
@@ -1707,8 +1728,13 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     final msgProv = ref.watch(messageProvider);
     final userId = ref.read(authProvider).user?.id;
 
-    // Set initial scroll position when messages are first loaded
-    if (!msgProv.isLoading && msgProv.messages.isNotEmpty && !_hasSetInitialScroll) {
+    // Set initial scroll position when messages are first loaded. Gate on
+    // isLoadingMessages (NOT isLoading — that tracks the conversations list)
+    // so the jump targets the network list rather than the cache-first
+    // snapshot that gets replaced a moment later.
+    if (!msgProv.isLoadingMessages &&
+        msgProv.messages.isNotEmpty &&
+        !_hasSetInitialScroll) {
       _hasSetInitialScroll = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _setInitialScrollPosition();
@@ -1818,6 +1844,30 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                 ),
               ),
               actions: [
+                IconButton(
+                  tooltip: 'Voice call',
+                  icon: const Icon(LucideIcons.phone, size: 19),
+                  onPressed: isBlocked
+                      ? null
+                      : () => ref.read(callProvider.notifier).startCall(
+                            peerId: otherUserId,
+                            peerName: widget.conversation.displayName,
+                            peerAvatar: widget.conversation.otherUserAvatar,
+                            video: false,
+                          ),
+                ),
+                IconButton(
+                  tooltip: 'Video call',
+                  icon: const Icon(LucideIcons.video, size: 20),
+                  onPressed: isBlocked
+                      ? null
+                      : () => ref.read(callProvider.notifier).startCall(
+                            peerId: otherUserId,
+                            peerName: widget.conversation.displayName,
+                            peerAvatar: widget.conversation.otherUserAvatar,
+                            video: true,
+                          ),
+                ),
                 PopupMenuButton<String>(
                   icon: const Icon(LucideIcons.ellipsis, size: 20),
                   onSelected: (value) => _handleMenuAction(value, otherUserId, isBlocked),

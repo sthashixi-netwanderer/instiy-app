@@ -6,6 +6,13 @@
     <!-- Microphone — required by record package for voice notes -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
+    <!-- WebRTC voice/video calls (flutter_webrtc) -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+
     <!-- gal: save images/videos to gallery -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     

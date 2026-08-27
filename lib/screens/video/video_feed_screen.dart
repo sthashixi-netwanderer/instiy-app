@@ -38,6 +38,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
   final ValueNotifier<bool> _canPlay = ValueNotifier(true);
   ProviderSubscription<List<Product>>? _productsSub;
   ProviderSubscription<int>? _focusedIndexSub;
+  ProviderSubscription<int>? _shellTabSub;
 
   @override
   void initState() {
@@ -58,6 +59,11 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
       videoProvider.select((v) => v.focusedIndex),
       (previous, next) => _prefetchUpcomingClips(),
     );
+    // Inside the navigation shell, tab switches don't fire route events —
+    // pause playback directly when the Clips tab is left.
+    _shellTabSub = ref.listenManual(shellTabProvider, (previous, next) {
+      _canPlay.value = next == 2 && (ModalRoute.of(context)?.isCurrent ?? true);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoProvider).ensureInitialized();
       // Covers the already-initialized case; a fresh load triggers the
@@ -135,6 +141,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     WidgetsBinding.instance.removeObserver(this);
     _productsSub?.close();
     _focusedIndexSub?.close();
+    _shellTabSub?.close();
     _canPlay.dispose();
     _pageController.dispose();
     super.dispose();
@@ -150,7 +157,10 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     return Scaffold(
       backgroundColor: Colors.black,
       extendBody: true,
-      bottomNavigationBar: const AdaptiveNav(currentIndex: 2),
+      bottomNavigationBar: AdaptiveNav(
+        currentIndex: ref.watch(shellTabProvider),
+        onTabSelected: (i) => ref.read(shellTabProvider.notifier).state = i,
+      ),
       body: isLoading
           ? const VideoFeedSkeleton()
           : products.isEmpty

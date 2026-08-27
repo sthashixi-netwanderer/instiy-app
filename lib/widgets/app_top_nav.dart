@@ -10,7 +10,17 @@ import '../providers/providers.dart';
 class AppTopNav extends ConsumerWidget {
   final int currentIndex;
 
-  const AppTopNav({super.key, required this.currentIndex});
+  /// Shell mode — switch tabs locally instead of navigating. See
+  /// [AdaptiveNav.onTabSelected].
+  final ValueChanged<int>? onTabSelected;
+
+  const AppTopNav({super.key, required this.currentIndex, this.onTabSelected});
+
+  /// Tab tap inside the shell (if active) — otherwise the caller's callback.
+  VoidCallback _tabTap(int index, VoidCallback fallback) {
+    final select = onTabSelected;
+    return select != null ? () => select(index) : fallback;
+  }
 
   Widget _buildNavItem({
     required IconData icon,
@@ -46,12 +56,18 @@ class AppTopNav extends ConsumerWidget {
                     right: -4,
                     top: -4,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.destructive,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
                       alignment: Alignment.center,
                       child: Text(
                         '$badgeCount',
@@ -131,39 +147,57 @@ class AppTopNav extends ConsumerWidget {
                   icon: LucideIcons.home,
                   label: 'Home',
                   active: currentIndex == 0,
-                  onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
+                  onTap: _tabTap(
+                    0,
+                    () => Navigator.of(
+                      context,
+                    ).pushNamedAndRemoveUntil('/home', (route) => false),
+                  ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.search,
                   label: 'Explore',
                   active: currentIndex == 1,
-                  onTap: () => Navigator.of(context).pushNamed('/explore'),
+                  onTap: _tabTap(
+                    1,
+                    () => Navigator.of(context).pushNamed('/explore'),
+                  ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.video,
                   label: 'Clips',
                   active: currentIndex == 2,
-                  onTap: () => Navigator.of(context).pushNamed('/clips'),
+                  onTap: _tabTap(
+                    2,
+                    () => Navigator.of(context).pushNamed('/clips'),
+                  ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.messageSquare,
                   label: 'Messages',
                   active: currentIndex == 3,
                   badgeCount: unreadCount,
-                  onTap: () => Navigator.of(context).pushNamed('/messages'),
+                  onTap: _tabTap(
+                    3,
+                    () => Navigator.of(context).pushNamed('/messages'),
+                  ),
                 ),
                 if (isSeller) ...[
                   _buildNavItem(
                     icon: LucideIcons.plus,
                     label: 'Sell',
-                    active: currentIndex == 4,
+                    active: false,
                     onTap: () => Navigator.of(context).pushNamed('/sell'),
                   ),
                   _buildNavItem(
                     icon: LucideIcons.layoutDashboard,
                     label: 'Dashboard',
-                    active: currentIndex == 5,
-                    onTap: () => Navigator.of(context).pushNamed('/seller-dashboard'),
+                    active: currentIndex == 4,
+                    onTap: _tabTap(
+                      4,
+                      () =>
+                          Navigator.of(context).pushNamed('/seller-dashboard'),
+                    ),
                   ),
                 ],
               ] else ...[
@@ -171,25 +205,39 @@ class AppTopNav extends ConsumerWidget {
                   icon: LucideIcons.home,
                   label: 'Home',
                   active: currentIndex == 0,
-                  onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
+                  onTap: _tabTap(
+                    0,
+                    () => Navigator.of(
+                      context,
+                    ).pushNamedAndRemoveUntil('/home', (route) => false),
+                  ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.search,
                   label: 'Explore',
                   active: currentIndex == 1,
-                  onTap: () => Navigator.of(context).pushNamed('/explore'),
+                  onTap: _tabTap(
+                    1,
+                    () => Navigator.of(context).pushNamed('/explore'),
+                  ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.video,
                   label: 'Clips',
                   active: currentIndex == 2,
-                  onTap: () => Navigator.of(context).pushNamed('/clips'),
+                  onTap: _tabTap(
+                    2,
+                    () => Navigator.of(context).pushNamed('/clips'),
+                  ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.info,
                   label: 'Info',
                   active: currentIndex == 3,
-                  onTap: () => Navigator.of(context).pushNamed('/about-legal'),
+                  onTap: _tabTap(
+                    3,
+                    () => Navigator.of(context).pushNamed('/about-legal'),
+                  ),
                 ),
               ],
               const Spacer(),

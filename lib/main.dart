@@ -27,15 +27,11 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
 import 'screens/auth/suspended_screen.dart';
-import 'screens/explore/explore_screen.dart';
 import 'screens/search/search_screen.dart';
-import 'screens/video/video_feed_screen.dart';
-import 'screens/home/home_screen.dart';
 import 'screens/cart/cart_screen.dart';
 import 'screens/checkout/checkout_screen.dart';
 import 'screens/wallet/wallet_screen.dart';
 import 'screens/orders/orders_screen.dart';
-import 'screens/messages/messages_screen.dart';
 import 'screens/services/services_screen.dart';
 import 'screens/wishlist/wishlist_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
@@ -48,7 +44,6 @@ import 'screens/product/create_listing_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/account_menu_screen.dart';
 import 'screens/profile/edit_profile_screen.dart';
-import 'screens/seller/dashboard_screen.dart';
 import 'screens/seller/reviews_screen.dart';
 import 'screens/seller/business_profile_screen.dart';
 import 'screens/orders/order_detail_screen.dart';
@@ -65,6 +60,8 @@ import 'screens/seller/video_analytics_screen.dart'
 import 'screens/info/faq_screen.dart' deferred as deferred_faq;
 import 'screens/info/about_screen.dart' deferred as deferred_about;
 import 'screens/info/about_legal_screen.dart' deferred as deferred_about_legal;
+import 'screens/shell_screen.dart';
+import 'screens/messages/call_overlay.dart';
 import 'screens/legal/policy_view_screen.dart' deferred as deferred_policy;
 import 'screens/seller/edit_business_profile_screen.dart'
     deferred as deferred_edit_business;
@@ -121,8 +118,14 @@ Future<void> _initializeApp() async {
   // Warm the announcement provider (loads the list and opens the realtime
   // subscription) so screen-targeted popups appear as soon as the user
   // lands on a targeted screen — and update live as the admin edits them.
+  unawaited(_container.read(announcementProvider.notifier).ensureLoaded());
+
+  // WebRTC calling: starts the Supabase Realtime ring listener once a user
+  // session exists and keeps it in sync with auth state changes.
   unawaited(
-    _container.read(announcementProvider.notifier).ensureLoaded(),
+    _container.read(callProvider.notifier).ensureInitialized().catchError((e) {
+      debugPrint('CallController init failed: $e');
+    }),
   );
 }
 
@@ -150,8 +153,7 @@ Future<void> _initializeDeferred() async {
 
     // Crashlytics: forward uncaught Dart errors once Firebase is ready.
     // Native crashes are captured by the Crashlytics SDK itself.
-    FlutterError.onError =
-        FirebaseCrashlytics.instance.recordFlutterFatalError;
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
       return true;
@@ -414,7 +416,17 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             popupMenuTheme: AppTheme.popupMenuTheme(isDark: isDark),
             // Material 3 TabBars draw a dark outlineVariant divider under the
             // tabs by default; the tabbed screens style their own borders.
-            tabBarTheme: const TabBarThemeData(dividerColor: Colors.transparent),
+            tabBarTheme: const TabBarThemeData(
+              dividerColor: Colors.transparent,
+            ),
+          );
+        },
+        builder: (context, child) {
+          return Stack(
+            children: [
+              ?child,
+              const CallOverlay(),
+            ],
           );
         },
         initialRoute: '/splash',
@@ -520,12 +532,14 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/suspended':
               return route(const SuspendedScreen());
             case '/clips':
-              return route(const VideoFeedScreen());
+              return route(const ShellScreen(initialTab: 2));
             case '/home':
-              return route(const HomeScreen());
+              return route(const ShellScreen());
             case '/explore':
               final categoryId = settings.arguments as String?;
-              return route(ExploreScreen(initialCategoryId: categoryId));
+              return route(
+                ShellScreen(initialTab: 1, exploreCategoryId: categoryId),
+              );
             case '/search':
               return route(const SearchScreen());
             case '/cart':
@@ -538,17 +552,13 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
               } else if (args is Product) {
                 buyNowProduct = args;
               }
-              return route(
-                CheckoutScreen(
-                  buyNowProduct: buyNowProduct,
-                ),
-              );
+              return route(CheckoutScreen(buyNowProduct: buyNowProduct));
             case '/wallet':
               return route(const WalletScreen());
             case '/orders':
               return route(const OrdersScreen());
             case '/messages':
-              return route(const MessagesScreen());
+              return route(const ShellScreen(initialTab: 3));
             case '/services':
               return route(const ServicesScreen());
             case '/wishlist':
@@ -556,7 +566,9 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/notifications':
               return route(const NotificationsScreen());
             case '/account':
-              final initialTab = settings.arguments is int ? settings.arguments as int : 0;
+              final initialTab = settings.arguments is int
+                  ? settings.arguments as int
+                  : 0;
               return route(AccountSettingsScreen(initialTab: initialTab));
             case '/account-menu':
               return route(const AccountMenuScreen());
@@ -617,7 +629,7 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                 ),
               );
             case '/seller-dashboard':
-              return route(const SellerGate(child: SellerDashboardScreen()));
+              return route(SellerGate(child: ShellScreen(initialTab: 4)));
             case '/seller-reviews':
               return route(const SellerReviewsScreen());
             case '/seller-analytics':
@@ -650,7 +662,10 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
               }
               return route(
                 SellerGate(
-                  child: CreateListingScreen(existingProduct: product, source: source),
+                  child: CreateListingScreen(
+                    existingProduct: product,
+                    source: source,
+                  ),
                 ),
               );
             case '/profile':

@@ -10,6 +10,7 @@ import '../../models/order_model.dart';
 import '../../services/seller_service.dart';
 import '../../utils/responsive.dart';
 import 'scanner_screen.dart';
+import 'seller_orders_screen.dart';
 import 'package:instiy/utils/formatters.dart';
 
 class SellerVerifyScreen extends ConsumerStatefulWidget {
@@ -331,7 +332,7 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Mark as processing in Orders to verify',
+                                  'Manage and mark items as processing',
                                   style: TextStyle(
                                     fontSize: context.rsp(12),
                                     color: AppTheme.mutedSteel,
@@ -341,9 +342,11 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                             ),
                           ),
                           ShadButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                            },
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SellerOrdersScreen(),
+                              ),
+                            ),
                             child: const Text('Orders'),
                           ),
                         ],
@@ -351,15 +354,17 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                     ),
                     SizedBox(height: context.rh(16)),
                   ],
-                  if (processingItems.isEmpty)
-                    _buildEmptyState()
-                  else
-                    ...processingItems.map(
-                      (item) => Padding(
-                        padding: EdgeInsets.only(bottom: context.rh(12)),
-                        child: _buildVerifyCard(item),
-                      ),
+                  // Every undelivered item gets a verify card — pending ones
+                  // can be verified directly too.
+                  ...[
+                    ...pendingItems.map((item) => (item, true)),
+                    ...processingItems.map((item) => (item, false)),
+                  ].map(
+                    (entry) => Padding(
+                      padding: EdgeInsets.only(bottom: context.rh(12)),
+                      child: _buildVerifyCard(entry.$1, isPending: entry.$2),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -396,7 +401,7 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
     );
   }
 
-  Widget _buildVerifyCard(OrderItem item) {
+  Widget _buildVerifyCard(OrderItem item, {bool isPending = false}) {
     return Container(
       padding: context.rAll(16),
       decoration: BoxDecoration(
@@ -456,7 +461,7 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                         borderRadius: BorderRadius.circular(context.rr(6)),
                       ),
                       child: Text(
-                        'AWAITING CODE',
+                        isPending ? 'PENDING' : 'AWAITING CODE',
                         style: TextStyle(
                           fontSize: context.rsp(9),
                           fontWeight: FontWeight.w600,

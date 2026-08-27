@@ -65,7 +65,12 @@ class BusinessProfileProvider extends ChangeNotifier {
       _stats = results[1] as StoreStats;
       _isFollowing = results[2] as bool;
       final blockProv = BlockProvider.instance;
-      _products = blockProv.filterProducts(results[3] as List<Product>);
+      // Storefront only shows what shoppers can actually buy — out-of-stock
+      // listings are hidden until restocked.
+      _products = blockProv
+          .filterProducts(results[3] as List<Product>)
+          .where((p) => p.stockQuantity > 0)
+          .toList();
       _isSellerVerified = results[4] as bool;
 
       // Load first page of reviews

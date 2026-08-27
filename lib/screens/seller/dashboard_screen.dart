@@ -262,7 +262,10 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
         title: const Text('Seller Dashboard'),
         automaticallyImplyLeading: false,
       ),
-      bottomNavigationBar: const AdaptiveNav(currentIndex: 4),
+      bottomNavigationBar: AdaptiveNav(
+        currentIndex: ref.watch(shellTabProvider),
+        onTabSelected: (i) => ref.read(shellTabProvider.notifier).state = i,
+      ),
       body: sellerP.isLoading && stats == null
           ? Padding(
               padding: EdgeInsets.fromLTRB(

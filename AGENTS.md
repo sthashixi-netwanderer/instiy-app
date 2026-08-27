@@ -44,6 +44,7 @@ This file provides AI agents with a comprehensive reference of all packages used
 | firebase_core | ^4.9.0 | https://pub.dev/packages/firebase_core | Firebase initialization |
 | firebase_messaging | ^16.2.2 | https://pub.dev/packages/firebase_messaging | Push notifications |
 | firebase_crashlytics | ^5.2.7 | https://pub.dev/packages/firebase_crashlytics | Crash reporting |
+| flutter_webrtc | ^1.6.0 | https://pub.dev/packages/flutter_webrtc | P2P voice/video calls (WebRTC). Signaling via Supabase Realtime private channels (`calls:<userId>` ring + `call:<callId>` media); RLS on `realtime.messages` required. TURN creds served through get-secrets (TURN_URL/USERNAME/CREDENTIAL env vars) |
 
 ### Image & Media
 | Package | Version | Docs URL | Notes |

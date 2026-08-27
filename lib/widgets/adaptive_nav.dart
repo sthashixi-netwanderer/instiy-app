@@ -18,13 +18,28 @@ import 'app_top_nav.dart';
 class AdaptiveNav extends StatelessWidget {
   final int currentIndex;
 
-  const AdaptiveNav({super.key, required this.currentIndex});
+  /// Shell mode: tab taps switch the shell's IndexedStack tab instead of
+  /// pushing a route, preserving each tab's state. Null keeps the classic
+  /// navigate-to-route behaviour for standalone screens.
+  final ValueChanged<int>? onTabSelected;
+
+  const AdaptiveNav({
+    super.key,
+    required this.currentIndex,
+    this.onTabSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (context.isDesktop) {
-      return AppTopNav(currentIndex: currentIndex);
+      return AppTopNav(
+        currentIndex: currentIndex,
+        onTabSelected: onTabSelected,
+      );
     }
-    return AppBottomNav(currentIndex: currentIndex);
+    return AppBottomNav(
+      currentIndex: currentIndex,
+      onTabSelected: onTabSelected,
+    );
   }
 }

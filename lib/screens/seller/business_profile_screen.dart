@@ -1363,47 +1363,66 @@ class _StoreReviewCard extends StatelessWidget {
                 ),
             ],
           ),
-          // Product reference
+          // Product reference — taps through to the product detail screen
           if (review.productTitle != null) ...[
             const SizedBox(height: 8),
-            Row(
-              children: [
-                if (review.productThumbnail != null) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: CachedNetworkImage(
-                      imageUrl: review.productThumbnail!,
-                      width: 32,
-                      height: 32,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 32,
-                      placeholder: (_, _) => Container(
-                        width: 32,
-                        height: 32,
-                        color: AppTheme.warmMist,
+            GestureDetector(
+              onTap: () => Navigator.of(context).pushNamed(
+                '/product',
+                arguments: review.productId,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.warmMist.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    if (review.productThumbnail != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: CachedNetworkImage(
+                          imageUrl: review.productThumbnail!,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 32,
+                          placeholder: (_, _) => Container(
+                            width: 32,
+                            height: 32,
+                            color: AppTheme.warmMist,
+                          ),
+                          errorWidget: (_, _, _) => Container(
+                            width: 32,
+                            height: 32,
+                            color: AppTheme.warmMist,
+                            child: const Icon(LucideIcons.image, size: 14, color: AppTheme.mutedSteel),
+                          ),
+                        ),
                       ),
-                      errorWidget: (_, _, _) => Container(
-                        width: 32,
-                        height: 32,
-                        color: AppTheme.warmMist,
-                        child: const Icon(LucideIcons.image, size: 14, color: AppTheme.mutedSteel),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        review.productTitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.mutedSteel,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(
-                    review.productTitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
+                    const SizedBox(width: 4),
+                    const Icon(
+                      LucideIcons.chevronRight,
+                      size: 14,
                       color: AppTheme.mutedSteel,
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ],
           // Comment
