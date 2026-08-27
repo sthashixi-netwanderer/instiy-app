@@ -225,6 +225,8 @@ class CallSignalingService {
       if (status != ChannelResponse.ok) {
         debugPrint('CallSignaling: _sendToRing $event status=$status topic=$topic payload=$payload');
       }
+      // Small pause to allow WebSocket transport to flush packet before removing channel
+      await Future.delayed(const Duration(milliseconds: 60));
       return status == ChannelResponse.ok;
     } catch (e) {
       debugPrint('CallSignaling: $event to $topic failed: $e');

@@ -182,6 +182,13 @@ class CallController extends ChangeNotifier {
       _cancelTimeout();
       _updateStatus(CallStatus.connecting);
 
+      // Start local media BEFORE setting up peer so tracks are ready to be sent
+      try {
+        await WebRtcCallEngine.instance.startLocalMedia(session.type);
+      } catch (e) {
+        debugPrint('CallController: callee local media failed: $e');
+      }
+
       await _send('accept', {});
 
       await _setupPeer(session);
@@ -426,7 +433,8 @@ class CallController extends ChangeNotifier {
     final candidate = payload['candidate'];
     if (candidate == null) return;
     final map = Map<String, dynamic>.from(candidate as Map);
-    if (WebRtcCallEngine.instance.peerReady) {
+    if (WebRtcCallEngine.instance.peerReady &&
+        WebRtcCallEngine.instance.hasRemoteDescription) {
       try {
         await WebRtcCallEngine.instance.addRemoteCandidate(map);
       } catch (_) {}
@@ -468,7 +476,6 @@ class CallController extends ChangeNotifier {
       },
     );
 
-    await _drainPendingCandidates();
     await _maybeProcessPendingOffer();
   }
 
@@ -487,9 +494,8 @@ class CallController extends ChangeNotifier {
     }
 
     if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-        state == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
-        state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-      debugPrint('CallController: connection failed/closed/disconnected $state — ending call');
+        state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+      debugPrint('CallController: connection failed/closed $state — ending call');
       if (session.isActiveOrRinging) {
         _leaveAndDispose();
         _showEnded(

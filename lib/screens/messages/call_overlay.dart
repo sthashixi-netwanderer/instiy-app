@@ -561,38 +561,31 @@ class _ActiveCallViewState extends State<_ActiveCallView> {
   }
 }
 
-class _RemoteVideoLayer extends StatefulWidget {
+class _RemoteVideoLayer extends ConsumerStatefulWidget {
   const _RemoteVideoLayer();
 
   @override
-  State<_RemoteVideoLayer> createState() => _RemoteVideoLayerState();
+  ConsumerState<_RemoteVideoLayer> createState() => _RemoteVideoLayerState();
 }
 
-class _RemoteVideoLayerState extends State<_RemoteVideoLayer>
-    with WidgetsBindingObserver {
+class _RemoteVideoLayerState extends ConsumerState<_RemoteVideoLayer> {
   RTCVideoRenderer? _renderer;
   MediaStream? _boundStream;
 
   @override
   void initState() {
     super.initState();
-    _bind();
+    _initRenderer();
   }
 
-  Future<void> _bind() async {
-    final stream = WebRtcCallEngine.instance.remoteStreamOrNull;
-    if (stream == null) {
-      await Future.delayed(const Duration(milliseconds: 250));
-      if (mounted) await _bind();
-      return;
-    }
-    if (_boundStream == stream && _renderer != null) return;
+  Future<void> _initRenderer() async {
     try {
-      final renderer =
-          _renderer ?? await WebRtcCallEngine.instance.createRemoteRenderer();
-      renderer.srcObject = stream;
-      _boundStream = stream;
-      if (mounted) setState(() => _renderer = renderer);
+      final renderer = await WebRtcCallEngine.instance.createRemoteRenderer();
+      if (!mounted) {
+        await renderer.dispose();
+        return;
+      }
+      setState(() => _renderer = renderer);
     } catch (_) {}
   }
 
@@ -607,14 +600,18 @@ class _RemoteVideoLayerState extends State<_RemoteVideoLayer>
 
   @override
   Widget build(BuildContext context) {
-    final controller = ProviderScope.containerOf(context).read(callProvider);
-    unawaited(_bind());
+    final controller = ref.watch(callProvider);
+    final stream = controller.remoteStream ?? WebRtcCallEngine.instance.remoteStreamOrNull;
+    if (_renderer != null && stream != null && _boundStream != stream) {
+      _renderer!.srcObject = stream;
+      _boundStream = stream;
+    }
 
     return Stack(
       fit: StackFit.expand,
       children: [
         Container(color: const Color(0xFF101828)),
-        if (_renderer != null)
+        if (_renderer != null && _boundStream != null)
           RTCVideoView(
             _renderer!,
             objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
@@ -690,7 +687,7 @@ class _VoiceBarsState extends State<_VoiceBars>
   }
 }
 
-class _DraggableLocalPip extends StatefulWidget {
+class _DraggableLocalPip extends ConsumerStatefulWidget {
   final Offset initialOffset;
   final ValueChanged<Offset> onMoved;
 
@@ -700,12 +697,13 @@ class _DraggableLocalPip extends StatefulWidget {
   });
 
   @override
-  State<_DraggableLocalPip> createState() => _DraggableLocalPipState();
+  ConsumerState<_DraggableLocalPip> createState() => _DraggableLocalPipState();
 }
 
-class _DraggableLocalPipState extends State<_DraggableLocalPip> {
+class _DraggableLocalPipState extends ConsumerState<_DraggableLocalPip> {
   RTCVideoRenderer? _renderer;
   late Offset _offset = widget.initialOffset;
+  MediaStream? _boundStream;
 
   @override
   void initState() {
@@ -716,7 +714,12 @@ class _DraggableLocalPipState extends State<_DraggableLocalPip> {
   Future<void> _initRenderer() async {
     try {
       final r = await WebRtcCallEngine.instance.createLocalRenderer();
-      if (mounted) setState(() => _renderer = r);
+      if (mounted) {
+        setState(() {
+          _renderer = r;
+          _boundStream = WebRtcCallEngine.instance.localStreamOrNull;
+        });
+      }
     } catch (_) {}
   }
 
@@ -731,6 +734,13 @@ class _DraggableLocalPipState extends State<_DraggableLocalPip> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = ref.watch(callProvider);
+    final localStream = WebRtcCallEngine.instance.localStreamOrNull;
+    if (_renderer != null && localStream != null && localStream != _boundStream) {
+      _renderer!.srcObject = localStream;
+      _boundStream = localStream;
+    }
+
     final size = MediaQuery.of(context).size;
     final double dx = _offset.dx.clamp(0.0, math.max(0.0, size.width - 120));
     final double dy =
@@ -766,8 +776,17 @@ class _DraggableLocalPipState extends State<_DraggableLocalPip> {
             child: SizedBox(
               width: 108,
               height: 192,
-              child: _renderer == null
-                  ? const SizedBox.expand()
+              child: _renderer == null || controller.cameraOff
+                  ? Container(
+                      color: const Color(0xFF1D2939),
+                      child: const Center(
+                        child: Icon(
+                          LucideIcons.videoOff,
+                          color: Colors.white54,
+                          size: 28,
+                        ),
+                      ),
+                    )
                   : RTCVideoView(
                       _renderer!,
                       mirror: true,

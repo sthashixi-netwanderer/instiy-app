@@ -15,6 +15,7 @@ class WebRtcCallEngine {
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   CallType _callType = CallType.audio;
+  bool _hasRemoteDescription = false;
 
   bool get isMicMuted {
     final track = _localStream?.getAudioTracks().firstOrNull;
@@ -27,13 +28,25 @@ class WebRtcCallEngine {
   }
 
   bool get peerReady => _pc != null;
+  bool get hasRemoteDescription => _hasRemoteDescription;
 
+  MediaStream? get localStreamOrNull => _localStream;
   MediaStream? get remoteStreamOrNull => _remoteStream;
 
   List<Map<String, dynamic>> _iceServers() {
     final servers = <Map<String, dynamic>>[
-      {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
+      {
+        'urls': [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun3.l.google.com:19302',
+          'stun:stun4.l.google.com:19302',
+          'stun:stun.services.mozilla.com',
+          'stun:stun.sipgate.net:3478',
+          'stun:stun.nextcloud.com:443',
+        ],
+      },
     ];
     final turnUrls = SecretsService.instance.turnUrl;
     if (turnUrls.isNotEmpty) {
@@ -65,7 +78,7 @@ class WebRtcCallEngine {
   Future<void> startLocalMedia(CallType type) async {
     await dispose();
     _callType = type;
-    _localStream = await navigator.mediaDevices.getUserMedia({
+    final Map<String, dynamic> mediaConstraints = {
       'audio': {
         'echoCancellation': true,
         'noiseSuppression': true,
@@ -73,13 +86,25 @@ class WebRtcCallEngine {
       },
       'video': type == CallType.video
           ? {
+              'mandatory': {
+                'minWidth': '640',
+                'minHeight': '480',
+                'minFrameRate': '30',
+              },
               'facingMode': 'user',
-              'width': {'ideal': 1280},
-              'height': {'ideal': 720},
-              'frameRate': {'ideal': 24},
+              'optional': [],
             }
           : false,
-    });
+    };
+    try {
+      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    } catch (e) {
+      debugPrint('WebRtcEngine: initial getUserMedia failed: $e, trying simple constraints');
+      _localStream = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': type == CallType.video ? {'facingMode': 'user'} : false,
+      });
+    }
   }
 
   Future<RTCVideoRenderer> createLocalRenderer() async {
@@ -105,7 +130,12 @@ class WebRtcCallEngine {
     _pc = await createPeerConnection({
       'iceServers': ice,
       'sdpSemantics': 'unified-plan',
-      'iceCandidatePoolSize': 4,
+      'iceCandidatePoolSize': 10,
+    }, {
+      'mandatory': {},
+      'optional': [
+        {'DtlsSrtpKeyAgreement': true},
+      ],
     });
 
     final stream = _localStream;
@@ -116,7 +146,9 @@ class WebRtcCallEngine {
     }
 
     _pc!.onIceCandidate = (candidate) {
-      if (candidate.candidate != null) onLocalCandidate(candidate);
+      if (candidate.candidate != null && candidate.candidate!.isNotEmpty) {
+        onLocalCandidate(candidate);
+      }
     };
 
     _pc!.onConnectionState = (state) => onConnectionState(state);
@@ -130,33 +162,45 @@ class WebRtcCallEngine {
   }
 
   Future<RTCSessionDescription> createOffer() async {
-    final offer = await _pc!.createOffer();
+    final offer = await _pc!.createOffer({
+      'offerToReceiveAudio': 1,
+      'offerToReceiveVideo': _callType == CallType.video ? 1 : 0,
+    });
     await _pc!.setLocalDescription(offer);
     return offer;
   }
 
   Future<RTCSessionDescription> createAnswer() async {
-    final answer = await _pc!.createAnswer();
+    final answer = await _pc!.createAnswer({
+      'offerToReceiveAudio': 1,
+      'offerToReceiveVideo': _callType == CallType.video ? 1 : 0,
+    });
     await _pc!.setLocalDescription(answer);
     return answer;
   }
 
   Future<void> setRemoteDescription(Map<String, dynamic> sdpMap, String type) async {
+    if (_pc == null) return;
     await _pc!.setRemoteDescription(
       RTCSessionDescription(sdpMap['sdp'] as String, type),
     );
+    _hasRemoteDescription = true;
   }
 
   Future<void> addRemoteCandidate(Map<String, dynamic> candidateMap) async {
     final candidate = candidateMap['candidate'];
-    if (candidate == null) return;
-    await _pc!.addCandidate(
-      RTCIceCandidate(
-        candidate as String,
-        candidateMap['sdpMid'] as String?,
-        candidateMap['sdpMLineIndex'] as int?,
-      ),
-    );
+    if (candidate == null || _pc == null || !_hasRemoteDescription) return;
+    try {
+      await _pc!.addCandidate(
+        RTCIceCandidate(
+          candidate as String,
+          candidateMap['sdpMid'] as String?,
+          candidateMap['sdpMLineIndex'] as int?,
+        ),
+      );
+    } catch (e) {
+      debugPrint('WebRtcEngine: addRemoteCandidate error: $e');
+    }
   }
 
   /// True when the remote side is actually sending video frames.
@@ -213,6 +257,7 @@ class WebRtcCallEngine {
   }
 
   Future<void> dispose() async {
+    _hasRemoteDescription = false;
     try {
       await _pc?.close();
     } catch (_) {}
