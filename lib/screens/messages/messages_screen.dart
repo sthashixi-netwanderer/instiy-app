@@ -1844,29 +1844,41 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                 ),
               ),
               actions: [
-                IconButton(
-                  tooltip: 'Voice call',
-                  icon: const Icon(LucideIcons.phone, size: 19),
-                  onPressed: isBlocked
-                      ? null
-                      : () => ref.read(callProvider.notifier).startCall(
-                            peerId: otherUserId,
-                            peerName: widget.conversation.displayName,
-                            peerAvatar: widget.conversation.otherUserAvatar,
-                            video: false,
-                          ),
-                ),
-                IconButton(
-                  tooltip: 'Video call',
-                  icon: const Icon(LucideIcons.video, size: 20),
-                  onPressed: isBlocked
-                      ? null
-                      : () => ref.read(callProvider.notifier).startCall(
-                            peerId: otherUserId,
-                            peerName: widget.conversation.displayName,
-                            peerAvatar: widget.conversation.otherUserAvatar,
-                            video: true,
-                          ),
+                PopupMenuButton<String>(
+                  tooltip: 'Call',
+                  icon: const Icon(LucideIcons.phone, size: 20),
+                  enabled: !isBlocked,
+                  onSelected: (value) {
+                    final isVideo = value == 'video';
+                    ref.read(callProvider.notifier).startCall(
+                          peerId: otherUserId,
+                          peerName: widget.conversation.displayName,
+                          peerAvatar: widget.conversation.otherUserAvatar,
+                          video: isVideo,
+                        );
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'voice',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.phone, size: 18, color: AppTheme.accent),
+                          SizedBox(width: 10),
+                          Text('Voice call'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'video',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.video, size: 18, color: AppTheme.accent),
+                          SizedBox(width: 10),
+                          Text('Video call'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 PopupMenuButton<String>(
                   icon: const Icon(LucideIcons.ellipsis, size: 20),

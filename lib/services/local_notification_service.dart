@@ -14,11 +14,20 @@ import 'package:instiy/utils/formatters.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Background push notification entry point.
-  // The OS already displays the notification from the FCM payload when the app
-  // is in background or killed, so we must NOT show a local notification here —
-  // doing so would cause duplicate notifications. This handler exists only for
-  // data processing if needed in the future.
+  final data = message.data;
+  final notification = message.notification;
+  final type = data['type'] as String? ?? '';
+  if (type == 'call' || data.containsKey('call_id')) {
+    final callId = data['call_id'] as String? ?? 'incoming_call';
+    final callerName = data['caller_name'] as String? ?? notification?.title ?? 'Instiy User';
+    final callType = data['call_type'] as String? ?? 'voice';
+    await LocalNotificationService.showIncomingCallNotification(
+      callId: callId,
+      callerName: callerName,
+      callType: callType,
+      callerAvatar: data['caller_avatar'] as String?,
+    );
+  }
 }
 
 class LocalNotificationService {
@@ -39,9 +48,15 @@ class LocalNotificationService {
   static const _silentChannelDesc =
       'Silent notifications — in-app sound handles audio';
 
+  static const _callChannelId = 'instiy_incoming_call_channel';
+  static const _callChannelName = 'Incoming Calls';
+  static const _callChannelDesc = 'Full-screen incoming voice and video calls';
+
   static const _soundEnabledKey = 'notification_sound_enabled';
 
-  /// Initialize the local notification plugin and register both Android channels.
+  static void Function(String action, Map<String, dynamic> data)? onCallActionReceived;
+
+  /// Initialize the local notification plugin and register Android channels.
   static Future<void> initialize() async {
     if (kIsWeb) return;
     if (_initialized) return;
@@ -62,6 +77,7 @@ class LocalNotificationService {
     await _plugin.initialize(
       settings: initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
+      onDidReceiveBackgroundNotificationResponse: _onNotificationBackgroundTapped,
     );
 
     final androidImpl = _plugin
@@ -69,13 +85,6 @@ class LocalNotificationService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImpl != null) {
-      // NOTE: Do NOT request notification permission here.
-      // Permission is requested after authentication via
-      // checkAndPromptFcmForAuthenticatedUser() so the FCM token
-      // can be saved to the database immediately.
-      // Requesting before auth means if the user denies, the OS
-      // won't show the dialog again after login.
-
       // Normal channel — OS plays its own sound
       await androidImpl.createNotificationChannel(
         const AndroidNotificationChannel(
@@ -95,7 +104,19 @@ class LocalNotificationService {
           description: _silentChannelDesc,
           importance: Importance.high,
           playSound: false,
-          // enableVibration kept true so the device still vibrates
+        ),
+      );
+
+      // Full-screen call channel — Max importance, call category, vibration & sound
+      await androidImpl.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _callChannelId,
+          _callChannelName,
+          description: _callChannelDesc,
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.voiceCommunication,
         ),
       );
     }
@@ -103,8 +124,31 @@ class LocalNotificationService {
     _initialized = true;
   }
 
+  @pragma('vm:entry-point')
+  static void _onNotificationBackgroundTapped(NotificationResponse response) {
+    // Background action handling
+  }
+
   static void _onNotificationTapped(NotificationResponse response) {
-    // Handle notification tap — navigate to relevant screen
+    final payloadStr = response.payload;
+    if (payloadStr != null && payloadStr.isNotEmpty) {
+      try {
+        final data = jsonDecode(payloadStr) as Map<String, dynamic>;
+        if (data['type'] == 'call') {
+          final actionId = response.actionId;
+          if (actionId == 'action_decline_call') {
+            onCallActionReceived?.call('decline', data);
+          } else if (actionId == 'action_accept_call') {
+            onCallActionReceived?.call('accept', data);
+          } else {
+            onCallActionReceived?.call('open', data);
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('LocalNotificationService: payload error: $e');
+      }
+    }
   }
 
   /// Read the user's in-app sound preference from SharedPreferences.
@@ -380,15 +424,125 @@ class LocalNotificationService {
     );
   }
 
+  /// Show a full-screen WhatsApp-style incoming call notification.
+  static Future<void> showIncomingCallNotification({
+    required String callId,
+    required String callerName,
+    required String callType,
+    String? callerAvatar,
+  }) async {
+    if (kIsWeb) return;
+    if (!_initialized) await initialize();
+
+    final isVideo = callType == 'video';
+    final title = callerName.isNotEmpty ? callerName : 'Instiy Call';
+    final body = isVideo ? 'Incoming video call…' : 'Incoming voice call…';
+    final notifId = _generateId('call_$callId');
+
+    const largeIconName = 'logo';
+    String? tempFilePath;
+    try {
+      final byteData = await rootBundle.load('assets/$largeIconName.png');
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$largeIconName.png');
+      if (!await file.exists()) {
+        await file.writeAsBytes(byteData.buffer.asUint8List(
+          byteData.offsetInBytes,
+          byteData.lengthInBytes,
+        ));
+      }
+      tempFilePath = file.path;
+    } catch (_) {}
+
+    final androidDetails = AndroidNotificationDetails(
+      _callChannelId,
+      _callChannelName,
+      channelDescription: _callChannelDesc,
+      importance: Importance.max,
+      priority: Priority.max,
+      category: AndroidNotificationCategory.call,
+      audioAttributesUsage: AudioAttributesUsage.voiceCommunication,
+      fullScreenIntent: true,
+      ongoing: true,
+      autoCancel: false,
+      timeoutAfter: 45000,
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFF7C3AED),
+      largeIcon: tempFilePath != null
+          ? FilePathAndroidBitmap(tempFilePath)
+          : const DrawableResourceAndroidBitmap('ic_notification'),
+      actions: <AndroidNotificationAction>[
+        const AndroidNotificationAction(
+          'action_accept_call',
+          'Accept',
+          showsUserInterface: true,
+          cancelNotification: true,
+        ),
+        const AndroidNotificationAction(
+          'action_decline_call',
+          'Decline',
+          cancelNotification: true,
+        ),
+      ],
+    );
+
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        presentBanner: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      ),
+    );
+
+    await _plugin.show(
+      id: notifId,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: jsonEncode({
+        'type': 'call',
+        'call_id': callId,
+        'caller_name': callerName,
+        'call_type': callType,
+        'caller_avatar': callerAvatar,
+      }),
+    );
+  }
+
+  /// Cancel an active incoming call notification.
+  static Future<void> cancelCallNotification(String callId) async {
+    if (kIsWeb) return;
+    try {
+      await _plugin.cancel(id: _generateId('call_$callId'));
+    } catch (_) {}
+  }
+
   /// Set up Firebase Cloud Messaging background and foreground event listeners silently on startup.
   static Future<void> setupFcmListeners() async {
     if (kIsWeb) return;
     final messaging = FirebaseMessaging.instance;
 
-    // 1. Foreground message listener (triggers local notification popups)
+    // 1. Foreground message listener (triggers local notification popups or call screen)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       final notification = message.notification;
       final data = message.data;
+      final type = data['type'] as String? ?? '';
+
+      if (type == 'call' || data.containsKey('call_id')) {
+        final callId = data['call_id'] as String? ?? 'incoming_call';
+        final callerName = data['caller_name'] as String? ?? notification?.title ?? 'Instiy User';
+        final callType = data['call_type'] as String? ?? 'voice';
+        await showIncomingCallNotification(
+          callId: callId,
+          callerName: callerName,
+          callType: callType,
+          callerAvatar: data['caller_avatar'] as String?,
+        );
+        return;
+      }
       
       if (notification != null) {
         final useInAppSound = await _isInAppSoundEnabled();
@@ -501,7 +655,9 @@ class LocalNotificationService {
 
   /// Handle notification payload redirects inside the app on click
   static void _handleNotificationPayload(Map<String, dynamic> data) {
-    // Allows deep-linking to specific screens from the push data in production
+    if (data['type'] == 'call' || data.containsKey('call_id')) {
+      onCallActionReceived?.call('open', data);
+    }
   }
 
   /// Cancel all notifications

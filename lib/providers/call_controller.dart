@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/call_model.dart';
 import '../services/call_signaling_service.dart';
+import '../services/local_notification_service.dart';
 import '../services/secrets_service.dart';
 import '../services/supabase_service.dart';
 import '../services/webrtc_call_service.dart';
@@ -56,6 +57,15 @@ class CallController extends ChangeNotifier {
       await _ringPlayer.setReleaseMode(ReleaseMode.loop);
       await _ringPlayer.setVolume(0.9);
     } catch (_) {}
+
+    LocalNotificationService.onCallActionReceived = (action, data) {
+      debugPrint('CallController: received notification action: $action data: $data');
+      if (action == 'accept') {
+        acceptCall();
+      } else if (action == 'decline') {
+        rejectCall();
+      }
+    };
 
     final userId = currentUserId;
     if (userId != null) {
@@ -160,6 +170,25 @@ class CallController extends ChangeNotifier {
     }
     debugPrint('CallController: invite sent ${session.id} to $peerId');
 
+    // Trigger push notification in background for callee (in case WebSocket is sleeping)
+    unawaited(
+      SupabaseService.client.rpc('create_notification', params: {
+        'p_user_id': peerId,
+        'p_title': session.peerName ?? 'Instiy User',
+        'p_body': video ? 'Incoming video call…' : 'Incoming voice call…',
+        'p_type': 'call',
+        'p_data': {
+          'call_id': session.id,
+          'caller_id': me,
+          'caller_name': session.peerName,
+          'caller_avatar': session.peerAvatar,
+          'call_type': video ? 'video' : 'voice',
+        },
+      }).catchError((e) {
+        debugPrint('CallController: push trigger via RPC failed: $e');
+      }),
+    );
+
     unawaited(_playSound(outgoing: true));
     _armTimeout(CallEndReason.noAnswer);
   }
@@ -168,6 +197,8 @@ class CallController extends ChangeNotifier {
     final session = _session;
     if (session == null || !session.isIncoming || _acceptingOrConnecting) return;
     _acceptingOrConnecting = true;
+
+    _cancelNotification(session.id);
 
     try {
       final granted = await WebRtcCallEngine.requestPermissions(session.type);
@@ -201,6 +232,7 @@ class CallController extends ChangeNotifier {
   Future<void> rejectCall() async {
     final session = _session;
     if (session == null) return;
+    _cancelNotification(session.id);
     await _send('reject', {'reason': 'declined'});
     await _leaveChannel();
     await _teardownMedia();
@@ -212,6 +244,7 @@ class CallController extends ChangeNotifier {
   Future<void> endCall() async {
     final session = _session;
     if (session == null) return;
+    _cancelNotification(session.id);
     await _send('end', {});
     await _leaveChannel();
     await _teardownMedia();
@@ -292,6 +325,16 @@ class CallController extends ChangeNotifier {
 
     await _joinChannelFor(session);
 
+    // Show full-screen WhatsApp-style incoming call notification
+    unawaited(
+      LocalNotificationService.showIncomingCallNotification(
+        callId: callId,
+        callerName: payload['caller_name'] as String? ?? 'Instiy User',
+        callType: type == CallType.video ? 'video' : 'voice',
+        callerAvatar: payload['caller_avatar'] as String?,
+      ),
+    );
+
     await _playSound(outgoing: false);
     _armTimeout(CallEndReason.noAnswer);
   }
@@ -299,6 +342,7 @@ class CallController extends ChangeNotifier {
   void _handleIncomingCancelled(Map<String, dynamic> payload) {
     final callId = payload['call_id'] as String?;
     if (_session?.id != callId) return;
+    _cancelNotification(callId);
     if (_session?.status == CallStatus.ringingIncoming) {
       _stopSound();
       _cancelTimeout();
@@ -513,13 +557,19 @@ class CallController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Timers, sounds, state helpers ────────────────────────────────────────
+  void _cancelNotification([String? callId]) {
+    final id = callId ?? _session?.id;
+    if (id != null) {
+      unawaited(LocalNotificationService.cancelCallNotification(id));
+    }
+  }
 
   void _armTimeout(CallEndReason reasonOnExpire) {
     _cancelTimeout();
     _timeoutTimer = Timer(_ringTimeout, () {
       final session = _session;
       if (session == null || !session.isActiveOrRinging) return;
+      _cancelNotification(session.id);
       if (!session.isIncoming && reasonOnExpire == CallEndReason.noAnswer) {
         unawaited(_signaling.sendCancel(calleeId: session.peerId, callId: session.id));
         _leaveAndDispose();
@@ -575,6 +625,7 @@ class CallController extends ChangeNotifier {
 
   /// Ends without notifying the peer (they are gone / never reached).
   void _finishLocally(CallSession session, CallEndReason reason) {
+    _cancelNotification(session.id);
     _stopSound();
     _cancelTimeout();
     _leaveAndDispose();
@@ -584,6 +635,7 @@ class CallController extends ChangeNotifier {
   void _showEnded(CallEndReason reason) {
     final s = _session;
     if (s == null) return;
+    _cancelNotification(s.id);
     _session = s.copyWith(status: CallStatus.ended, endReason: reason);
     notifyListeners();
 
@@ -596,6 +648,7 @@ class CallController extends ChangeNotifier {
   }
 
   void _goIdle() {
+    _cancelNotification(_session?.id);
     _session = null;
     _connectedAt = null;
     _resetControlState();
@@ -612,6 +665,7 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _leaveAndDispose() async {
+    _cancelNotification(_session?.id);
     await _leaveChannel();
     await _teardownMedia();
   }
