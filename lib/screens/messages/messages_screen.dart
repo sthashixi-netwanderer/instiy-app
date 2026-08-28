@@ -667,7 +667,29 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     if (_scrollCtrl.offset < 200) {
       final msgProv = ref.read(messageProvider);
       if (!msgProv.isLoadingMoreMessages && msgProv.hasMoreMessages) {
-        msgProv.loadMoreMessages(widget.conversation.id);
+        // Older pages are prepended at the top; a plain (non-reversed) list
+        // keeps the same pixel offset, which visually leaps the viewport up
+        // to the freshly loaded older messages. Anchor the view by shifting
+        // the offset by the height of everything that was inserted above.
+        final anchorOffset = _scrollCtrl.offset;
+        final oldCount = msgProv.messages.length;
+        msgProv.loadMoreMessages(widget.conversation.id).then((_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !_scrollCtrl.hasClients) return;
+            final added = msgProv.messages.length - oldCount;
+            if (added <= 0) return;
+            var insertedHeight = 0.0;
+            for (var i = 0; i < added; i++) {
+              insertedHeight += _estimateMessageHeight(msgProv.messages[i]);
+            }
+            _scrollCtrl.jumpTo(
+              (anchorOffset + insertedHeight).clamp(
+                0.0,
+                _scrollCtrl.position.maxScrollExtent,
+              ),
+            );
+          });
+        });
       }
     }
   }
@@ -1001,52 +1023,43 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     });
   }
 
-  /// Positions the chat at the first unread incoming message (WhatsApp-style),
-  /// falling back to the bottom when everything is read. When the unread
-  /// block is older than the most recent page, older pages are fetched
-  /// (bounded) until the first unread message is in the loaded window.
+  /// Positions the chat at the latest message (bottom, by the input area).
+  /// The first unread incoming message is still marked with a divider, but
+  /// it is not a scroll target — jumping up to it (with estimated offsets)
+  /// regularly landed the view on older history.
   Future<void> _setInitialScrollPosition() async {
     final userId = ref.read(authProvider).user?.id;
     bool isUnread(Message m) => m.senderId != userId && !m.isRead;
 
-    const maxPages = 10;
-    for (var page = 0;
-        page < maxPages &&
-            widget.conversation.unreadCount > 0 &&
-            _messageProvider.hasMoreMessages &&
-            !_messageProvider.messages.any(isUnread);
-        page++) {
-      await _messageProvider.loadMoreMessages(widget.conversation.id);
-    }
-
     if (!mounted) return;
     final unreadIndex = _messageProvider.messages.indexWhere(isUnread);
 
-    // Wait for the (possibly freshly loaded) items to lay out before jumping.
+    // Wait for the items to lay out before jumping.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollCtrl.hasClients) return;
       if (unreadIndex != -1) {
         setState(
             () => _firstUnreadMessageId = _messageProvider.messages[unreadIndex].id);
-        _scrollToMessage(_firstUnreadMessageId!, jump: true);
-      } else {
-        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
-        _settleOnBottom();
       }
+      _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      _settleOnBottom();
     });
   }
 
   /// Images/voice notes keep growing the list extent after the first jump to
-  /// the bottom. Re-settle a couple of times so the chat truly opens on the
-  /// latest message — but never yank the view if the user already scrolled
-  /// away from the bottom.
+  /// the bottom. Re-settle until the extent stabilizes so the chat truly
+  /// opens on the latest message — but stop as soon as the user scrolls up
+  /// on their own, so they are never yanked around.
   void _settleOnBottom() {
-    for (final delay in const [200, 500, 900]) {
+    var lastBottom = double.negativeInfinity;
+    for (final delay in const [200, 500, 900, 1400]) {
       Future.delayed(Duration(milliseconds: delay), () {
         if (!mounted || !_scrollCtrl.hasClients) return;
         final pos = _scrollCtrl.position;
-        final nearBottom = pos.maxScrollExtent - pos.pixels < 120;
-        if (nearBottom && pos.pixels != pos.maxScrollExtent) {
+        // The user moved away from the bottom on their own — leave them be.
+        if (pos.pixels < lastBottom - 8) return;
+        lastBottom = pos.maxScrollExtent;
+        if (pos.pixels != pos.maxScrollExtent) {
           _scrollCtrl.jumpTo(pos.maxScrollExtent);
         }
       });

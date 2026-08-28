@@ -117,26 +117,13 @@ class CallController extends ChangeNotifier {
 
     _resetControlState();
 
-    // Fetch caller's own profile (name & avatar) so the receiver sees who is calling
-    final meUser = SupabaseService.client.auth.currentUser;
-    var myName = (meUser?.userMetadata?['full_name'] as String?) ??
-        (meUser?.userMetadata?['name'] as String?);
-    var myAvatar = (meUser?.userMetadata?['avatar_url'] as String?) ??
-        (meUser?.userMetadata?['picture'] as String?);
-
-    if (myName == null || myName.isEmpty) {
-      try {
-        final row = await SupabaseService.client
-            .from('users')
-            .select('full_name, avatar_url')
-            .eq('id', me)
-            .maybeSingle();
-        if (row != null) {
-          myName = row['full_name'] as String?;
-          myAvatar ??= row['avatar_url'] as String?;
-        }
-      } catch (_) {}
-    }
+    // Resolve the caller identity shown on the receiver's screen: sellers
+    // ring as their business name (same convention as chat), and the profile
+    // picture is users.avatar_url — the authoritative source — with auth
+    // metadata as fallback.
+    final identity = await _resolveUserIdentity(me);
+    final myName = identity.displayName ?? 'Instiy User';
+    final myAvatar = identity.avatarUrl;
 
     final session = CallSession(
       id: _uuid.v4(),
@@ -194,7 +181,7 @@ class CallController extends ChangeNotifier {
     unawaited(
       SupabaseService.client.rpc('create_notification', params: {
         'p_user_id': peerId,
-        'p_title': myName ?? 'Instiy User',
+        'p_title': myName,
         'p_body': video ? 'Incoming video call…' : 'Incoming voice call…',
         'p_type': 'call',
         'p_data': {
@@ -298,6 +285,56 @@ class CallController extends ChangeNotifier {
 
   // ── Incoming invite ──────────────────────────────────────────────────────
 
+  /// Display identity for call surfaces: business name for sellers, full
+  /// name otherwise, plus the profile avatar. DB values win over auth
+  /// metadata, which can be missing (email sign-ups) or stale.
+  Future<({String? displayName, String? avatarUrl})> _resolveUserIdentity(
+    String userId,
+  ) async {
+    final meUser = SupabaseService.client.auth.currentUser;
+    final isSelf = userId == meUser?.id;
+    var displayName = isSelf
+        ? (meUser?.userMetadata?['full_name'] as String?) ??
+              (meUser?.userMetadata?['name'] as String?)
+        : null;
+    var avatarUrl = isSelf
+        ? (meUser?.userMetadata?['avatar_url'] as String?) ??
+              (meUser?.userMetadata?['picture'] as String?)
+        : null;
+
+    try {
+      final results = await Future.wait([
+        SupabaseService.client
+            .from('users')
+            .select('full_name, avatar_url')
+            .eq('id', userId)
+            .maybeSingle(),
+        SupabaseService.client
+            .from('business_profiles')
+            .select('business_name')
+            .eq('seller_id', userId)
+            .maybeSingle(),
+      ]);
+      final user = results[0];
+      final business = results[1];
+
+      final businessName = (business?['business_name'] as String?)?.trim();
+      final fullName = (user?['full_name'] as String?)?.trim();
+      if (businessName != null && businessName.isNotEmpty) {
+        displayName = businessName;
+      } else if (fullName != null && fullName.isNotEmpty) {
+        displayName = fullName;
+      }
+
+      final profileAvatar = (user?['avatar_url'] as String?)?.trim();
+      if (profileAvatar != null && profileAvatar.isNotEmpty) {
+        avatarUrl = profileAvatar;
+      }
+    } catch (_) {}
+
+    return (displayName: displayName, avatarUrl: avatarUrl);
+  }
+
   Future<void> _handleIncomingInvite(Map<String, dynamic> payload) async {
     debugPrint('CallController: incoming invite raw=$payload');
     final callId = payload['call_id'] as String?;
@@ -332,19 +369,20 @@ class CallController extends ChangeNotifier {
     var callerName = payload['caller_name'] as String?;
     var callerAvatar = payload['caller_avatar'] as String?;
 
-    // If caller name is missing from payload, query the users table directly
-    if (callerName == null || callerName.isEmpty || callerName == 'Instiy User') {
-      try {
-        final row = await SupabaseService.client
-            .from('users')
-            .select('full_name, avatar_url')
-            .eq('id', callerId)
-            .maybeSingle();
-        if (row != null) {
-          callerName = (row['full_name'] as String?) ?? callerName;
-          callerAvatar ??= row['avatar_url'] as String?;
-        }
-      } catch (_) {}
+    // Backfill identity from the DB (business name for sellers, profile
+    // avatar) when the invite payload is missing or incomplete.
+    final nameMissing = callerName == null ||
+        callerName.isEmpty ||
+        callerName == 'Instiy User';
+    final avatarMissing = callerAvatar == null || callerAvatar.isEmpty;
+    if (nameMissing || avatarMissing) {
+      final identity = await _resolveUserIdentity(callerId);
+      if (nameMissing && identity.displayName != null) {
+        callerName = identity.displayName;
+      }
+      if (avatarMissing && identity.avatarUrl != null) {
+        callerAvatar = identity.avatarUrl;
+      }
     }
 
     final session = CallSession(
