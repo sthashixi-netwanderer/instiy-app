@@ -5,7 +5,12 @@ function sanitizeError(error: unknown): string {
 
 async function getAccessToken(serviceAccount: { client_email: string; private_key: string }): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'RS256', typ: 'JWT' };
+
+  const encoder = new TextEncoder();
+  // JWT segments must be base64URL (- and _, no padding) — a raw '+' or '/'
+  // from btoa silently invalidates the signature (Invalid JWT Signature).
+  const b64url = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload = {
     iss: serviceAccount.client_email,
     scope: 'https://www.googleapis.com/auth/firebase.messaging',
@@ -13,9 +18,8 @@ async function getAccessToken(serviceAccount: { client_email: string; private_ke
     exp: now + 3600,
     iat: now,
   };
-
-  const encoder = new TextEncoder();
-  const signingInput = `${btoa(JSON.stringify(header)).replace(/=/g, '')}.${btoa(JSON.stringify(payload)).replace(/=/g, '')}`;
+  const body = b64url(JSON.stringify(payload));
+  const signingInput = `${header}.${body}`;
 
   const keyData = serviceAccount.private_key
     .replace(/-----BEGIN [A-Z ]+-----/g, '')
@@ -34,7 +38,10 @@ async function getAccessToken(serviceAccount: { client_email: string; private_ke
   );
 
   const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, encoder.encode(signingInput));
-  const signedInput = `${signingInput}.${btoa(String.fromCharCode(...new Uint8Array(signature))).replace(/=/g, '')}`;
+  let sigB64 = '';
+  const sigBytes = new Uint8Array(signature);
+  for (let i = 0; i < sigBytes.length; i++) sigB64 += String.fromCharCode(sigBytes[i]);
+  const signedInput = `${signingInput}.${b64url(sigB64)}`;
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',

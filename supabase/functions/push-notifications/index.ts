@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { JWT } from "npm:google-auth-library";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,9 +7,66 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function sanitizeError(error: unknown): string {
+function sanitizeError(error) {
   console.error("Push Notification Function error:", error);
-  return "Failed to process push notifications";
+  return `Failed to process push notifications: ${error?.message ?? String(error)}`;
+}
+
+// Google OAuth2 JWT assertion signed with Web Crypto — no external auth
+// library, so cold starts never depend on registry module fetches.
+async function getAccessToken(serviceAccount) {
+  const now = Math.floor(Date.now() / 1000);
+  // JWT segments must be base64URL (- and _, no padding) — a raw '+' or '/'
+// from btoa silently invalidates the signature.
+const b64url = (s) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const body = b64url(
+    JSON.stringify({
+      iss: serviceAccount.client_email,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      exp: now + 3600,
+      iat: now,
+    }),
+  );
+  const signingInput = `${header}.${body}`;
+
+  const keyData = serviceAccount.private_key
+    .replace(/-----BEGIN [A-Z ]+-----/g, "")
+    .replace(/-----END [A-Z ]+-----/g, "")
+    .replace(/\\n/g, "")
+    .replace(/\s/g, "");
+  const binaryDer = Uint8Array.from(atob(keyData), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    binaryDer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+  let sigB64 = "";
+  const sigBytes = new Uint8Array(signature);
+  for (let i = 0; i < sigBytes.length; i++) sigB64 += String.fromCharCode(sigBytes[i]);
+  const assertion = `${signingInput}.${b64url(sigB64)}`;
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${assertion}`,
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) {
+    throw new Error(
+      `Failed to get access token from Google: HTTP ${tokenRes.status} ${JSON.stringify(tokenData).slice(0, 300)}`,
+    );
+  }
+  return tokenData.access_token;
 }
 
 Deno.serve(async (req) => {
@@ -80,19 +136,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const jwtClient = new JWT({
-      email: serviceAccount.client_email,
-      key: serviceAccount.private_key,
-      scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
-    });
+    const accessToken = await getAccessToken(serviceAccount);
 
-    const jwtToken = await jwtClient.authorize();
-    const accessToken = jwtToken.access_token;
-    if (!accessToken) {
-      throw new Error("Failed to generate Google OAuth2 Access Token for FCM");
-    }
-
-    const stringData: Record<string, string> = {};
+    const stringData = {};
     if (record.data) {
       for (const [key, val] of Object.entries(record.data)) {
         stringData[key] = typeof val === "object" ? JSON.stringify(val) : String(val);
@@ -102,6 +148,14 @@ Deno.serve(async (req) => {
     stringData["type"] = String(type);
     stringData["click_action"] = "FLUTTER_NOTIFICATION_CLICK";
 
+    // Calls are sent as data-only on Android: notification-bearing messages
+    // are handled by the system tray and never reach the app's background
+    // handler, so a backgrounded/terminated callee would only see a passive
+    // banner. Data-only + high priority invokes the app's background handler,
+    // which presents the full-screen incoming-call notification. iOS keeps an
+    // explicit apns alert so a banner still shows.
+    const isCall = type === "call";
+
     const results = [];
     for (const { token } of tokenRecords) {
       const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
@@ -109,24 +163,28 @@ Deno.serve(async (req) => {
       const fcmPayload = {
         message: {
           token: token,
-          notification: {
-            title: title,
-            body: body,
-          },
+          ...(isCall ? {} : { notification: { title: title, body: body } }),
           data: stringData,
           android: {
             priority: "high",
-            notification: {
-              sound: "default",
-              click_action: "FLUTTER_NOTIFICATION_CLICK",
-            },
+            ...(isCall
+              ? {}
+              : {
+                  notification: {
+                    sound: "default",
+                    click_action: "FLUTTER_NOTIFICATION_CLICK",
+                  },
+                }),
           },
           apns: {
             payload: {
-              aps: {
-                sound: "default",
-                "content-available": 1,
-              },
+              aps: isCall
+                ? {
+                    alert: { title: title, body: body },
+                    sound: "default",
+                    "content-available": 1,
+                  }
+                : { sound: "default", "content-available": 1 },
             },
           },
         },
@@ -144,7 +202,11 @@ Deno.serve(async (req) => {
 
         const resBody = await response.json();
         if (!response.ok) {
-          if (resBody.error && (resBody.error.status === "UNREGISTERED" || resBody.error.message?.includes("not registered"))) {
+          if (
+            resBody.error &&
+            (resBody.error.status === "UNREGISTERED" ||
+              resBody.error.message?.includes("not registered"))
+          ) {
             await supabase.from("user_push_tokens").delete().eq("token", token);
           }
           results.push({ token, success: false, error: resBody });
@@ -166,12 +228,12 @@ Deno.serve(async (req) => {
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     return new Response(
       JSON.stringify({ error: sanitizeError(error) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

@@ -60,12 +60,8 @@ class CallController extends ChangeNotifier {
     } catch (_) {}
 
     LocalNotificationService.onCallActionReceived = (action, data) {
-      debugPrint('CallController: received notification action: $action data: $data');
-      if (action == 'accept') {
-        acceptCall();
-      } else if (action == 'decline') {
-        rejectCall();
-      }
+      debugPrint('CallController: received notification action: $action data=$data');
+      unawaited(_handleCallAction(action, data));
     };
 
     final userId = currentUserId;
@@ -377,6 +373,7 @@ class CallController extends ChangeNotifier {
         callerName: callerName ?? 'Instiy User',
         callType: type == CallType.video ? 'video' : 'voice',
         callerAvatar: callerAvatar,
+        callerId: callerId,
       ),
     );
 
@@ -392,6 +389,55 @@ class CallController extends ChangeNotifier {
       _stopSound();
       _cancelTimeout();
       _goIdle();
+    }
+  }
+
+  /// Acts on incoming-call notification actions. When the invite broadcast
+  /// was received the session already exists; otherwise (app was backgrounded
+  /// and only the FCM push arrived) the session is rebuilt from the payload
+  /// so accept/decline still work.
+  Future<void> _handleCallAction(String action, Map<String, dynamic> data) async {
+    final callId = data['call_id'] as String?;
+    final session = _session;
+    if (session != null && session.id == callId) {
+      if (action == 'accept') {
+        await acceptCall();
+      } else if (action == 'decline') {
+        await rejectCall();
+      }
+      return; // 'open' — the in-call overlay is already visible
+    }
+    if (hasActiveCall || callId == null) return;
+
+    final callerId = data['caller_id'] as String?;
+    final me = currentUserId;
+    if (callerId == null || me == null) return;
+
+    _resetControlState();
+    final type = data['call_type'] == 'video' ? CallType.video : CallType.audio;
+    final reconstructed = CallSession(
+      id: callId,
+      type: type,
+      isIncoming: true,
+      localUserId: me,
+      peerId: callerId,
+      peerName: (data['caller_name'] as String?) ?? 'Instiy User',
+      peerAvatar: data['caller_avatar'] as String?,
+      status: CallStatus.ringingIncoming,
+      createdAt: DateTime.now(),
+    );
+    _setSession(reconstructed);
+    await _joinChannelFor(reconstructed);
+
+    if (action == 'accept') {
+      await acceptCall();
+    } else if (action == 'decline') {
+      await rejectCall();
+    } else {
+      // 'open' — present the incoming-call UI and tell the caller we ring.
+      unawaited(_send('ringing', {'call_id': callId, 'by': me}));
+      unawaited(_playSound(outgoing: false));
+      _armTimeout(CallEndReason.noAnswer);
     }
   }
 

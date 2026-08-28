@@ -19,6 +19,13 @@ class CallSignalingService {
 
   RealtimeChannel? _ringChannel;
   String? _ringUserId;
+  bool _ringHealthy = false;
+  bool _ringSubscribing = false;
+  int _ringRetryCount = 0;
+  Timer? _ringRetryTimer;
+  String? _ringUserIdRetry;
+  SignalHandler? _ringOnInvite;
+  SignalHandler? _ringOnCancel;
 
   final Map<String, RealtimeChannel> _callChannels = {};
 
@@ -55,39 +62,92 @@ class CallSignalingService {
     required SignalHandler onInvite,
     required SignalHandler onCancel,
   }) async {
-    if (_ringUserId == userId && _ringChannel != null) return;
-    await stopListening();
+    _ringOnInvite = onInvite;
+    _ringOnCancel = onCancel;
 
-    _ringUserId = userId;
-    _ringChannel = _client.channel(
-      ringTopic(userId),
-      opts: const RealtimeChannelConfig(private: true),
-    );
+    // Skip only when the same user's ring channel is alive. An unhealthy
+    // subscription (failed join, dropped socket) must fall through so auth
+    // events and retries can restore it — otherwise invites are silently
+    // missed until the app restarts.
+    if (_ringUserId == userId && _ringChannel != null && _ringHealthy) return;
+    if (_ringSubscribing) return;
+    _ringSubscribing = true;
+    try {
+      await stopListening();
 
-    _ringChannel!
-        .onBroadcast(event: 'invite', callback: _wrap(onInvite))
-        .onBroadcast(event: 'cancel', callback: _wrap(onCancel));
+      _ringUserId = userId;
+      _ringHealthy = false;
+      _ringChannel = _client.channel(
+        ringTopic(userId),
+        opts: const RealtimeChannelConfig(private: true),
+      );
 
-    final joined = Completer<bool>();
-    String lastStatus = 'pending';
-    _ringChannel!.subscribe((status, error) {
-      lastStatus = status.name;
-      if (error != null) debugPrint('CallSignaling: ring subscribe error $error status=$status');
-      if (!joined.isCompleted) {
-        joined.complete(status == RealtimeSubscribeStatus.subscribed);
+      _ringChannel!
+          .onBroadcast(event: 'invite', callback: _wrap(onInvite))
+          .onBroadcast(event: 'cancel', callback: _wrap(onCancel));
+
+      final joined = Completer<bool>();
+      String lastStatus = 'pending';
+      _ringChannel!.subscribe((status, error) {
+        lastStatus = status.name;
+        if (error != null) {
+          debugPrint('CallSignaling: ring subscribe error $error status=$status');
+        }
+        if (status == RealtimeSubscribeStatus.subscribed) {
+          _ringHealthy = true;
+          _ringRetryCount = 0;
+          _ringRetryTimer?.cancel();
+        } else if (status == RealtimeSubscribeStatus.channelError ||
+            status == RealtimeSubscribeStatus.timedOut) {
+          _ringHealthy = false;
+        }
+        if (!joined.isCompleted) {
+          joined.complete(status == RealtimeSubscribeStatus.subscribed);
+        }
+      });
+      final ok = await joined.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => false,
+      );
+      debugPrint('CallSignaling: ring ${ringTopic(userId)} subscribe=$ok status=$lastStatus');
+      if (!ok) {
+        debugPrint('CallSignaling: ring subscribe timeout/failed for $userId — retrying with backoff');
+        _scheduleRingRetry(userId);
       }
-    });
-    final ok = await joined.future.timeout(const Duration(seconds: 10), onTimeout: () => false);
-    debugPrint('CallSignaling: ring ${ringTopic(userId)} subscribe=$ok status=$lastStatus');
-    if (!ok) {
-      debugPrint('CallSignaling: ring subscribe timeout/failed for $userId — invites will be missed');
+    } finally {
+      _ringSubscribing = false;
     }
   }
 
+  /// Re-attempt the ring subscription with capped backoff. Private-channel
+  /// joins are rejected outright (no client rejoin) when the token is missing
+  /// or expired, so without this the listener stays dead until app restart.
+  void _scheduleRingRetry(String userId) {
+    if (_ringUserIdRetry != userId && _ringUserId != userId) return;
+    _ringUserIdRetry = userId;
+    _ringRetryTimer?.cancel();
+    const delays = [2, 4, 8, 16, 30];
+    final delay = delays[_ringRetryCount < delays.length ? _ringRetryCount : delays.length - 1];
+    _ringRetryCount++;
+    _ringRetryTimer = Timer(Duration(seconds: delay), () {
+      final uid = _ringUserIdRetry;
+      final invite = _ringOnInvite;
+      final cancel = _ringOnCancel;
+      _ringUserIdRetry = null;
+      if (uid == null || invite == null || cancel == null) return;
+      debugPrint('CallSignaling: retrying ring subscription for $uid (attempt $_ringRetryCount)');
+      unawaited(listenForInvites(uid, onInvite: invite, onCancel: cancel));
+    });
+  }
+
   Future<void> stopListening() async {
+    _ringRetryTimer?.cancel();
+    _ringRetryTimer = null;
+    _ringUserIdRetry = null;
     final channel = _ringChannel;
     _ringChannel = null;
     _ringUserId = null;
+    _ringHealthy = false;
     if (channel != null) {
       try {
         await _client.removeChannel(channel);

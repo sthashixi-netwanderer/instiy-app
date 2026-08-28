@@ -26,6 +26,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       callerName: callerName,
       callType: callType,
       callerAvatar: data['caller_avatar'] as String?,
+      callerId: data['caller_id'] as String?,
     );
   }
 }
@@ -430,6 +431,7 @@ class LocalNotificationService {
     required String callerName,
     required String callType,
     String? callerAvatar,
+    String? callerId,
   }) async {
     if (kIsWeb) return;
     if (!_initialized) await initialize();
@@ -505,6 +507,7 @@ class LocalNotificationService {
       payload: jsonEncode({
         'type': 'call',
         'call_id': callId,
+        'caller_id': callerId,
         'caller_name': callerName,
         'call_type': callType,
         'caller_avatar': callerAvatar,
@@ -540,6 +543,7 @@ class LocalNotificationService {
           callerName: callerName,
           callType: callType,
           callerAvatar: data['caller_avatar'] as String?,
+          callerId: data['caller_id'] as String?,
         );
         return;
       }
