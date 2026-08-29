@@ -21,6 +21,7 @@ import '../../utils/responsive.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/image_picker_sheet.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/store_map_preview.dart';
 
@@ -685,7 +686,7 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
           SizedBox(height: context.rh(24)),
 
           // Business name
-          Text(
+          RequiredLabel(
             'Business Name',
             style: TextStyle(
               fontSize: context.rsp(14),

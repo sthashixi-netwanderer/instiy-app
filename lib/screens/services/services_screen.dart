@@ -61,6 +61,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: const Text('Services'),
@@ -87,27 +88,28 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       ),
       body: Column(
         children: [
-          SizedBox(height: MediaQuery.paddingOf(context).top + kToolbarHeight),
+          SizedBox(
+            height:
+                MediaQuery.paddingOf(context).top +
+                kToolbarHeight +
+                context.rh(16),
+          ),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: context.rw(16)),
             child: Row(
               children: [
-                Expanded(
-                  child: _TabPill(
-                    label: 'Discover',
-                    icon: LucideIcons.compass,
-                    selected: _selectedTab == 0,
-                    onTap: () => setState(() => _selectedTab = 0),
-                  ),
+                _TabPill(
+                  label: 'Discover',
+                  icon: LucideIcons.compass,
+                  selected: _selectedTab == 0,
+                  onTap: () => setState(() => _selectedTab = 0),
                 ),
                 SizedBox(width: context.rw(8)),
-                Expanded(
-                  child: _TabPill(
-                    label: 'My Services',
-                    icon: LucideIcons.briefcaseBusiness,
-                    selected: _selectedTab == 1,
-                    onTap: () => setState(() => _selectedTab = 1),
-                  ),
+                _TabPill(
+                  label: 'My Services',
+                  icon: LucideIcons.briefcaseBusiness,
+                  selected: _selectedTab == 1,
+                  onTap: () => setState(() => _selectedTab = 1),
                 ),
               ],
             ),
@@ -355,9 +357,37 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     if (index == 0) {
                       final selected =
                           prov.selectedInstitutionName == null;
-                      return ListTile(
-                        leading: const Icon(LucideIcons.globe),
-                        title: const Text('All institutions'),
+                      return Material(
+                        color: Colors.transparent,
+                        child: ListTile(
+                          leading: const Icon(LucideIcons.globe),
+                          title: const Text('All institutions'),
+                          trailing: selected
+                              ? Icon(
+                                  LucideIcons.check,
+                                  size: context.ri(18),
+                                  color: AppTheme.accent,
+                                )
+                              : null,
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            ref.read(serviceProvider).setInstitution(null);
+                          },
+                        ),
+                      );
+                    }
+                    final institution = prov.institutions[index - 1];
+                    final selected =
+                        prov.selectedInstitutionName == institution.name;
+                    return Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        leading: const Icon(LucideIcons.building),
+                        title: Text(
+                          institution.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         trailing: selected
                             ? Icon(
                                 LucideIcons.check,
@@ -367,33 +397,11 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                             : null,
                         onTap: () {
                           Navigator.of(ctx).pop();
-                          ref.read(serviceProvider).setInstitution(null);
+                          ref
+                              .read(serviceProvider)
+                              .setInstitution(institution.name);
                         },
-                      );
-                    }
-                    final institution = prov.institutions[index - 1];
-                    final selected =
-                        prov.selectedInstitutionName == institution.name;
-                    return ListTile(
-                      leading: const Icon(LucideIcons.building),
-                      title: Text(
-                        institution.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: selected
-                          ? Icon(
-                              LucideIcons.check,
-                              size: context.ri(18),
-                              color: AppTheme.accent,
-                            )
-                          : null,
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        ref
-                            .read(serviceProvider)
-                            .setInstitution(institution.name);
-                      },
                     );
                   },
                 ),

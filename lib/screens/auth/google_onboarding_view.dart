@@ -7,6 +7,7 @@ import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/sms_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/searchable_institution_picker.dart';
 
 class GoogleOnboardingView extends ConsumerStatefulWidget {
@@ -235,7 +236,8 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
                             _selectedUniversity = val;
                           });
                         },
-                  label: 'University *',
+                  label: 'University',
+                  isRequired: true,
                   hint: 'Select your university...',
                 ),
                 SizedBox(height: context.rh(16)),
@@ -244,8 +246,8 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Phone Number *',
+                    RequiredLabel(
+                      'Phone Number',
                       style: TextStyle(
                         fontWeight: FontWeight.w500,
                         fontSize: context.rsp(14),
@@ -269,8 +271,8 @@ class _GoogleOnboardingViewState extends ConsumerState<GoogleOnboardingView> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        'Verification Code *',
+                      RequiredLabel(
+                        'Verification Code',
                         style: TextStyle(
                           fontWeight: FontWeight.w500,
                           fontSize: context.rsp(14),

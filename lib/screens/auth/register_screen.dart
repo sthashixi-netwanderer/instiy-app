@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/sms_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/searchable_institution_picker.dart';
 import 'accept_policy_screen.dart';
 import '../../widgets/responsive_layout.dart';
@@ -35,6 +36,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   bool _isTagChecking = false;
   bool _isTagTaken = false;
+  bool _acceptedTerms = false;
   List<String> _recommendedTags = [];
   Timer? _tagDebounce;
   Timer? _nameDebounce;
@@ -128,7 +130,74 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _phoneController.text.trim().isNotEmpty &&
       _universityController.text.trim().isNotEmpty &&
       _passwordController.text.isNotEmpty &&
-      _confirmPasswordController.text.isNotEmpty;
+      _confirmPasswordController.text.isNotEmpty &&
+      _acceptedTerms;
+
+  /// Inline acceptance of the Terms & Conditions and Privacy Policy.
+  /// Tapping a policy name opens its full policy screen.
+  Widget _buildTermsAcceptance() {
+    return GestureDetector(
+      onTap: () => setState(() => _acceptedTerms = !_acceptedTerms),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: context.rw(24),
+            height: context.rh(24),
+            child: Checkbox(
+              value: _acceptedTerms,
+              onChanged: (v) => setState(() => _acceptedTerms = v ?? false),
+              activeColor: AppTheme.accent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(context.rr(4)),
+              ),
+            ),
+          ),
+          SizedBox(width: context.rw(12)),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: 'I agree to the ',
+                style: TextStyle(
+                  fontSize: context.rsp(13),
+                  color: AppTheme.mutedSteel,
+                  height: 1.4,
+                ),
+                children: [
+                  _policyLink('Terms & Conditions', '/terms-conditions'),
+                  const TextSpan(text: ' and '),
+                  _policyLink('Privacy Policy', '/privacy-policy'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TextSpan _policyLink(String text, String route) {
+    return TextSpan(
+      children: [
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pushNamed(route),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                color: AppTheme.accent,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void dispose() {
@@ -167,13 +236,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
 
     if (!mounted) return;
-    final accepted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => const AcceptPolicyScreen(),
-      ),
-    );
-
-    if (accepted != true || !mounted) return;
 
     setState(() => _isLoading = true);
 
@@ -620,7 +682,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ShadInputFormField(
                       id: 'name',
                       controller: _nameController,
-                      label: const Text('Full Name'),
+                      label: RequiredLabel('Full Name'),
                       placeholder: const Text('Enter your full name'),
                       leading: Icon(LucideIcons.user, size: context.ri(18)),
                       textInputAction: TextInputAction.next,
@@ -631,7 +693,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ShadInputFormField(
                       id: 'email',
                       controller: _emailController,
-                      label: const Text('Email'),
+                      label: RequiredLabel('Email'),
                       placeholder: const Text('Enter your university email'),
                       leading: Icon(LucideIcons.mail, size: context.ri(18)),
                       keyboardType: TextInputType.emailAddress,
@@ -647,7 +709,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ShadInputFormField(
                       id: 'wallet_tag',
                       controller: _tagController,
-                      label: const Text('Wallet Tag'),
+                      label: RequiredLabel('Wallet Tag'),
                       placeholder: const Text('Enter your unique wallet tag'),
                       leading: Icon(LucideIcons.wallet, size: context.ri(18)),
                       textInputAction: TextInputAction.next,
@@ -734,7 +796,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ShadInputFormField(
                       id: 'phone',
                       controller: _phoneController,
-                      label: const Text('Phone Number'),
+                      label: RequiredLabel('Phone Number'),
                       placeholder: const Text('e.g., 0200585542'),
                       leading: Icon(LucideIcons.phone, size: context.ri(18)),
                       keyboardType: TextInputType.phone,
@@ -755,7 +817,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           _universityController.text = val ?? '';
                         });
                       },
-                      label: 'University *',
+                      label: 'University',
+                      isRequired: true,
                       hint: 'Select your university...',
                     ),
                     SizedBox(height: context.rh(12)),
@@ -763,7 +826,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ShadInputFormField(
                       id: 'password',
                       controller: _passwordController,
-                      label: const Text('Password'),
+                      label: RequiredLabel('Password'),
                       placeholder: const Text('Create a password'),
                       leading: Icon(LucideIcons.lock, size: context.ri(18)),
                       obscureText: _obscurePassword,
@@ -786,7 +849,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ShadInputFormField(
                       id: 'confirmPassword',
                       controller: _confirmPasswordController,
-                      label: const Text('Confirm Password'),
+                      label: RequiredLabel('Confirm Password'),
                       placeholder: const Text('Confirm your password'),
                       leading: Icon(LucideIcons.lock, size: context.ri(18)),
                       obscureText: _obscureConfirmPassword,
@@ -804,7 +867,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         return null;
                       },
                     ),
-                    SizedBox(height: context.rh(24)),
+                    SizedBox(height: context.rh(12)),
+
+                    _buildTermsAcceptance(),
+
+                    SizedBox(height: context.rh(16)),
 
                     AppButton(
                       onPressed: (_isLoading || !_isFormValid) ? null : _handleRegister,

@@ -5,6 +5,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/app_button.dart';
 import 'register_screen.dart';
@@ -181,7 +182,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ShadInputFormField(
                       id: 'email',
                       controller: _emailController,
-                      label: const Text('Email'),
+                      label: RequiredLabel('Email'),
                       placeholder: const Text('Enter your email'),
                       leading: Icon(LucideIcons.mail, size: context.ri(18)),
                       keyboardType: TextInputType.emailAddress,
@@ -199,7 +200,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ShadInputFormField(
                       id: 'password',
                       controller: _passwordController,
-                      label: const Text('Password'),
+                      label: RequiredLabel('Password'),
                       placeholder: const Text('Enter your password'),
                       leading: Icon(LucideIcons.lock, size: context.ri(18)),
                       obscureText: _obscurePassword,

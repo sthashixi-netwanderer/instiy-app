@@ -48,9 +48,14 @@ class _ServiceReportScreenState extends ConsumerState<ServiceReportScreen> {
 
   Future<void> _addEvidence() async {
     if (_evidence.length >= _maxEvidence) return;
-    final picked = await ImagePickerSheet.pickSingle(context);
-    if (picked != null) {
-      setState(() => _evidence.add(picked));
+    final picked = await ImagePickerSheet.pickMultiple(context);
+    if (picked.isNotEmpty) {
+      // Cap at the overall limit if the user picked more than there's room for.
+      setState(
+        () => _evidence.addAll(
+          picked.take(_maxEvidence - _evidence.length),
+        ),
+      );
     }
   }
 
@@ -117,6 +122,7 @@ class _ServiceReportScreenState extends ConsumerState<ServiceReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(context: context, title: const Text('Report Service')),
       body: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(

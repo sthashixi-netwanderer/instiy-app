@@ -237,7 +237,11 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen>
     final institution = _findInstitution(profile?.university);
     final firstProduct = products.isNotEmpty ? products.first : null;
 
-    final avatarUrl = firstProduct?.sellerAvatar ?? (isOwnProfile ? ref.read(authProvider).user?.avatarUrl : null);
+    // The profile's joined avatar is authoritative — the product-derived one
+    // only exists when the store has (in-stock) listings.
+    final avatarUrl = profile?.avatarUrl ??
+        firstProduct?.sellerAvatar ??
+        (isOwnProfile ? ref.read(authProvider).user?.avatarUrl : null);
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,

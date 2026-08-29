@@ -8,6 +8,9 @@ class BusinessProfile {
   final String? digitalAddress;
   final bool qrCodePublic;
   final String? university;
+
+  /// Seller's profile image, joined from `users.avatar_url`.
+  final String? avatarUrl;
   final List<StorePhoneNumber> phoneNumbers;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -22,6 +25,7 @@ class BusinessProfile {
     this.digitalAddress,
     this.qrCodePublic = false,
     this.university,
+    this.avatarUrl,
     this.phoneNumbers = const [],
     required this.createdAt,
     required this.updatedAt,
@@ -45,6 +49,8 @@ class BusinessProfile {
       qrCodePublic: json['qr_code_public'] as bool? ?? false,
       university: json['university'] as String? ??
           (json['users'] as Map<String, dynamic>?)?['university'] as String?,
+      avatarUrl:
+          (json['users'] as Map<String, dynamic>?)?['avatar_url'] as String?,
       phoneNumbers: phones,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),

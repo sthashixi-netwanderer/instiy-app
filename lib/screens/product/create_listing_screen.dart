@@ -23,6 +23,7 @@ import '../../services/watermark_service.dart';
 import '../../services/sound_service.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/multi_institution_picker.dart';
+import '../../widgets/required_label.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../utils/formatters.dart';
@@ -1172,7 +1173,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
               color: AppTheme.accent,
             ),
             SizedBox(width: context.rw(6)),
-            Text(
+            RequiredLabel(
               'Choose video for Clips',
               style: TextStyle(
                 fontSize: context.rsp(13),
@@ -1376,7 +1377,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
+                        RequiredLabel(
                           'Photos',
                           style: TextStyle(
                             fontSize: context.rsp(14),
@@ -2076,7 +2077,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     ShadInputFormField(
                       id: 'title',
                       controller: _titleController,
-                      label: const Text('Title'),
+                      label: RequiredLabel('Title'),
                       placeholder: const Text('What are you selling?'),
                       textInputAction: TextInputAction.next,
                       validator: (value) {
@@ -2093,7 +2094,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     ShadInputFormField(
                       id: 'price',
                       controller: _priceController,
-                      label: const Text('Price'),
+                      label: RequiredLabel('Price'),
                       placeholder: const Text('0.00'),
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.next,
@@ -2179,7 +2180,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     const SizedBox(height: 16),
 
                     // Condition
-                    const Text(
+                    RequiredLabel(
                       'Condition',
                       style: TextStyle(
                         fontSize: 14,
@@ -2230,7 +2231,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     ShadInputFormField(
                       id: 'description',
                       controller: _descriptionController,
-                      label: const Text('Description'),
+                      label: RequiredLabel('Description'),
                       placeholder: const Text(
                         'Describe your item in detail...',
                       ),
@@ -2324,7 +2325,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                               c: _institutionDeliveryFees[c] ?? 0.0,
                           };
                         }),
-                        label: 'Campuses / Locations *',
+                        label: 'Campuses / Locations',
+                        isRequired: true,
                         hint: 'Select campuses...',
                       ),
                     ] else ...[
@@ -2344,7 +2346,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     ShadInputFormField(
                       id: 'stock',
                       controller: _stockController,
-                      label: const Text('Stock Quantity'),
+                      label: RequiredLabel('Stock Quantity'),
                       placeholder: const Text('1'),
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.next,
@@ -2427,7 +2429,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                             child: ShadInputFormField(
                               id: 'deliveryFee',
                               controller: _deliveryFeeController,
-                              label: const Text('Delivery Fee'),
+                              label: RequiredLabel('Delivery Fee'),
                               placeholder: const Text('0.00'),
                               keyboardType: TextInputType.number,
                               textInputAction: TextInputAction.next,
@@ -2760,7 +2762,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        RequiredLabel(
                           'Specifications',
                           style: TextStyle(
                             fontSize: 14,

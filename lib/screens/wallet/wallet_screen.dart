@@ -10,6 +10,7 @@ import '../../utils/formatters.dart';
 
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/skeleton.dart';
 import '../../services/wallet_service.dart';
 import '../../services/supabase_service.dart';
@@ -499,7 +500,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         child: ShadInputFormField(
           id: 'deposit-amount',
           controller: amountCtrl,
-          label: const Text('Amount (GHS)'),
+          label: RequiredLabel('Amount (GHS)'),
           placeholder: const Text('Enter amount'),
           leading: const Text('GH\u00a2 '),
           keyboardType: TextInputType.number,
@@ -673,25 +674,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                method == 'mobile_money' ? 'Provider' : 'Bank Name',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.charcoalInk,
-                                ),
-                              ),
-                              const Text(
-                                ' *',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.destructive,
-                                ),
-                              ),
-                            ],
+                          RequiredLabel(
+                            method == 'mobile_money' ? 'Provider' : 'Bank Name',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.charcoalInk,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           ShadSelect<String>(
@@ -735,7 +724,11 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       ShadInputFormField(
                         id: 'withdraw-account',
                         controller: accountCtrl,
-                        label: Text(method == 'mobile_money' ? 'Mobile Money Number' : 'Account Number'),
+                        label: RequiredLabel(
+                          method == 'mobile_money'
+                              ? 'Mobile Money Number'
+                              : 'Account Number',
+                        ),
                         placeholder: const Text('Enter account'),
                         keyboardType: TextInputType.phone,
                         validator: (val) => val.trim().isEmpty ? 'Required' : null,
@@ -744,7 +737,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       ShadInputFormField(
                         id: 'withdraw-name',
                         controller: nameCtrl,
-                        label: const Text('Account Name'),
+                        label: RequiredLabel('Account Name'),
                         placeholder: const Text('Enter account name'),
                         validator: (val) => val.trim().isEmpty ? 'Required' : null,
                       ),
@@ -752,7 +745,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       ShadInputFormField(
                         id: 'withdraw-amount',
                         controller: amountCtrl,
-                        label: const Text('Amount (GHS)'),
+                        label: RequiredLabel('Amount (GHS)'),
                         placeholder: const Text('Enter amount'),
                         leading: const Text('GH\u00a2 '),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -896,7 +889,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             child: ShadInputFormField(
                               id: 'transfer-recipient',
                               controller: recipientCtrl,
-                              label: const Text('Recipient Email or ID'),
+                              label: RequiredLabel('Recipient Email or ID'),
                               placeholder: const Text('user@example.com'),
                               validator: (val) {
                                 if (val.trim().isEmpty) return 'Required';
@@ -1001,7 +994,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       ShadInputFormField(
                         id: 'transfer-amount',
                         controller: amountCtrl,
-                        label: const Text('Amount (GHS)'),
+                        label: RequiredLabel('Amount (GHS)'),
                         placeholder: const Text('Enter amount'),
                         leading: const Text('GH\u00a2 '),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),

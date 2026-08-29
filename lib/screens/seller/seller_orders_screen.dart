@@ -12,6 +12,7 @@ import '../../models/order_model.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
 import 'scanner_screen.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/skeleton.dart';
 
 class SellerOrdersScreen extends ConsumerStatefulWidget {
@@ -329,8 +330,8 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
               style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Reason for cancellation *',
+            RequiredLabel(
+              'Reason for cancellation',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,

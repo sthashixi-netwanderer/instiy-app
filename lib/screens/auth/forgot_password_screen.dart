@@ -5,6 +5,7 @@ import '../../config/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/required_label.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -105,7 +106,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             ),
           ),
           SizedBox(height: context.rh(32)),
-          Text(
+          RequiredLabel(
             'Email',
             style: TextStyle(
               fontSize: context.rsp(14),

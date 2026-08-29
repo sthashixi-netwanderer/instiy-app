@@ -12,6 +12,7 @@ import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/multi_institution_picker.dart';
+import '../../widgets/required_label.dart';
 
 /// Service creation wizard (Fiverr-style). Also handles editing when
 /// [existingService] is provided. Reachable only from the Services screen.
@@ -97,7 +98,29 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   @override
   void initState() {
     super.initState();
+    // Rebuild as the user types so the Continue/Publish button reflects
+    // whether the current step's required fields are satisfied.
+    for (final ctrl in [
+      _titleCtrl,
+      _descCtrl,
+      _tagsCtrl,
+      ..._packages.expand(
+        (p) => [
+          p.name,
+          p.description,
+          p.price,
+          p.deliveryDays,
+          p.revisions,
+        ],
+      ),
+    ]) {
+      ctrl.addListener(_onFieldChanged);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
+  }
+
+  void _onFieldChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _init() async {
@@ -349,6 +372,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: Text(_isEditing ? 'Edit Service' : 'Create Service'),
@@ -365,22 +389,36 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          SizedBox(height: MediaQuery.paddingOf(context).top + kToolbarHeight),
-          _buildStepIndicator(),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                context.rw(16),
-                context.rh(8),
-                context.rw(16),
-                context.rh(90),
-              ),
-              child: _buildStepContent(),
-            ),
+      // Same tap-to-dismiss behavior ResponsiveLayout gives screens that
+      // use it; this screen builds its own Scaffold.
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          final currentFocus = FocusScope.of(context);
+          if (!currentFocus.hasPrimaryFocus &&
+              currentFocus.focusedChild != null) {
+            FocusManager.instance.primaryFocus?.unfocus();
+          }
+        },
+        child: Column(
+          children: [
+            SizedBox(
+            height: MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16),
           ),
-        ],
+            _buildStepIndicator(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  context.rw(16),
+                  context.rh(8),
+                  context.rw(16),
+                  context.rh(90),
+                ),
+                child: _buildStepContent(),
+              ),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: _buildNavigationButtons(),
     );
@@ -437,12 +475,12 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
         ShadInputFormField(
           id: 'title',
           controller: _titleCtrl,
-          label: const Text('Service title'),
+          label: RequiredLabel('Service title'),
           placeholder: const Text('e.g. I will design a logo for your brand'),
           textInputAction: TextInputAction.next,
         ),
         SizedBox(height: context.rh(16)),
-        Text(
+        RequiredLabel(
           'Category',
           style: TextStyle(
             fontWeight: FontWeight.w600,
@@ -508,7 +546,8 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             selectedValues: _selectedInstitutions,
             onChanged: (values) =>
                 setState(() => _selectedInstitutions = values),
-            label: 'Institutions *',
+            label: 'Institutions',
+            isRequired: true,
             hint: 'Select institutions...',
           ),
         ],
@@ -669,7 +708,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
         ShadInputFormField(
           id: 'description',
           controller: _descCtrl,
-          label: const Text('Description'),
+          label: RequiredLabel('Description'),
           placeholder: const Text(
             'What\'s included, how you work, what you need from the customer...',
           ),
@@ -680,7 +719,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
+            RequiredLabel(
               'Gallery ($_totalImageCount)',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
@@ -855,7 +894,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             ShadInputFormField(
               id: '${draft.tier.name}-name',
               controller: draft.name,
-              label: const Text('Package name'),
+              label: RequiredLabel('Package name'),
               placeholder: const Text('e.g. Essential logo pack'),
               textInputAction: TextInputAction.next,
             ),
@@ -875,7 +914,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                   child: ShadInputFormField(
                     id: '${draft.tier.name}-price',
                     controller: draft.price,
-                    label: const Text('Price (GH₵)'),
+                    label: RequiredLabel('Price (GH₵)'),
                     placeholder: const Text('150'),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -888,7 +927,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                   child: ShadInputFormField(
                     id: '${draft.tier.name}-delivery',
                     controller: draft.deliveryDays,
-                    label: const Text('Delivery (days)'),
+                    label: RequiredLabel('Delivery (days)'),
                     placeholder: const Text('3'),
                     keyboardType: TextInputType.number,
                     textInputAction: TextInputAction.next,
@@ -899,7 +938,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                   child: ShadInputFormField(
                     id: '${draft.tier.name}-revisions',
                     controller: draft.revisions,
-                    label: const Text('Revisions'),
+                    label: RequiredLabel('Revisions'),
                     placeholder: const Text('1'),
                     keyboardType: TextInputType.number,
                     textInputAction: TextInputAction.next,
@@ -1050,6 +1089,9 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   }
 
   Widget _buildNavigationButtons() {
+    // Continue needs the current step valid; Publish needs them all.
+    final stepValid = _validateStep(_currentStep) == null;
+    final allValid = [0, 1, 2].every((s) => _validateStep(s) == null);
     return Padding(
       padding: EdgeInsets.fromLTRB(
         context.rw(16),
@@ -1073,11 +1115,11 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             flex: _currentStep == 0 ? 1 : 2,
             child: _currentStep < _steps.length - 1
                 ? ShadButton(
-                    onPressed: _next,
+                    onPressed: stepValid ? _next : null,
                     child: const Text('Continue'),
                   )
                 : ShadButton(
-                    onPressed: _isPublishing ? null : _publish,
+                    onPressed: _isPublishing || !allValid ? null : _publish,
                     child: _isPublishing
                         ? const SizedBox(
                             width: 18,

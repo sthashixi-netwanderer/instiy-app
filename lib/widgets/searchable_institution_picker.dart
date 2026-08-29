@@ -4,6 +4,7 @@ import '../models/institution_model.dart';
 import '../services/institution_service.dart';
 import '../config/app_theme.dart';
 import 'institution_list_tile.dart';
+import 'required_label.dart';
 
 class SearchableInstitutionPicker extends StatefulWidget {
   final String? selectedValue;
@@ -11,12 +12,16 @@ class SearchableInstitutionPicker extends StatefulWidget {
   final String label;
   final String hint;
 
+  /// Renders [label] with a red asterisk when the selection is required.
+  final bool isRequired;
+
   const SearchableInstitutionPicker({
     super.key,
     required this.selectedValue,
     required this.onSelected,
     required this.label,
     required this.hint,
+    this.isRequired = false,
   });
 
   @override
@@ -48,14 +53,23 @@ class _SearchableInstitutionPickerState extends State<SearchableInstitutionPicke
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          widget.label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w500,
-            fontSize: 14,
-            color: AppTheme.charcoalInk,
-          ),
-        ),
+        widget.isRequired
+            ? RequiredLabel(
+                widget.label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  color: AppTheme.charcoalInk,
+                ),
+              )
+            : Text(
+                widget.label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  color: AppTheme.charcoalInk,
+                ),
+              ),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: _openSearchSheet,

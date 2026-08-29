@@ -5,6 +5,7 @@ import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/seller_onboarding_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/required_label.dart';
 
 /// One-way onboarding that turns a buyer account into a seller account.
 ///
@@ -416,7 +417,7 @@ class _BecomeSellerScreenState extends ConsumerState<BecomeSellerScreen> {
           style: TextStyle(color: AppTheme.mutedSteel),
         ),
         const SizedBox(height: 24),
-        const Text(
+        RequiredLabel(
           'Business Name',
           style: TextStyle(
             fontWeight: FontWeight.w600,

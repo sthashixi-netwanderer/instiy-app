@@ -6,7 +6,7 @@ import '../models/product_model.dart';
 class BusinessProfileService {
   static Future<BusinessProfile?> getProfile(String sellerId) async {
     final response = await SupabaseService.table('business_profiles')
-        .select('*, users!seller_id(university)')
+        .select('*, users!seller_id(university, avatar_url)')
         .eq('seller_id', sellerId)
         .maybeSingle();
 

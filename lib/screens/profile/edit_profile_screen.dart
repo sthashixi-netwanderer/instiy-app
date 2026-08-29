@@ -14,6 +14,7 @@ import '../../services/storage_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../models/picked_media.dart';
+import '../../widgets/required_label.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/responsive_layout.dart';
 
@@ -272,7 +273,7 @@ AppTheme.showGlassDialog(
             ShadInputFormField(
               id: 'otp',
               controller: otpController,
-              label: const Text('Verification Code'),
+              label: RequiredLabel('Verification Code'),
               placeholder: const Text('Enter 6-digit code'),
               keyboardType: TextInputType.number,
               maxLength: 6,
@@ -572,7 +573,7 @@ AppTheme.showGlassDialog(
                       ShadInputFormField(
                         id: 'name',
                         controller: _nameController,
-                        label: const Text('Full Name'),
+                        label: RequiredLabel('Full Name'),
                         textInputAction: TextInputAction.next,
                         validator: (v) => v.isEmpty ? 'Required' : null,
                       ),

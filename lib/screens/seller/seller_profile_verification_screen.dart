@@ -10,6 +10,7 @@ import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../providers/verification_provider.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/required_label.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/verification_badge.dart';
 
@@ -771,7 +772,7 @@ class _SellerProfileVerificationScreenState
           const SizedBox(height: 24),
 
           // Date of Birth
-          const Text(
+          RequiredLabel(
             'Date of Birth',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -809,7 +810,7 @@ class _SellerProfileVerificationScreenState
           const SizedBox(height: 20),
 
           // Year of Entrance
-          const Text(
+          RequiredLabel(
             'Year of Entrance',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -862,7 +863,7 @@ class _SellerProfileVerificationScreenState
           const SizedBox(height: 20),
 
           // Graduation Year
-          const Text(
+          RequiredLabel(
             'Expected Graduation Year',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -915,7 +916,7 @@ class _SellerProfileVerificationScreenState
           const SizedBox(height: 20),
 
           // Residential Address
-          const Text(
+          RequiredLabel(
             'Residential Address',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -996,7 +997,7 @@ class _SellerProfileVerificationScreenState
         const SizedBox(height: 24),
 
         // Front
-        const Text(
+        RequiredLabel(
           'Front of Student ID',
           style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.charcoalInk),
         ),
@@ -1010,7 +1011,7 @@ class _SellerProfileVerificationScreenState
         const SizedBox(height: 20),
 
         // Back
-        const Text(
+        RequiredLabel(
           'Back of Student ID',
           style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.charcoalInk),
         ),
@@ -1152,7 +1153,7 @@ class _SellerProfileVerificationScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        RequiredLabel(
           'Live Video Verification',
           style: TextStyle(
             fontSize: 20,

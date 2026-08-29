@@ -6,6 +6,7 @@ import '../../config/app_theme.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/required_label.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -113,7 +114,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             ),
           ),
           SizedBox(height: context.rh(32)),
-          Text(
+          RequiredLabel(
             'New Password',
             style: TextStyle(
               fontSize: context.rsp(14),
@@ -149,7 +150,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             },
           ),
           SizedBox(height: context.rh(20)),
-          Text(
+          RequiredLabel(
             'Confirm Password',
             style: TextStyle(
               fontSize: context.rsp(14),
