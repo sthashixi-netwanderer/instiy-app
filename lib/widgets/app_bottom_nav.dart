@@ -47,9 +47,12 @@ class AppBottomNav extends ConsumerWidget {
             Navigator.of(context).pushNamed('/explore');
             break;
           case 2:
-            Navigator.of(context).pushNamed('/clips');
+            Navigator.of(context).pushNamed('/services');
             break;
           case 3:
+            Navigator.of(context).pushNamed('/clips');
+            break;
+          case 4:
             Navigator.of(context).pushNamed('/about-legal');
             break;
         }
@@ -65,12 +68,15 @@ class AppBottomNav extends ConsumerWidget {
           Navigator.of(context).pushNamed('/explore');
           break;
         case 2:
-          Navigator.of(context).pushNamed('/clips');
+          Navigator.of(context).pushNamed('/services');
           break;
         case 3:
-          Navigator.of(context).pushNamed('/messages');
+          Navigator.of(context).pushNamed('/clips');
           break;
         case 4:
+          Navigator.of(context).pushNamed('/messages');
+          break;
+        case 5:
           Navigator.of(context).pushNamed('/seller-dashboard');
           break;
       }
@@ -158,13 +164,20 @@ class AppBottomNav extends ConsumerWidget {
                             context,
                             isAuth,
                             2,
+                            LucideIcons.briefcaseBusiness,
+                            'Services',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            3,
                             LucideIcons.video,
                             'Clips',
                           ),
                           _navButton(
                             context,
                             isAuth,
-                            3,
+                            4,
                             LucideIcons.messageSquare,
                             'Messages',
                             badgeCount: unreadCount,
@@ -175,7 +188,7 @@ class AppBottomNav extends ConsumerWidget {
                             _navButton(
                               context,
                               isAuth,
-                              4,
+                              5,
                               LucideIcons.layoutDashboard,
                               'Dashboard',
                             ),
@@ -199,13 +212,20 @@ class AppBottomNav extends ConsumerWidget {
                             context,
                             isAuth,
                             2,
+                            LucideIcons.briefcaseBusiness,
+                            'Services',
+                          ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            3,
                             LucideIcons.video,
                             'Clips',
                           ),
                           _navButton(
                             context,
                             isAuth,
-                            3,
+                            4,
                             LucideIcons.info,
                             'Info',
                           ),

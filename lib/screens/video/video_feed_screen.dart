@@ -62,7 +62,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     // Inside the navigation shell, tab switches don't fire route events —
     // pause playback directly when the Clips tab is left.
     _shellTabSub = ref.listenManual(shellTabProvider, (previous, next) {
-      _canPlay.value = next == 2 && (ModalRoute.of(context)?.isCurrent ?? true);
+      _canPlay.value = next == 3 && (ModalRoute.of(context)?.isCurrent ?? true);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoProvider).ensureInitialized();

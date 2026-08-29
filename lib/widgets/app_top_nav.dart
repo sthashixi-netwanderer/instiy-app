@@ -164,21 +164,30 @@ class AppTopNav extends ConsumerWidget {
                   ),
                 ),
                 _buildNavItem(
-                  icon: LucideIcons.video,
-                  label: 'Clips',
+                  icon: LucideIcons.briefcaseBusiness,
+                  label: 'Services',
                   active: currentIndex == 2,
                   onTap: _tabTap(
                     2,
+                    () => Navigator.of(context).pushNamed('/services'),
+                  ),
+                ),
+                _buildNavItem(
+                  icon: LucideIcons.video,
+                  label: 'Clips',
+                  active: currentIndex == 3,
+                  onTap: _tabTap(
+                    3,
                     () => Navigator.of(context).pushNamed('/clips'),
                   ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.messageSquare,
                   label: 'Messages',
-                  active: currentIndex == 3,
+                  active: currentIndex == 4,
                   badgeCount: unreadCount,
                   onTap: _tabTap(
-                    3,
+                    4,
                     () => Navigator.of(context).pushNamed('/messages'),
                   ),
                 ),
@@ -192,9 +201,9 @@ class AppTopNav extends ConsumerWidget {
                   _buildNavItem(
                     icon: LucideIcons.layoutDashboard,
                     label: 'Dashboard',
-                    active: currentIndex == 4,
+                    active: currentIndex == 5,
                     onTap: _tabTap(
-                      4,
+                      5,
                       () =>
                           Navigator.of(context).pushNamed('/seller-dashboard'),
                     ),
@@ -222,20 +231,29 @@ class AppTopNav extends ConsumerWidget {
                   ),
                 ),
                 _buildNavItem(
-                  icon: LucideIcons.video,
-                  label: 'Clips',
+                  icon: LucideIcons.briefcaseBusiness,
+                  label: 'Services',
                   active: currentIndex == 2,
                   onTap: _tabTap(
                     2,
+                    () => Navigator.of(context).pushNamed('/services'),
+                  ),
+                ),
+                _buildNavItem(
+                  icon: LucideIcons.video,
+                  label: 'Clips',
+                  active: currentIndex == 3,
+                  onTap: _tabTap(
+                    3,
                     () => Navigator.of(context).pushNamed('/clips'),
                   ),
                 ),
                 _buildNavItem(
                   icon: LucideIcons.info,
                   label: 'Info',
-                  active: currentIndex == 3,
+                  active: currentIndex == 4,
                   onTap: _tabTap(
-                    3,
+                    4,
                     () => Navigator.of(context).pushNamed('/about-legal'),
                   ),
                 ),

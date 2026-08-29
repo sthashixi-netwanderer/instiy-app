@@ -15,7 +15,7 @@ const corsHeaders = {
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "pdf", "m4a"];
-const ALLOWED_FOLDERS = ["uploads", "verifications", "reviews", "avatars", "products", "banners", "chat-media"];
+const ALLOWED_FOLDERS = ["uploads", "verifications", "reviews", "avatars", "products", "services", "banners", "chat-media"];
 
 function getContentType(extension: string): string {
   const types: Record<string, string> = {

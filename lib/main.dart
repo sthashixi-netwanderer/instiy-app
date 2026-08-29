@@ -21,8 +21,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'models/product_model.dart';
 import 'models/business_profile_model.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
-// ── Eagerly-loaded screens (splash, auth, home, explore, product detail,
+// ── Eagerly-loaded screens (auth, home, explore, product detail,
 //    cart, checkout, deep-link targets, and high-traffic routes) ──
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
@@ -34,12 +35,14 @@ import 'screens/checkout/checkout_screen.dart';
 import 'screens/wallet/wallet_screen.dart';
 import 'screens/orders/orders_screen.dart';
 import 'screens/services/services_screen.dart';
+import 'screens/services/service_detail_screen.dart';
+import 'screens/services/create_service_screen.dart';
+import 'models/service_model.dart';
 import 'screens/wishlist/wishlist_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/account/account_settings_screen.dart';
 import 'screens/profile/following_screen.dart';
 import 'screens/sell/sell_screen.dart';
-import 'screens/splash/splash_screen.dart';
 import 'screens/product/product_detail_screen.dart';
 import 'screens/product/create_listing_screen.dart';
 import 'screens/profile/profile_screen.dart';
@@ -74,12 +77,6 @@ import 'screens/seller/seller_permissions_screen.dart'
     deferred as deferred_seller_permissions;
 import 'screens/seller/become_seller_screen.dart'
     deferred as deferred_become_seller;
-
-/// Top-level initialization future. Assigned in main() BEFORE runApp()
-/// but never awaited in main() — the splash screen awaits it instead.
-/// This ensures the Flutter framework starts rendering immediately while
-/// services initialize in the background.
-late final Future<void> appInitialization;
 
 /// App-wide Riverpod container, created explicitly so code outside the
 /// widget tree (the announcement observer) can read providers.
@@ -195,13 +192,12 @@ void main() async {
     usePathUrlStrategy();
   }
 
-  // Kick off initialization immediately but do NOT await it here.
-  // The splash screen will await this future so the UI can render
-  // its first frame without any delay.
-  appInitialization = _initializeApp();
+  // Initialize critical services while native splash is still visible.
+  await _initializeApp();
 
-  // Show the splash screen immediately — heavy init runs in the background
-  // so there's no dark gap between the native splash and Flutter's first frame.
+  // Remove native splash now that Flutter is ready to render.
+  FlutterNativeSplash.remove();
+
   runApp(const InstiyApp());
 }
 
@@ -375,22 +371,14 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
       },
     );
 
-    // If the app was opened by a link (cold start), store it for the splash
-    // screen to consume after its animation completes. This avoids the race
-    // condition where getInitialLink() resolves before the splash finishes
-    // and pushNamed('/product') gets destroyed by pushReplacementNamed('/home').
+    // If the app was opened by a link (cold start), handle it immediately.
+    // There's no splash screen to wait for anymore.
     _appLinks
         .getInitialLink()
         .then((uri) {
           if (uri == null) return;
-          debugPrint('Deep link (cold start), stored for splash: $uri');
-          if (NavigationService.splashCompleted) {
-            // Splash already navigated away — a late-resolving initial link
-            // would be stranded in pendingDeepLink with no consumer.
-            NavigationService.handleDeepLink(uri);
-          } else {
-            NavigationService.pendingDeepLink = uri;
-          }
+          debugPrint('Deep link (cold start): $uri');
+          NavigationService.handleDeepLink(uri);
         })
         .catchError((err) {
           debugPrint('Failed to get initial deep link: $err');
@@ -438,7 +426,7 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             ],
           );
         },
-        initialRoute: '/splash',
+        initialRoute: '/home',
         onGenerateRoute: (settings) {
           // Helper to wrap all routes with smooth fade+slide transition.
           // Settings are forwarded so routes carry their names (used by the
@@ -528,8 +516,6 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
           }
 
           switch (settings.name) {
-            case '/splash':
-              return route(const SplashScreen());
             case '/':
             case '/get-started':
             case '/login':
@@ -541,7 +527,7 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/suspended':
               return route(const SuspendedScreen());
             case '/clips':
-              return route(const ShellScreen(initialTab: 2));
+              return route(const ShellScreen(initialTab: 3));
             case '/home':
               return route(const ShellScreen());
             case '/explore':
@@ -567,9 +553,17 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/orders':
               return route(const OrdersScreen());
             case '/messages':
-              return route(const ShellScreen(initialTab: 3));
+              return route(const ShellScreen(initialTab: 4));
             case '/services':
               return route(const ServicesScreen());
+            case '/service-detail':
+              final serviceId = settings.arguments as String;
+              return route(ServiceDetailScreen(serviceId: serviceId));
+            case '/create-service':
+              final existing = settings.arguments is Service
+                  ? settings.arguments as Service
+                  : null;
+              return route(CreateServiceScreen(existingService: existing));
             case '/wishlist':
               return route(const WishlistScreen());
             case '/notifications':
@@ -638,7 +632,7 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                 ),
               );
             case '/seller-dashboard':
-              return route(SellerGate(child: ShellScreen(initialTab: 4)));
+              return route(SellerGate(child: ShellScreen(initialTab: 5)));
             case '/seller-reviews':
               return route(const SellerReviewsScreen());
             case '/seller-analytics':

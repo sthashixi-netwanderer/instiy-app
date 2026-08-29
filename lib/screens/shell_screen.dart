@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import 'home/home_screen.dart';
 import 'explore/explore_screen.dart';
+import 'services/services_screen.dart';
 import 'video/video_feed_screen.dart';
 import 'messages/messages_screen.dart';
 import 'seller/dashboard_screen.dart';
@@ -35,7 +36,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
   @override
   void initState() {
     super.initState();
-    _visited.add(widget.initialTab.clamp(0, 4));
+    _visited.add(widget.initialTab.clamp(0, 5));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ref.read(shellTabProvider.notifier).state = widget.initialTab;
@@ -59,6 +60,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     final screens = <Widget>[
       const HomeScreen(),
       ExploreScreen(initialCategoryId: widget.exploreCategoryId),
+      const ServicesScreen(),
       const VideoFeedScreen(),
       if (isAuth) const MessagesScreen() else const _DeferredAboutLegal(),
       if (isSeller) const SellerDashboardScreen() else const SizedBox.shrink(),

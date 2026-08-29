@@ -2,17 +2,30 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/service_model.dart';
+import '../models/category_model.dart';
 import '../services/service_service.dart';
 import '../services/supabase_service.dart';
 
+/// State for the Services marketplace screen: public browse results, the
+/// signed-in creator's own listings, service categories and the provider
+/// opt-in flag. Realtime keeps both lists fresh while subscribed.
 class ServiceProvider extends ChangeNotifier {
   List<Service> _services = [];
+  List<Service> _myServices = [];
+  List<Category> _categories = [];
   bool _isLoading = false;
+  bool _myServicesLoading = false;
+  bool _categoriesLoading = false;
+  bool _optingIn = false;
   String _searchQuery = '';
+  String? _selectedCategoryId;
+  /// null = not checked yet (signed out or still loading).
+  bool? _isServiceProvider;
   String? _error;
 
   RealtimeChannel? _servicesChannel;
   String? _currentUserId;
+  bool _loadedOnce = false;
 
   ServiceProvider() {
     _initAuthListener();
@@ -26,9 +39,14 @@ class ServiceProvider extends ChangeNotifier {
         if (_currentUserId == userId) return;
         _currentUserId = userId;
         _subscribeToRealtime();
+        checkServiceProviderStatus();
+        loadMyServices();
       } else {
         _unsubscribeFromRealtime();
         _currentUserId = null;
+        _isServiceProvider = null;
+        _myServices = [];
+        notifyListeners();
         loadServices();
       }
     });
@@ -37,6 +55,8 @@ class ServiceProvider extends ChangeNotifier {
     if (currentUser != null) {
       _currentUserId = currentUser.id;
       _subscribeToRealtime();
+      checkServiceProviderStatus();
+      loadMyServices();
     }
   }
 
@@ -49,6 +69,12 @@ class ServiceProvider extends ChangeNotifier {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'services',
+          callback: (_) => _silentReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'service_packages',
           callback: (_) => _silentReload(),
         );
     _servicesChannel!.subscribe();
@@ -63,29 +89,56 @@ class ServiceProvider extends ChangeNotifier {
 
   Future<void> _silentReload() async {
     try {
-      final services = await ServiceService.getServices(
+      _services = await ServiceService.getServices(
+        categoryId: _selectedCategoryId,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
-      _services = services;
+      if (_currentUserId != null) {
+        _myServices = await ServiceService.getMyServices();
+      }
       notifyListeners();
     } catch (_) {}
   }
 
   void clearSession() {
     _services = [];
+    _myServices = [];
     _error = null;
     _searchQuery = '';
+    _selectedCategoryId = null;
+    _isServiceProvider = null;
+    _loadedOnce = false;
     notifyListeners();
   }
 
   List<Service> get services => _services;
+  List<Service> get myServices => _myServices;
+  List<Category> get categories => _categories;
   bool get isLoading => _isLoading;
+  bool get myServicesLoading => _myServicesLoading;
+  bool get categoriesLoading => _categoriesLoading;
+  bool get optingIn => _optingIn;
+  bool get loadedOnce => _loadedOnce;
   String get searchQuery => _searchQuery;
+  String? get selectedCategoryId => _selectedCategoryId;
+  bool? get isServiceProvider => _isServiceProvider;
   String? get error => _error;
+
+  Category? selectedCategory() {
+    final id = _selectedCategoryId;
+    if (id == null) return null;
+    return _categories.where((c) => c.id == id).firstOrNull;
+  }
 
   void setSearchQuery(String query) {
     _searchQuery = query;
     notifyListeners();
+  }
+
+  void setCategory(String? categoryId) {
+    _selectedCategoryId = categoryId;
+    notifyListeners();
+    loadServices();
   }
 
   Future<void> loadServices() async {
@@ -94,15 +147,166 @@ class ServiceProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final services = await ServiceService.getServices(
+      _services = await ServiceService.getServices(
+        categoryId: _selectedCategoryId,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
-      _services = services;
+      _loadedOnce = true;
     } catch (e) {
       _error = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> loadCategories() async {
+    if (_categories.isNotEmpty) return;
+    _categoriesLoading = true;
+    notifyListeners();
+
+    try {
+      _categories = await ServiceService.getServiceCategories();
+    } catch (_) {
+      // Category chips are optional chrome — browse still works without them.
+    } finally {
+      _categoriesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMyServices() async {
+    if (_currentUserId == null) return;
+    _myServicesLoading = true;
+    notifyListeners();
+
+    try {
+      _myServices = await ServiceService.getMyServices();
+    } catch (_) {
+      // Surfaced through the screen's empty state; realtime retries anyway.
+    } finally {
+      _myServicesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> checkServiceProviderStatus() async {
+    if (_currentUserId == null) return;
+    try {
+      _isServiceProvider = await ServiceService.isServiceProvider();
+    } catch (_) {
+      _isServiceProvider = null;
+    }
+    notifyListeners();
+  }
+
+  /// Returns true on success; error message otherwise.
+  Future<Object> becomeServiceProvider() async {
+    _optingIn = true;
+    notifyListeners();
+    try {
+      await ServiceService.becomeServiceProvider();
+      _isServiceProvider = true;
+      await loadMyServices();
+      return true;
+    } catch (e) {
+      return e;
+    } finally {
+      _optingIn = false;
+      notifyListeners();
+    }
+  }
+
+  /// Returns true on success; error message otherwise.
+  Future<Object> createService({
+    required String title,
+    required String description,
+    required String categoryId,
+    required String categoryName,
+    required double price,
+    String priceType = 'fixed',
+    int? deliveryDays,
+    List<String> imageUrls = const [],
+    List<String> searchTags = const [],
+    List<ServicePackage> packages = const [],
+  }) async {
+    try {
+      await ServiceService.createService(
+        title: title,
+        description: description,
+        categoryId: categoryId,
+        categoryName: categoryName,
+        price: price,
+        priceType: priceType,
+        deliveryDays: deliveryDays,
+        imageUrls: imageUrls,
+        searchTags: searchTags,
+        packages: packages,
+      );
+      await loadMyServices();
+      return true;
+    } catch (e) {
+      return e;
+    }
+  }
+
+  /// Returns true on success; error message otherwise.
+  Future<Object> updateService(
+    String serviceId, {
+    required String title,
+    required String description,
+    required String categoryId,
+    required String categoryName,
+    required double price,
+    String priceType = 'fixed',
+    int? deliveryDays,
+    List<String> imageUrls = const [],
+    List<String> searchTags = const [],
+    List<ServicePackage> packages = const [],
+  }) async {
+    try {
+      await ServiceService.updateService(
+        serviceId,
+        title: title,
+        description: description,
+        categoryId: categoryId,
+        categoryName: categoryName,
+        price: price,
+        priceType: priceType,
+        deliveryDays: deliveryDays,
+        imageUrls: imageUrls,
+        searchTags: searchTags,
+        packages: packages,
+      );
+      await loadMyServices();
+      return true;
+    } catch (e) {
+      return e;
+    }
+  }
+
+  Future<bool> setServiceStatus(String serviceId, ServiceStatus status) async {
+    try {
+      await ServiceService.setServiceStatus(serviceId, status);
+      final index = _myServices.indexWhere((s) => s.id == serviceId);
+      if (index >= 0) {
+        _myServices[index] = _myServices[index].copyWith(status: status);
+        notifyListeners();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteService(String serviceId) async {
+    try {
+      await ServiceService.deleteService(serviceId);
+      _myServices.removeWhere((s) => s.id == serviceId);
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
