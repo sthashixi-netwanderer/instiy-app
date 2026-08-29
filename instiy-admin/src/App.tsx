@@ -5,6 +5,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Users } from "./pages/Users";
 import { Categories } from "./pages/Categories";
 import { Products } from "./pages/Products";
+import { Services } from "./pages/Services";
 import { Orders } from "./pages/Orders";
 import { Withdrawals } from "./pages/Withdrawals";
 import { Institutions } from "./pages/Institutions";
@@ -27,6 +28,7 @@ import {
 	Users as UsersIcon,
 	FolderTree,
 	ShoppingBag,
+	Briefcase,
 	Receipt,
 	Landmark,
 	LogOut,
@@ -217,6 +219,12 @@ export const App: React.FC = () => {
 			label: "Products",
 			icon: <ShoppingBag size={18} />,
 			path: "/products",
+		},
+		{
+			id: "services",
+			label: "Services",
+			icon: <Briefcase size={18} />,
+			path: "/services",
 		},
 		{
 			id: "orders",
@@ -449,6 +457,7 @@ export const App: React.FC = () => {
 					<Route path="/verifications" element={<Verifications />} />
 					<Route path="/categories" element={<Categories />} />
 					<Route path="/products" element={<Products />} />
+					<Route path="/services" element={<Services />} />
 					<Route path="/orders" element={<Orders />} />
 					<Route path="/withdrawals" element={<Withdrawals />} />
 					<Route path="/transactions" element={<Transactions />} />

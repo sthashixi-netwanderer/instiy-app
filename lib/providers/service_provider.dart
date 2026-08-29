@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/service_model.dart';
 import '../models/category_model.dart';
+import '../models/institution_model.dart';
 import '../services/service_service.dart';
+import '../services/institution_service.dart';
 import '../services/supabase_service.dart';
 
 /// State for the Services marketplace screen: public browse results, the
@@ -13,12 +15,14 @@ class ServiceProvider extends ChangeNotifier {
   List<Service> _services = [];
   List<Service> _myServices = [];
   List<Category> _categories = [];
+  List<Institution> _institutions = [];
   bool _isLoading = false;
   bool _myServicesLoading = false;
   bool _categoriesLoading = false;
   bool _optingIn = false;
   String _searchQuery = '';
   String? _selectedCategoryId;
+  String? _selectedInstitutionName;
   /// null = not checked yet (signed out or still loading).
   bool? _isServiceProvider;
   String? _error;
@@ -91,6 +95,7 @@ class ServiceProvider extends ChangeNotifier {
     try {
       _services = await ServiceService.getServices(
         categoryId: _selectedCategoryId,
+        institutionName: _selectedInstitutionName,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
       if (_currentUserId != null) {
@@ -114,6 +119,7 @@ class ServiceProvider extends ChangeNotifier {
   List<Service> get services => _services;
   List<Service> get myServices => _myServices;
   List<Category> get categories => _categories;
+  List<Institution> get institutions => _institutions;
   bool get isLoading => _isLoading;
   bool get myServicesLoading => _myServicesLoading;
   bool get categoriesLoading => _categoriesLoading;
@@ -121,6 +127,7 @@ class ServiceProvider extends ChangeNotifier {
   bool get loadedOnce => _loadedOnce;
   String get searchQuery => _searchQuery;
   String? get selectedCategoryId => _selectedCategoryId;
+  String? get selectedInstitutionName => _selectedInstitutionName;
   bool? get isServiceProvider => _isServiceProvider;
   String? get error => _error;
 
@@ -141,6 +148,12 @@ class ServiceProvider extends ChangeNotifier {
     loadServices();
   }
 
+  void setInstitution(String? institutionName) {
+    _selectedInstitutionName = institutionName;
+    notifyListeners();
+    loadServices();
+  }
+
   Future<void> loadServices() async {
     _isLoading = true;
     _error = null;
@@ -149,6 +162,7 @@ class ServiceProvider extends ChangeNotifier {
     try {
       _services = await ServiceService.getServices(
         categoryId: _selectedCategoryId,
+        institutionName: _selectedInstitutionName,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
       _loadedOnce = true;
@@ -172,6 +186,16 @@ class ServiceProvider extends ChangeNotifier {
     } finally {
       _categoriesLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> loadInstitutions() async {
+    if (_institutions.isNotEmpty) return;
+    try {
+      _institutions = await InstitutionService.getInstitutions();
+      notifyListeners();
+    } catch (_) {
+      // Institution filter is optional chrome — ignore failures.
     }
   }
 
@@ -227,6 +251,7 @@ class ServiceProvider extends ChangeNotifier {
     String priceType = 'fixed',
     int? deliveryDays,
     List<String> imageUrls = const [],
+    List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
   }) async {
@@ -240,6 +265,7 @@ class ServiceProvider extends ChangeNotifier {
         priceType: priceType,
         deliveryDays: deliveryDays,
         imageUrls: imageUrls,
+        institutionCodes: institutionCodes,
         searchTags: searchTags,
         packages: packages,
       );
@@ -261,6 +287,7 @@ class ServiceProvider extends ChangeNotifier {
     String priceType = 'fixed',
     int? deliveryDays,
     List<String> imageUrls = const [],
+    List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
   }) async {
@@ -275,6 +302,7 @@ class ServiceProvider extends ChangeNotifier {
         priceType: priceType,
         deliveryDays: deliveryDays,
         imageUrls: imageUrls,
+        institutionCodes: institutionCodes,
         searchTags: searchTags,
         packages: packages,
       );

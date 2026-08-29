@@ -284,6 +284,7 @@ class Service {
     String? priceType,
     int? deliveryDays,
     List<String>? imageUrls,
+    List<String>? institutionCodes,
     List<String>? searchTags,
     ServiceStatus? status,
     List<ServicePackage>? packages,
@@ -302,13 +303,64 @@ class Service {
       priceType: priceType ?? this.priceType,
       deliveryDays: deliveryDays ?? this.deliveryDays,
       imageUrls: imageUrls ?? this.imageUrls,
-      institutionCodes: institutionCodes,
+      institutionCodes: institutionCodes ?? this.institutionCodes,
       searchTags: searchTags ?? this.searchTags,
       status: status ?? this.status,
       averageRating: averageRating,
       reviewCount: reviewCount,
       createdAt: createdAt,
       packages: packages ?? this.packages,
+    );
+  }
+}
+
+/// A customer review on a service. Reviewers manage (edit/delete) their own
+/// rows; the services.average_rating / review_count rollups are maintained
+/// by the sync_service_review_stats trigger.
+class ServiceReview {
+  final String id;
+  final String serviceId;
+  final String reviewerId;
+  final String? reviewerName;
+  final String? reviewerAvatar;
+  final int rating;
+  final String? comment;
+  final int helpfulCount;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+
+  ServiceReview({
+    required this.id,
+    required this.serviceId,
+    required this.reviewerId,
+    this.reviewerName,
+    this.reviewerAvatar,
+    required this.rating,
+    this.comment,
+    this.helpfulCount = 0,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  factory ServiceReview.fromJson(Map<String, dynamic> json) {
+    final reviewer = json['reviewer'] as Map<String, dynamic>?;
+    return ServiceReview(
+      id: json['id'] as String,
+      serviceId: json['service_id'] as String,
+      reviewerId: json['reviewer_id'] as String,
+      reviewerName:
+          reviewer?['full_name'] as String? ??
+          json['reviewer_name'] as String?,
+      reviewerAvatar:
+          reviewer?['avatar_url'] as String? ??
+          json['reviewer_avatar'] as String?,
+      rating: (json['rating'] as num?)?.toInt() ?? 0,
+      comment: json['comment'] as String?,
+      helpfulCount: (json['helpful_count'] as num?)?.toInt() ?? 0,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : null,
     );
   }
 }

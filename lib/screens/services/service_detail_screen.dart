@@ -9,7 +9,9 @@ import '../../utils/formatters.dart';
 import '../../models/service_model.dart';
 import '../../services/service_service.dart';
 import '../../providers/providers.dart';
+import '../../widgets/service_review_section.dart';
 import '../messages/messages_screen.dart';
+import 'service_report_screen.dart';
 
 /// Public service detail: gallery, description, tiered packages and the
 /// provider card. The owner additionally gets edit + status controls —
@@ -75,6 +77,25 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     });
   }
 
+  void _reportService() {
+    final service = _service;
+    if (service == null) return;
+    final auth = ref.read(authProvider);
+    if (!auth.isAuthenticated) {
+      Navigator.of(context).pushNamed('/login');
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServiceReportScreen(
+          serviceId: service.id,
+          serviceTitle: service.title,
+          providerId: service.providerId,
+        ),
+      ),
+    );
+  }
+
   Future<void> _toggleStatus() async {
     final service = _service;
     if (service == null) return;
@@ -116,6 +137,11 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          if (_service != null && !_isOwnService)
+            ShadIconButton.ghost(
+              icon: const Icon(LucideIcons.flag, size: 20),
+              onPressed: _reportService,
+            ),
           if (_isOwnService)
             ShadIconButton.ghost(
               icon: Icon(
@@ -254,6 +280,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             ],
           ),
         ],
+        SizedBox(height: context.rh(16)),
+        _buildAvailability(context, service),
         if (packages.isNotEmpty) ...[
           SizedBox(height: context.rh(24)),
           _buildSectionTitle('Packages'),
@@ -276,7 +304,62 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
+        SizedBox(height: context.rh(32)),
+        ServiceReviewSection(
+          serviceId: service.id,
+          providerId: service.providerId,
+          onReviewsChanged: _loadService,
+        ),
       ],
+    );
+  }
+
+  Widget _buildAvailability(BuildContext context, Service service) {
+    return Container(
+      padding: context.rAll(14),
+      decoration: BoxDecoration(
+        color: AppTheme.warmMist,
+        borderRadius: BorderRadius.circular(context.rr(12)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            LucideIcons.building,
+            size: context.ri(18),
+            color: AppTheme.mutedSteel,
+          ),
+          SizedBox(width: context.rw(10)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  service.institutionCodes.isEmpty
+                      ? 'Available at all institutions'
+                      : 'Available at ${service.institutionCodes.length} '
+                        'institution'
+                        '${service.institutionCodes.length == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    fontSize: context.rsp(13),
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+                if (service.institutionCodes.isNotEmpty)
+                  Text(
+                    service.institutionCodes.join(', '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

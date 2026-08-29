@@ -194,6 +194,104 @@ class ReportService {
       // Non-critical — don't fail the report if admin email fails
     }
   }
+
+  /// Submit a report against a service listing, optionally with evidence
+  /// image URLs (already uploaded to R2).
+  static Future<void> submitServiceReport({
+    required String serviceId,
+    required String reportedUserId,
+    required String category,
+    String? description,
+    List<String> evidenceUrls = const [],
+    required String serviceTitle,
+    required String reporterEmail,
+    required String reporterName,
+  }) async {
+    final uid = SupabaseService.auth.currentUser?.id;
+    if (uid == null) throw Exception('Not authenticated');
+
+    await SupabaseService.client.from('reports').insert({
+      'reporter_id': uid,
+      'reported_user_id': reportedUserId,
+      'service_id': serviceId,
+      'category': category,
+      'description': description?.trim().isNotEmpty == true
+          ? description!.trim()
+          : null,
+      'media_urls': evidenceUrls,
+    });
+
+    // Send confirmation email to reporter (reuses the product template).
+    final categoryLabel = serviceCategories[category]?.label ?? category;
+    await EmailService.sendProductReportConfirmation(
+      reporterEmail: reporterEmail,
+      reporterName: reporterName,
+      productTitle: serviceTitle,
+      category: categoryLabel,
+    );
+
+    // Send admin notification email
+    try {
+      final adminData = await SupabaseService.client
+          .from('users')
+          .select('email')
+          .eq('is_admin', true)
+          .limit(1)
+          .maybeSingle();
+      if (adminData != null) {
+        await EmailService.sendAdminProductReportNotification(
+          adminEmail: adminData['email'] as String,
+          productTitle: serviceTitle,
+          reporterName: reporterName,
+          category: categoryLabel,
+          description: description,
+          productId: serviceId,
+        );
+      }
+    } catch (_) {
+      // Non-critical — don't fail the report if admin email fails
+    }
+  }
+
+  /// Categories used by the service report screen.
+  static const Map<String, ReportCategory> serviceCategories = {
+    'misleading_service': ReportCategory(
+      id: 'misleading_service',
+      label: 'Misleading Service',
+      description: 'The service doesn\'t match its description or gallery',
+      icon: 'file_question',
+    ),
+    'service_scam': ReportCategory(
+      id: 'service_scam',
+      label: 'Scam or Fraud',
+      description: 'This service is trying to scam customers',
+      icon: 'shield_alert',
+    ),
+    'spam': ReportCategory(
+      id: 'spam',
+      label: 'Spam',
+      description: 'Repeated or unwanted listing',
+      icon: 'ban',
+    ),
+    'inappropriate_content': ReportCategory(
+      id: 'inappropriate_content',
+      label: 'Inappropriate Content',
+      description: 'Contains offensive or inappropriate material',
+      icon: 'eye_off',
+    ),
+    'price_gouging': ReportCategory(
+      id: 'price_gouging',
+      label: 'Unfair Pricing',
+      description: 'Exploitative or unreasonable pricing',
+      icon: 'trending_up',
+    ),
+    'other': ReportCategory(
+      id: 'other',
+      label: 'Other',
+      description: 'Something else not covered above',
+      icon: 'help_circle',
+    ),
+  };
 }
 
 class ReportCategory {

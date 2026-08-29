@@ -15,11 +15,14 @@ class ServiceService {
   ''';
 
   /// Browse published services. Signed-out friendly (public read policy).
+  /// [institutionName] filters to listings restricted to that institution —
+  /// listings with no restriction ("All institutions") always match.
   static Future<List<Service>> getServices({
     String? categoryId,
     String? searchQuery,
     String? providerId,
     List<ServiceStatus>? statuses,
+    String? institutionName,
     String? tag,
     int? limit,
     int? offset,
@@ -43,6 +46,12 @@ class ServiceService {
     }
     if (tag != null && tag.isNotEmpty) {
       query = query.contains('search_tags', [tag]);
+    }
+    if (institutionName != null && institutionName.isNotEmpty) {
+      query = query.or(
+        'institution_codes.is.null,institution_codes.eq.{},'
+        'institution_codes.cs.{"$institutionName"}',
+      );
     }
     if (searchQuery != null && searchQuery.isNotEmpty) {
       query = query.or(
@@ -123,6 +132,7 @@ class ServiceService {
     String priceType = 'fixed',
     int? deliveryDays,
     List<String> imageUrls = const [],
+    List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
   }) async {
@@ -139,6 +149,7 @@ class ServiceService {
       'price_type': priceType,
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
+      'institution_codes': institutionCodes,
       'search_tags': searchTags,
       'status': ServiceStatus.active.name,
     }).select('id').single();
@@ -175,6 +186,7 @@ class ServiceService {
     String priceType = 'fixed',
     int? deliveryDays,
     List<String> imageUrls = const [],
+    List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
   }) async {
@@ -187,6 +199,7 @@ class ServiceService {
       'price_type': priceType,
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
+      'institution_codes': institutionCodes,
       'search_tags': searchTags,
     }).eq('id', serviceId);
 
@@ -222,5 +235,89 @@ class ServiceService {
           .map((p) => p.toJson(serviceId: serviceId))
           .toList(),
     );
+  }
+
+  // ------------------------------------------------------------
+  // Reviews
+  // ------------------------------------------------------------
+
+  static const _reviewSelect = '''
+    *,
+    reviewer:users!service_reviews_reviewer_id_fkey(full_name, avatar_url)
+  ''';
+
+  static Future<List<ServiceReview>> getServiceReviews(
+    String serviceId,
+  ) async {
+    final response = await SupabaseService.table('service_reviews')
+        .select(_reviewSelect)
+        .eq('service_id', serviceId)
+        .order('created_at', ascending: false);
+    return response
+        .map<ServiceReview>(
+          (row) => ServiceReview.fromJson(row),
+        )
+        .toList();
+  }
+
+  static Future<ServiceReview?> getUserServiceReview(
+    String serviceId,
+    String userId,
+  ) async {
+    final response = await SupabaseService.table('service_reviews')
+        .select(_reviewSelect)
+        .eq('service_id', serviceId)
+        .eq('reviewer_id', userId)
+        .maybeSingle();
+    return response == null ? null : ServiceReview.fromJson(response);
+  }
+
+  /// Creates (or replaces) the current user's review. The UNIQUE
+  /// (service_id, reviewer_id) constraint + upsert keeps one per user.
+  static Future<void> submitServiceReview({
+    required String serviceId,
+    required String providerId,
+    required int rating,
+    required String comment,
+  }) async {
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+
+    await SupabaseService.table('service_reviews').upsert(
+      {
+        'service_id': serviceId,
+        'reviewer_id': userId,
+        'rating': rating,
+        'comment': comment,
+      },
+      onConflict: 'service_id,reviewer_id',
+    );
+
+    // Notify the provider (best-effort, mirrors product reviews).
+    if (providerId != userId) {
+      try {
+        await SupabaseService.table('notifications').insert({
+          'user_id': providerId,
+          'title': 'New service review',
+          'body': 'Someone left a $rating-star review on your service.',
+          'type': 'review',
+        });
+      } catch (_) {}
+    }
+  }
+
+  static Future<void> updateServiceReview(
+    String reviewId, {
+    required int rating,
+    required String comment,
+  }) async {
+    await SupabaseService.table('service_reviews').update({
+      'rating': rating,
+      'comment': comment,
+    }).eq('id', reviewId);
+  }
+
+  static Future<void> deleteServiceReview(String reviewId) async {
+    await SupabaseService.table('service_reviews').delete().eq('id', reviewId);
   }
 }

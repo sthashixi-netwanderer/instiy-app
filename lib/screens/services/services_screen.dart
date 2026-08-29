@@ -33,6 +33,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       final prov = ref.read(serviceProvider);
       prov.loadServices();
       prov.loadCategories();
+      prov.loadInstitutions();
       if (ref.read(authProvider).isAuthenticated) {
         prov.checkServiceProviderStatus();
         prov.loadMyServices();
@@ -132,19 +133,40 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
 
   Widget _buildDiscoverTab(ServiceProvider serviceProv) {
     final services = serviceProv.services;
+    final institutionSelected = serviceProv.selectedInstitutionName != null;
     return Column(
       children: [
         Padding(
           padding: EdgeInsets.symmetric(horizontal: context.rw(16)),
-          child: ShadInput(
-            controller: _searchCtrl,
-            placeholder: const Text('Search services...'),
-            leading: Icon(LucideIcons.search, size: context.ri(20)),
-            textInputAction: TextInputAction.search,
-            onSubmitted: (value) {
-              ref.read(serviceProvider).setSearchQuery(value);
-              _loadServices();
-            },
+          child: Row(
+            children: [
+              Expanded(
+                child: ShadInput(
+                  controller: _searchCtrl,
+                  placeholder: const Text('Search services...'),
+                  leading: Icon(LucideIcons.search, size: context.ri(20)),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (value) {
+                    ref.read(serviceProvider).setSearchQuery(value);
+                    _loadServices();
+                  },
+                ),
+              ),
+              SizedBox(width: context.rw(8)),
+              ShadIconButton.outline(
+                icon: Badge(
+                  isLabelVisible: institutionSelected,
+                  child: Icon(
+                    LucideIcons.building,
+                    size: context.ri(18),
+                    color: institutionSelected
+                        ? AppTheme.accent
+                        : AppTheme.mutedSteel,
+                  ),
+                ),
+                onPressed: _showInstitutionFilterSheet,
+              ),
+            ],
           ),
         ),
         if (serviceProv.categories.isNotEmpty) ...[
@@ -221,7 +243,8 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
 
   Widget _buildDiscoverEmptyState() {
     final hasFilters = ref.read(serviceProvider).selectedCategoryId != null ||
-        ref.read(serviceProvider).searchQuery.isNotEmpty;
+        ref.read(serviceProvider).searchQuery.isNotEmpty ||
+        ref.read(serviceProvider).selectedInstitutionName != null;
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.5,
       child: Center(
@@ -312,6 +335,75 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                   ),
                 ),
               );
+  }
+
+  void _showInstitutionFilterSheet() {
+    final prov = ref.read(serviceProvider);
+    showShadSheet(
+      context: context,
+      builder: (ctx) {
+        return ShadSheet(
+          title: const Text('Filter by institution'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: prov.institutions.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      final selected =
+                          prov.selectedInstitutionName == null;
+                      return ListTile(
+                        leading: const Icon(LucideIcons.globe),
+                        title: const Text('All institutions'),
+                        trailing: selected
+                            ? Icon(
+                                LucideIcons.check,
+                                size: context.ri(18),
+                                color: AppTheme.accent,
+                              )
+                            : null,
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          ref.read(serviceProvider).setInstitution(null);
+                        },
+                      );
+                    }
+                    final institution = prov.institutions[index - 1];
+                    final selected =
+                        prov.selectedInstitutionName == institution.name;
+                    return ListTile(
+                      leading: const Icon(LucideIcons.building),
+                      title: Text(
+                        institution.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: selected
+                          ? Icon(
+                              LucideIcons.check,
+                              size: context.ri(18),
+                              color: AppTheme.accent,
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        ref
+                            .read(serviceProvider)
+                            .setInstitution(institution.name);
+                      },
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: context.rh(8)),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildSignInPrompt() {

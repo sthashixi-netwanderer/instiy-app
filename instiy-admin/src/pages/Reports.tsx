@@ -15,6 +15,7 @@ import {
 	Circle,
 	ShieldAlert,
 	Mail,
+	Briefcase,
 } from "lucide-react";
 import {
 	Dialog,
@@ -53,6 +54,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 	product_scam: "Scam / Fraud",
 	stolen_property: "Stolen Property",
 	price_gouging: "Price Gouging",
+	misleading_service: "Misleading Service",
+	service_scam: "Service Scam / Fraud",
 	other: "Other",
 };
 
@@ -70,6 +73,8 @@ const CATEGORY_COLORS: Record<string, string> = {
 	prohibited_item: "hsl(0, 80%, 45%)",
 	stolen_property: "hsl(270, 70%, 50%)",
 	price_gouging: "hsl(40, 90%, 45%)",
+	misleading_service: "hsl(25, 85%, 50%)",
+	service_scam: "hsl(30, 90%, 50%)",
 	other: "hsl(220, 10%, 50%)",
 };
 
@@ -114,8 +119,10 @@ export const Reports: React.FC = () => {
 				id: row.report_id,
 				category: row.category,
 				description: row.description,
+				evidence_urls: (row.evidence_urls as string[] | null) || [],
 				conversation_id: row.conversation_id,
 				product_id: row.product_id,
+				service_id: row.service_id,
 				status: row.status,
 				admin_notes: row.admin_notes,
 				is_read: row.is_read,
@@ -140,6 +147,15 @@ export const Reports: React.FC = () => {
 							title: row.product_title,
 							images: row.product_image ? [row.product_image] : [],
 							price: row.product_price,
+						}
+					: null,
+				service: row.service_id
+					? {
+							id: row.service_id,
+							title: row.service_title,
+							images: row.service_image ? [row.service_image] : [],
+							price: row.service_price,
+							status: row.service_status,
 						}
 					: null,
 				complaint: row.complaint_id
@@ -941,6 +957,69 @@ export const Reports: React.FC = () => {
 													)}
 												</div>
 											</div>
+										) : r.service ? (
+											<div
+												style={{
+													display: "flex",
+													alignItems: "center",
+													gap: "0.5rem",
+												}}
+											>
+												{r.service.images?.[0] ? (
+													<img
+														src={r.service.images[0]}
+														alt=""
+														style={{
+															width: "34px",
+															height: "34px",
+															borderRadius: "6px",
+															objectFit: "cover",
+															border: "1px solid hsl(var(--border))",
+														}}
+													/>
+												) : (
+													<div
+														style={{
+															width: "34px",
+															height: "34px",
+															borderRadius: "6px",
+															background: "hsl(var(--bg-surface))",
+															display: "flex",
+															alignItems: "center",
+															justifyContent: "center",
+														}}
+													>
+														<Briefcase
+															size={14}
+															style={{ color: "hsl(var(--text-tertiary))" }}
+														/>
+													</div>
+												)}
+												<div>
+													<div
+														style={{
+															fontWeight: 600,
+															fontSize: "0.82rem",
+															maxWidth: "140px",
+															overflow: "hidden",
+															textOverflow: "ellipsis",
+															whiteSpace: "nowrap",
+														}}
+													>
+														{r.service.title}
+													</div>
+													{r.service.price != null && (
+														<div
+															style={{
+																fontSize: "0.72rem",
+																color: "hsl(var(--text-tertiary))",
+															}}
+														>
+															GH&#162; {formatCurrency(r.service.price)}
+														</div>
+													)}
+												</div>
+											</div>
 										) : (
 											<span
 												style={{
@@ -1251,8 +1330,8 @@ export const Reports: React.FC = () => {
 							</div>
 						)}
 
-						{/* Reported Product (if product report) */}
-						{selectedReport.product && (
+						{/* Reported Listing (product or service report) */}
+						{(selectedReport.product || selectedReport.service) && (
 							<div
 								className="card"
 								style={{ background: "hsl(var(--bg-surface))" }}
@@ -1276,63 +1355,171 @@ export const Reports: React.FC = () => {
 										gap: "0.75rem",
 									}}
 								>
-									{selectedReport.product.images?.[0] ? (
-										<img
-											src={selectedReport.product.images[0]}
-											alt=""
-											style={{
-												width: "56px",
-												height: "56px",
-												borderRadius: "8px",
-												objectFit: "cover",
-												border: "1px solid hsl(var(--border))",
-											}}
-										/>
-									) : (
-										<div
-											style={{
-												width: "56px",
-												height: "56px",
-												borderRadius: "8px",
-												background: "hsl(var(--border))",
-												display: "flex",
-												alignItems: "center",
-												justifyContent: "center",
-											}}
-										>
-											<Package
-												size={20}
-												style={{ color: "hsl(var(--text-tertiary))" }}
-											/>
-										</div>
-									)}
-									<div>
-										<div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
-											{selectedReport.product.title}
-										</div>
-										{selectedReport.product.price != null && (
-											<div
-												style={{
-													fontSize: "0.85rem",
-													color: "hsl(var(--accent))",
-													fontWeight: 600,
-												}}
-											>
-												GH&#162;{" "}
-												{formatCurrency(selectedReport.product.price)}
+									{selectedReport.product && !selectedReport.service ? (
+										<>
+											{selectedReport.product.images?.[0] ? (
+												<img
+													src={selectedReport.product.images[0]}
+													alt=""
+													style={{
+														width: "56px",
+														height: "56px",
+														borderRadius: "8px",
+														objectFit: "cover",
+														border: "1px solid hsl(var(--border))",
+													}}
+												/>
+											) : (
+												<div
+													style={{
+														width: "56px",
+														height: "56px",
+														borderRadius: "8px",
+														background: "hsl(var(--border))",
+														display: "flex",
+														alignItems: "center",
+														justifyContent: "center",
+													}}
+												>
+													<Package
+														size={20}
+														style={{ color: "hsl(var(--text-tertiary))" }}
+													/>
+												</div>
+											)}
+											<div>
+												<div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+													{selectedReport.product.title}
+												</div>
+												{selectedReport.product.price != null && (
+													<div
+														style={{
+															fontSize: "0.85rem",
+															color: "hsl(var(--accent))",
+															fontWeight: 600,
+														}}
+													>
+														GH&#162;{" "}
+														{formatCurrency(selectedReport.product.price)}
+													</div>
+												)}
+												<a
+													href={`/products?id=${selectedReport.product.id}`}
+													style={{
+														fontSize: "0.75rem",
+														color: "hsl(var(--accent))",
+														textDecoration: "none",
+													}}
+												>
+													View product &rarr;
+												</a>
 											</div>
-										)}
-										<a
-											href={`/products?id=${selectedReport.product.id}`}
-											style={{
-												fontSize: "0.75rem",
-												color: "hsl(var(--accent))",
-												textDecoration: "none",
-											}}
-										>
-											View product &rarr;
+										</>
+									) : (
+										<>
+											{selectedReport.service.images?.[0] ? (
+												<img
+													src={selectedReport.service.images[0]}
+													alt=""
+													style={{
+														width: "56px",
+														height: "56px",
+														borderRadius: "8px",
+														objectFit: "cover",
+														border: "1px solid hsl(var(--border))",
+													}}
+												/>
+											) : (
+												<div
+													style={{
+														width: "56px",
+														height: "56px",
+														borderRadius: "8px",
+														background: "hsl(var(--border))",
+														display: "flex",
+														alignItems: "center",
+														justifyContent: "center",
+													}}
+												>
+													<Briefcase
+														size={20}
+														style={{ color: "hsl(var(--text-tertiary))" }}
+													/>
+												</div>
+											)}
+											<div>
+												<div style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+													{selectedReport.service.title}
+												</div>
+												{selectedReport.service.price != null && (
+													<div
+														style={{
+															fontSize: "0.85rem",
+															color: "hsl(var(--accent))",
+															fontWeight: 600,
+														}}
+													>
+														GH&#162;{" "}
+														{formatCurrency(selectedReport.service.price)}
+													</div>
+												)}
+												<a
+													href={`/services?id=${selectedReport.service.id}`}
+													style={{
+														fontSize: "0.75rem",
+														color: "hsl(var(--accent))",
+														textDecoration: "none",
+													}}
+												>
+													View service &rarr;
+												</a>
+											</div>
+										</>
+									)}
+								</div>
+							</div>
+						)}
+
+						{/* Evidence images attached by the reporter */}
+						{selectedReport.evidence_urls?.length > 0 && (
+							<div
+								className="card"
+								style={{ background: "hsl(var(--bg-surface))" }}
+							>
+								<h4
+									style={{
+										fontSize: "0.78rem",
+										color: "hsl(var(--text-tertiary))",
+										textTransform: "uppercase",
+										letterSpacing: "0.05em",
+										fontWeight: 600,
+										marginBottom: "0.75rem",
+									}}
+								>
+									Evidence ({selectedReport.evidence_urls.length})
+								</h4>
+								<div
+									style={{
+										display: "grid",
+										gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))",
+										gap: "0.5rem",
+									}}
+								>
+									{selectedReport.evidence_urls.map((url: string, i: number) => (
+										<a key={i} href={url} target="_blank" rel="noreferrer">
+											<img
+												src={url}
+												alt={`Evidence ${i + 1}`}
+												style={{
+													width: "100%",
+													height: "72px",
+													borderRadius: "6px",
+													objectFit: "cover",
+													border: "1px solid hsl(var(--border))",
+												}}
+											/>
 										</a>
-									</div>
+									))}
 								</div>
 							</div>
 						)}
@@ -1375,6 +1562,21 @@ export const Reports: React.FC = () => {
 													}}
 												>
 													<Package size={12} /> Product Report
+												</span>,
+											]
+										: selectedReport.service_id
+										? [
+												"Type",
+												<span
+													key="type"
+													style={{
+														display: "inline-flex",
+														alignItems: "center",
+														gap: 4,
+														fontWeight: 500,
+													}}
+												>
+													<Briefcase size={12} /> Service Report
 												</span>,
 											]
 										: null,

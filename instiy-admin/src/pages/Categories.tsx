@@ -31,6 +31,7 @@ export const Categories: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'' | 'product' | 'service'>('');
   const { showAlert, AlertComponent } = useAlert();
   const { showConfirm, ConfirmComponent } = useConfirm();
 
@@ -153,10 +154,11 @@ export const Categories: React.FC = () => {
     return gradients[index % gradients.length];
   };
 
-  const filteredCategories = categories.filter(cat => 
-    cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (cat.slug && cat.slug.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (cat.type && cat.type.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredCategories = categories.filter(cat =>
+    (!typeFilter || (cat.type || 'product') === typeFilter)
+    && (cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (cat.slug && cat.slug.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (cat.type && cat.type.toLowerCase().includes(searchQuery.toLowerCase())))
   );
 
   return (
@@ -164,7 +166,7 @@ export const Categories: React.FC = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Categories</h1>
-          <p style={{ color: 'hsl(var(--text-tertiary))', marginTop: '0.25rem', fontSize: '0.85rem' }}>Manage product catalog categories</p>
+          <p style={{ color: 'hsl(var(--text-tertiary))', marginTop: '0.25rem', fontSize: '0.85rem' }}>Manage product & service catalog categories</p>
         </div>
         <div style={{ display: 'flex', gap: '0.625rem' }}>
           <input type="file" accept=".csv" style={{ display: 'none' }} id="csv-file-input" onChange={handleImportCSV} />
@@ -174,11 +176,17 @@ export const Categories: React.FC = () => {
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
             <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--text-tertiary))' }} />
             <input type="text" className="form-control" style={{ paddingLeft: '2.25rem' }}
               placeholder="Search by category name, slug, or type..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          </div>
+          <div style={{ display: 'flex', gap: '0.375rem' }}>
+            {([['', 'All'], ['product', 'Products'], ['service', 'Services']] as const).map(([value, label]) => (
+              <button key={value} className={`btn btn-sm ${typeFilter === value ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setTypeFilter(value)}>{label}</button>
+            ))}
           </div>
         </div>
       </div>

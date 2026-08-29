@@ -11,6 +11,7 @@ import '../../models/picked_media.dart';
 import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../widgets/image_picker_sheet.dart';
+import '../../widgets/multi_institution_picker.dart';
 
 /// Service creation wizard (Fiverr-style). Also handles editing when
 /// [existingService] is provided. Reachable only from the Services screen.
@@ -78,6 +79,12 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   Category? _selectedCategory;
   List<Category> _categories = [];
 
+  /// Institution names restricting where the listing shows. Empty + not
+  /// [_allInstitutions] means unrestricted ("All institutions"), same rule
+  /// as product listings.
+  List<String> _selectedInstitutions = [];
+  bool _allInstitutions = true;
+
   final List<PickedMedia> _newImages = [];
   List<String> _existingImageUrls = [];
 
@@ -119,6 +126,12 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       _selectedCategory = _categories
           .where((c) => c.id == existing.categoryId)
           .firstOrNull;
+      if (existing.institutionCodes.isEmpty) {
+        _allInstitutions = true;
+      } else {
+        _allInstitutions = false;
+        _selectedInstitutions = [...existing.institutionCodes];
+      }
       for (final draft in _packages) {
         final match = existing.packages
             .where((p) => p.tier == draft.tier)
@@ -162,6 +175,9 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           return 'Give your service a title of at least 8 characters';
         }
         if (_selectedCategory == null) return 'Pick a category';
+        if (!_allInstitutions && _selectedInstitutions.isEmpty) {
+          return 'Pick at least one institution, or switch to all institutions';
+        }
         if (_parsedTags.length > 8) return 'Use at most 8 search tags';
         return null;
       case 1:
@@ -236,6 +252,10 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       final deliveryDays = packageModels
           .map((p) => p.deliveryDays)
           .reduce((a, b) => a < b ? a : b);
+      // "All institutions" persists as an empty list (matches products).
+      final institutionCodes = _allInstitutions
+          ? <String>[]
+          : List<String>.from(_selectedInstitutions);
 
       final provider = ref.read(serviceProvider);
       final existing = widget.existingService;
@@ -248,6 +268,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               price: startingPrice,
               deliveryDays: deliveryDays,
               imageUrls: imageUrls,
+              institutionCodes: institutionCodes,
               searchTags: _parsedTags,
               packages: packageModels,
             )
@@ -260,6 +281,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               price: startingPrice,
               deliveryDays: deliveryDays,
               imageUrls: imageUrls,
+              institutionCodes: institutionCodes,
               searchTags: _parsedTags,
               packages: packageModels,
             );
@@ -470,6 +492,27 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           ),
         ),
         SizedBox(height: context.rh(16)),
+        Text(
+          'Availability',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: context.rsp(14),
+            color: AppTheme.charcoalInk,
+          ),
+        ),
+        SizedBox(height: context.rh(8)),
+        _buildAllInstitutionsToggle(),
+        if (!_allInstitutions) ...[
+          SizedBox(height: context.rh(10)),
+          MultiInstitutionPicker(
+            selectedValues: _selectedInstitutions,
+            onChanged: (values) =>
+                setState(() => _selectedInstitutions = values),
+            label: 'Institutions *',
+            hint: 'Select institutions...',
+          ),
+        ],
+        SizedBox(height: context.rh(16)),
         ShadInputFormField(
           id: 'tags',
           controller: _tagsCtrl,
@@ -478,6 +521,85 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           textInputAction: TextInputAction.done,
         ),
       ],
+    );
+  }
+
+  Widget _buildAllInstitutionsToggle() {
+    return GestureDetector(
+      onTap: () => setState(() {
+        _allInstitutions = !_allInstitutions;
+        if (_allInstitutions) _selectedInstitutions = [];
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: context.rAll(14),
+        decoration: BoxDecoration(
+          color: _allInstitutions
+              ? AppTheme.accent.withValues(alpha: 0.08)
+              : AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rr(12)),
+          border: Border.all(
+            color: _allInstitutions
+                ? AppTheme.accent.withValues(alpha: 0.5)
+                : AppTheme.whisperBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: context.rAll(10),
+              decoration: BoxDecoration(
+                color: _allInstitutions
+                    ? AppTheme.accent.withValues(alpha: 0.15)
+                    : AppTheme.warmMist,
+                borderRadius: BorderRadius.circular(context.rr(10)),
+              ),
+              child: Icon(
+                LucideIcons.globe,
+                size: context.ri(18),
+                color: _allInstitutions
+                    ? AppTheme.accent
+                    : AppTheme.mutedSteel,
+              ),
+            ),
+            SizedBox(width: context.rw(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'All institutions',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: context.rsp(14),
+                      color: _allInstitutions
+                          ? AppTheme.accent
+                          : AppTheme.charcoalInk,
+                    ),
+                  ),
+                  SizedBox(height: context.rh(2)),
+                  Text(
+                    'Customers at any institution can find this service',
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              _allInstitutions
+                  ? LucideIcons.checkCircle2
+                  : LucideIcons.circle,
+              size: context.ri(20),
+              color: _allInstitutions
+                  ? AppTheme.accent
+                  : AppTheme.mutedSteel,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
