@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../providers/sound_provider.dart';
+import '../../services/background_call_service.dart';
 import '../../services/wallet_lock_service.dart';
 import '../../utils/responsive.dart';
 
@@ -22,6 +23,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   late TabController _tabController;
   bool _walletLockEnabled = false;
   bool _deviceSupported = false;
+  bool _backgroundCallsSupported = false;
+  bool _backgroundCallsEnabled = false;
   final Map<String, bool> _screenLocks = {};
 
   static const _screenConfig = [
@@ -62,6 +65,34 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   void _loadSettings() {
     _loadWalletLockState();
     ref.read(soundProvider).initialize();
+    _loadBackgroundCallsState();
+  }
+
+  void _loadBackgroundCallsState() {
+    final service = BackgroundCallService.instance;
+    setState(() {
+      _backgroundCallsSupported = service.isSupported;
+      _backgroundCallsEnabled = service.isEnabled;
+    });
+  }
+
+  Future<void> _onBackgroundCallsChanged(bool value) async {
+    final service = BackgroundCallService.instance;
+    final accepted = await service.setEnabled(value);
+    if (!mounted) return;
+    if (!accepted) {
+      // The user backed out of the permission dialog — keep the toggle off.
+      setState(() => _backgroundCallsEnabled = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Notification permission is required to receive calls in the background.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _backgroundCallsEnabled = value);
   }
 
   @override
@@ -243,6 +274,52 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
             ],
           ),
         ),
+        if (_backgroundCallsSupported) ...[
+          SizedBox(height: context.rh(12)),
+          Container(
+            padding: context.rAll(16),
+            decoration: BoxDecoration(
+              color: AppTheme.pureSurface,
+              borderRadius: BorderRadius.circular(context.rr(16)),
+              border: Border.all(color: AppTheme.whisperBorder),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.phoneCall, color: AppTheme.mutedSteel),
+                SizedBox(width: context.rw(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Receive Calls in Background',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.charcoalInk,
+                        ),
+                      ),
+                      SizedBox(height: context.rh(2)),
+                      Text(
+                        'Keep Instiy connected while the app is in the background so '
+                        'calls ring your device like a normal call. You will be asked '
+                        'to remove battery restrictions (unrestricted mode).',
+                        style: TextStyle(
+                          fontSize: context.rsp(12),
+                          color: AppTheme.mutedSteel,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _backgroundCallsEnabled,
+                  onChanged: _onBackgroundCallsChanged,
+                  activeThumbColor: AppTheme.accent,
+                ),
+              ],
+            ),
+          ),
+        ],
         SizedBox(height: context.rh(24)),
         Text(
           'Notification Sound',

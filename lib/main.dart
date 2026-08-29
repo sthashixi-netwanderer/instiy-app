@@ -13,6 +13,7 @@ import 'services/announcement_observer.dart';
 import 'providers/announcement_provider.dart';
 import 'providers/providers.dart';
 import 'services/secrets_service.dart';
+import 'services/background_call_service.dart';
 import 'services/local_notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -125,6 +126,14 @@ Future<void> _initializeApp() async {
   unawaited(
     _container.read(callProvider.notifier).ensureInitialized().catchError((e) {
       debugPrint('CallController init failed: $e');
+    }),
+  );
+
+  // User-controlled background mode: keeps the app connected while
+  // backgrounded (Android foreground service) so calls still come in.
+  unawaited(
+    BackgroundCallService.instance.ensureInitialized().catchError((e) {
+      debugPrint('BackgroundCallService init failed: $e');
     }),
   );
 }

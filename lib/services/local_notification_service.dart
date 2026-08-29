@@ -53,6 +53,13 @@ class LocalNotificationService {
   static const _callChannelName = 'Incoming Calls';
   static const _callChannelDesc = 'Full-screen incoming voice and video calls';
 
+  // Variant used when the app is alive and drives the ringing itself (device
+  // call ringer) — the notification must not add its own sound on top.
+  static const _silentCallChannelId = 'instiy_incoming_call_channel_silent';
+  static const _silentCallChannelName = 'Incoming Calls (In-App Ringing)';
+  static const _silentCallChannelDesc =
+      'Incoming calls rung by the app — no notification sound';
+
   static const _soundEnabledKey = 'notification_sound_enabled';
 
   static void Function(String action, Map<String, dynamic> data)? onCallActionReceived;
@@ -116,6 +123,19 @@ class LocalNotificationService {
           description: _callChannelDesc,
           importance: Importance.max,
           playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.voiceCommunication,
+        ),
+      );
+
+      // Silent twin of the call channel for calls the app rings itself.
+      await androidImpl.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _silentCallChannelId,
+          _silentCallChannelName,
+          description: _silentCallChannelDesc,
+          importance: Importance.max,
+          playSound: false,
           enableVibration: true,
           audioAttributesUsage: AudioAttributesUsage.voiceCommunication,
         ),
@@ -426,12 +446,17 @@ class LocalNotificationService {
   }
 
   /// Show a full-screen WhatsApp-style incoming call notification.
+  ///
+  /// [silent] suppresses the OS notification sound — use it when the app is
+  /// alive and already ringing the device ringer itself, so the two don't
+  /// play on top of each other.
   static Future<void> showIncomingCallNotification({
     required String callId,
     required String callerName,
     required String callType,
     String? callerAvatar,
     String? callerId,
+    bool silent = false,
   }) async {
     if (kIsWeb) return;
     if (!_initialized) await initialize();
@@ -457,9 +482,10 @@ class LocalNotificationService {
     } catch (_) {}
 
     final androidDetails = AndroidNotificationDetails(
-      _callChannelId,
-      _callChannelName,
-      channelDescription: _callChannelDesc,
+      silent ? _silentCallChannelId : _callChannelId,
+      silent ? _silentCallChannelName : _callChannelName,
+      channelDescription:
+          silent ? _silentCallChannelDesc : _callChannelDesc,
       importance: Importance.max,
       priority: Priority.max,
       category: AndroidNotificationCategory.call,
@@ -468,6 +494,7 @@ class LocalNotificationService {
       ongoing: true,
       autoCancel: false,
       timeoutAfter: 45000,
+      playSound: !silent,
       icon: '@drawable/ic_notification',
       color: const Color(0xFF7C3AED),
       largeIcon: tempFilePath != null

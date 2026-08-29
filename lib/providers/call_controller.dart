@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -20,7 +22,9 @@ class CallController extends ChangeNotifier {
 
   final CallSignalingService _signaling = CallSignalingService.instance;
   final AudioPlayer _ringPlayer = AudioPlayer();
+  final FlutterRingtonePlayer _deviceRinger = FlutterRingtonePlayer();
   final Uuid _uuid = const Uuid();
+  bool _deviceRingerActive = false;
 
   CallSession? _session;
   DateTime? _connectedAt;
@@ -404,7 +408,8 @@ class CallController extends ChangeNotifier {
     // Notify caller that receiver's device received the call and is ringing
     unawaited(_send('ringing', {'call_id': callId, 'by': me}));
 
-    // Show full-screen WhatsApp-style incoming call notification
+    // Show full-screen WhatsApp-style incoming call notification (silent —
+    // the device ringer started below is the sound source).
     unawaited(
       LocalNotificationService.showIncomingCallNotification(
         callId: callId,
@@ -412,6 +417,7 @@ class CallController extends ChangeNotifier {
         callType: type == CallType.video ? 'video' : 'voice',
         callerAvatar: callerAvatar,
         callerId: callerId,
+        silent: !kIsWeb && Platform.isAndroid,
       ),
     );
 
@@ -715,6 +721,7 @@ class CallController extends ChangeNotifier {
         _leaveAndDispose();
         _showEnded(CallEndReason.noAnswer);
       } else if (session.isIncoming) {
+        _stopSound();
         _leaveAndDispose();
         _goIdle();
       }
@@ -727,6 +734,23 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _playSound({required bool outgoing}) async {
+    // Incoming calls ring through the device's own call ringer (the user's
+    // ringtone, volume and silent-mode handling) instead of an in-app sound.
+    if (!outgoing && !kIsWeb && Platform.isAndroid) {
+      try {
+        _deviceRingerActive = true;
+        await _deviceRinger.play(
+          android: AndroidSounds.ringtone,
+          looping: true,
+          asAlarm: false,
+        );
+        return;
+      } catch (e) {
+        _deviceRingerActive = false;
+        debugPrint('CallController: device ringer failed, falling back: $e');
+      }
+    }
+
     try {
       await _ringPlayer.setVolume(outgoing ? 0.35 : 0.9);
       await _ringPlayer.play(AssetSource('sounds/notification_alert.mp3'));
@@ -736,6 +760,12 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _stopSound() async {
+    if (_deviceRingerActive) {
+      _deviceRingerActive = false;
+      try {
+        await _deviceRinger.stop();
+      } catch (_) {}
+    }
     try {
       await _ringPlayer.stop();
     } catch (_) {}
@@ -845,6 +875,7 @@ class CallController extends ChangeNotifier {
 
   Future<void> _leaveAndDispose() async {
     _cancelNotification(_session?.id);
+    unawaited(_stopSound());
     await _leaveChannel();
     await _teardownMedia();
   }
