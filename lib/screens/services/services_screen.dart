@@ -7,6 +7,7 @@ import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/adaptive_nav.dart';
+import '../../widgets/ai_enhance_button.dart';
 import '../../widgets/required_label.dart';
 import '../../models/service_model.dart';
 import '../../services/ai_service.dart';
@@ -743,7 +744,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     final bioCtrl = TextEditingController(
       text: ref.read(serviceProvider).providerBio ?? '',
     );
-    var enhancing = false;
     final confirmed = await showShadSheet<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -766,48 +766,9 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
               ),
               SizedBox(height: context.rh(8)),
               // AI enhancer — bottom-right of the bio field.
-              Align(
-                alignment: Alignment.centerRight,
-                child: ShadButton.outline(
-                  size: ShadButtonSize.sm,
-                  onPressed: enhancing || bioCtrl.text.trim().isEmpty
-                      ? null
-                      : () async {
-                          final original = bioCtrl.text.trim();
-                          setSheetState(() => enhancing = true);
-                          try {
-                            final enhanced = await AIService
-                                .enhanceProviderBio(original);
-                            if (enhanced == null || enhanced.isEmpty) {
-                              throw Exception('empty response');
-                            }
-                            bioCtrl.text = enhanced;
-                          } catch (_) {
-                            if (mounted) {
-                              ShadToaster.of(context).show(
-                                const ShadToast(
-                                  title: Text(
-                                    'Couldn\'t enhance right now — try again',
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                          setSheetState(() => enhancing = false);
-                        },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.sparkles,
-                        size: context.ri(14),
-                        color: AppTheme.accent,
-                      ),
-                      SizedBox(width: context.rw(6)),
-                      Text(enhancing ? 'Enhancing…' : 'Enhance with AI'),
-                    ],
-                  ),
-                ),
+              AiEnhanceButton(
+                controller: bioCtrl,
+                enhance: AIService.enhanceProviderBio,
               ),
               SizedBox(height: context.rh(14)),
               Row(

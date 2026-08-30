@@ -385,7 +385,32 @@ Rules:
 
 Bio: $bio
 ''';
+    return _textCompletion(prompt, config);
+  }
 
+  /// Rewrites a service listing description into a clear, compelling
+  /// marketplace description. Text-only; returns null when AI is
+  /// unavailable or every key fails.
+  static Future<String?> enhanceServiceDescription(String description) async {
+    final config = await loadConfig();
+    if (config == null) return null;
+
+    final prompt = '''
+Rewrite the following service listing description so it sells the service professionally.
+Rules:
+- Keep it under 150 words; use short paragraphs or simple bullet lines starting with "- ".
+- Cover what the customer gets, how the process works, and what you need from them — only as far as the original text implies. Do not invent prices, guarantees or credentials.
+- Confident and friendly; write in first person if the original is.
+- No emojis, no hashtags, no quotation marks around the output.
+- Return ONLY the rewritten description, nothing else.
+
+Description: $description
+''';
+    return _textCompletion(prompt, config);
+  }
+
+  /// Plain-text completion across whichever provider/key answers first.
+  static Future<String?> _textCompletion(String prompt, AIConfig config) async {
     for (final apiKey in config.apiKeys) {
       try {
         if (config.provider == 'gemini') {
@@ -444,7 +469,7 @@ Bio: $bio
           if (text.trim().isNotEmpty) return text.trim();
         }
       } catch (e) {
-        debugPrint('Bio enhance call failed (${config.provider}): $e');
+        debugPrint('AI text completion failed (${config.provider}): $e');
       }
     }
     return null;

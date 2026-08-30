@@ -12,7 +12,9 @@ import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/multi_institution_picker.dart';
+import '../../widgets/ai_enhance_button.dart';
 import '../../widgets/required_label.dart';
+import '../../services/ai_service.dart';
 
 /// Service creation wizard (Fiverr-style). Also handles editing when
 /// [existingService] is provided. Reachable only from the Services screen.
@@ -715,7 +717,13 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           maxLines: 6,
           keyboardType: TextInputType.multiline,
         ),
-        SizedBox(height: context.rh(16)),
+        SizedBox(height: context.rh(8)),
+        // AI enhancer — bottom-right of the description field.
+        AiEnhanceButton(
+          controller: _descCtrl,
+          enhance: AIService.enhanceServiceDescription,
+        ),
+        SizedBox(height: context.rh(8)),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [

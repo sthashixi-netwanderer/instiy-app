@@ -576,10 +576,31 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                   SizedBox(height: context.rh(4)),
                   Text(
                     service.providerBio!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: context.rsp(12),
                       color: AppTheme.mutedSteel,
                       height: 1.4,
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.ghost(
+                      size: ShadButtonSize.sm,
+                      foregroundColor: AppTheme.accent,
+                      onPressed: () => _showProviderBioSheet(service),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Read full bio',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(LucideIcons.chevronRight, size: 14),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -587,6 +608,36 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Full provider bio in a scrollable sheet.
+  void _showProviderBioSheet(Service service) {
+    showShadSheet(
+      context: context,
+      builder: (ctx) => ShadSheet(
+        title: Text(
+          'About ${service.providerName ?? 'the provider'}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            context.rw(16),
+            context.rh(4),
+            context.rw(16),
+            context.rh(16),
+          ),
+          child: Text(
+            service.providerBio ?? '',
+            style: TextStyle(
+              fontSize: context.rsp(14),
+              color: AppTheme.charcoalInk,
+              height: 1.6,
+            ),
+          ),
+        ),
       ),
     );
   }
