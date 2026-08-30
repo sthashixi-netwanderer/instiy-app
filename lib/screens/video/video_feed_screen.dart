@@ -348,6 +348,9 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
 
   Future<void> _initVideo() async {
     if (_controller != null && _isInitialized) {
+      // Only autoplay when the feed is actually on screen — the user may
+      // have navigated away while this item was being rebuilt.
+      if (!widget.canPlay.value) return;
       _controller!.play(); // ignore: unawaited_futures
       setState(() {
         _isPlaying = true;
@@ -396,7 +399,9 @@ class _VideoFeedItemState extends ConsumerState<VideoFeedItem> with SingleTicker
           _isMuted = !hasAudio; // auto-mute if no audio
         });
         _controller!.setVolume(hasAudio ? 1.0 : 0.0); // ignore: unawaited_futures
-        if (widget.isActive) {
+        // initialize() can complete after the user has already navigated
+        // away — never start playback unless the feed is on screen.
+        if (widget.isActive && widget.canPlay.value) {
           _controller!.play(); // ignore: unawaited_futures
           setState(() => _isPlaying = true);
           if (!_isOwnProduct) {
