@@ -2697,6 +2697,7 @@ class _ProductReferenceCard extends StatelessWidget {
     final imageUrl = reference['image_url'] as String?;
     final title = reference['title'] as String? ?? '';
     final price = (reference['price'] as num?)?.toDouble() ?? 0;
+    final isService = (reference['type'] as String?) == 'service';
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
@@ -2751,7 +2752,10 @@ class _ProductReferenceCard extends StatelessWidget {
                 color: AppTheme.warmMist,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(LucideIcons.package, color: AppTheme.mutedSteel),
+              child: Icon(
+                isService ? LucideIcons.briefcaseBusiness : LucideIcons.package,
+                color: AppTheme.mutedSteel,
+              ),
             ),
           const SizedBox(width: 10),
           Expanded(
@@ -2770,13 +2774,40 @@ class _ProductReferenceCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  formatGhs(price),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: chatColor,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        formatGhs(price),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: chatColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (isService) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: chatColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Service',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: chatColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -3363,10 +3394,14 @@ class _InlineProductCard extends StatelessWidget {
     final price = (reference.price as num?)?.toDouble() ?? 0;
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
     final productId = reference.productId as String?;
+    final isService = reference.isService == true;
 
     return GestureDetector(
       onTap: productId != null
-          ? () => Navigator.of(context).pushNamed('/product', arguments: productId)
+          ? () => Navigator.of(context).pushNamed(
+              isService ? '/service-detail' : '/product',
+              arguments: productId,
+            )
           : null,
       child: Container(
       width: double.infinity,
@@ -3425,7 +3460,11 @@ class _InlineProductCard extends StatelessWidget {
                           color: AppTheme.mutedSteel.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Icon(LucideIcons.package, size: 20, color: AppTheme.mutedSteel),
+                        child: Icon(
+                          isService ? LucideIcons.briefcaseBusiness : LucideIcons.package,
+                          size: 20,
+                          color: AppTheme.mutedSteel,
+                        ),
                       ),
                     Expanded(
                       child: Column(
@@ -3443,13 +3482,44 @@ class _InlineProductCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            formatGhs(price),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: isMe ? Colors.white.withValues(alpha: 0.9) : chatColor,
-                            ),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  formatGhs(price),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: isMe ? Colors.white.withValues(alpha: 0.9) : chatColor,
+                                  ),
+                                ),
+                              ),
+                              if (isService) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isMe
+                                        ? Colors.white.withValues(alpha: 0.15)
+                                        : chatColor.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'Service',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: isMe
+                                          ? Colors.white.withValues(alpha: 0.9)
+                                          : chatColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -3462,13 +3532,13 @@ class _InlineProductCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Icon(
-                        LucideIcons.externalLink,
+                        isService ? LucideIcons.briefcaseBusiness : LucideIcons.externalLink,
                         size: 11,
                         color: isMe ? Colors.white.withValues(alpha: 0.7) : chatColor,
                       ),
                       const SizedBox(width: 3),
                       Text(
-                        'View Product',
+                        isService ? 'View Service' : 'View Product',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,

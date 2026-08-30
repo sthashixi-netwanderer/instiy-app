@@ -93,12 +93,20 @@ class ProductReference {
   final double price;
   final String? imageUrl;
 
+  /// What the reference points at: 'product' (the default — legacy
+  /// messages without a type) or 'service'. Drives where the chat's
+  /// reference card navigates.
+  final String type;
+
   ProductReference({
     required this.productId,
     required this.title,
     required this.price,
     this.imageUrl,
+    this.type = 'product',
   });
+
+  bool get isService => type == 'service';
 
   factory ProductReference.fromJson(Map<String, dynamic> json) {
     return ProductReference(
@@ -106,6 +114,7 @@ class ProductReference {
       title: json['title'] as String,
       price: (json['price'] as num).toDouble(),
       imageUrl: json['image_url'] as String?,
+      type: json['type'] as String? ?? 'product',
     );
   }
 
@@ -115,6 +124,7 @@ class ProductReference {
       'title': title,
       'price': price,
       'image_url': imageUrl,
+      'type': type,
     };
   }
 }

@@ -10,6 +10,7 @@ import '../../models/service_model.dart';
 import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../widgets/service_review_section.dart';
+import '../../widgets/media_viewer.dart';
 import '../messages/messages_screen.dart';
 import 'service_report_screen.dart';
 
@@ -390,12 +391,19 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             child: PageView.builder(
               itemCount: images.length,
               onPageChanged: (i) => setState(() => _galleryPage = i),
-              itemBuilder: (context, index) => CachedNetworkImage(
-                imageUrl: images[index],
-                fit: BoxFit.cover,
-                memCacheWidth: 800,
-                placeholder: (_, _) => Container(color: AppTheme.warmMist),
-                errorWidget: (_, _, _) => Container(color: AppTheme.warmMist),
+              itemBuilder: (context, index) => GestureDetector(
+                onTap: () => MediaViewer.open(
+                  context,
+                  images,
+                  initialIndex: index,
+                ),
+                child: CachedNetworkImage(
+                  imageUrl: images[index],
+                  fit: BoxFit.cover,
+                  memCacheWidth: 800,
+                  placeholder: (_, _) => Container(color: AppTheme.warmMist),
+                  errorWidget: (_, _, _) => Container(color: AppTheme.warmMist),
+                ),
               ),
             ),
           ),
@@ -620,6 +628,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         'image_url': service.imageUrls.isNotEmpty
             ? service.imageUrls.first
             : null,
+        // Marks this reference as a service so the chat's card routes to
+        // the service detail screen instead of the product one.
+        'type': 'service',
       };
 
       await msgProv.createAndOpenConversation(

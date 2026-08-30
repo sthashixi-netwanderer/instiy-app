@@ -282,6 +282,7 @@ class Service {
   }
 
   Service copyWith({
+    String? providerBio,
     String? title,
     String? description,
     String? categoryId,
@@ -300,7 +301,7 @@ class Service {
       providerId: providerId,
       providerName: providerName,
       providerAvatar: providerAvatar,
-      providerBio: providerBio,
+      providerBio: providerBio ?? this.providerBio,
       title: title ?? this.title,
       description: description ?? this.description,
       categoryId: categoryId ?? this.categoryId,

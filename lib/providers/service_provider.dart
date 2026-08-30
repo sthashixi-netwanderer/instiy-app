@@ -223,16 +223,13 @@ class ServiceProvider extends ChangeNotifier {
     final userId = _currentUserId;
     if (userId == null) return;
     try {
-      final row = await SupabaseService.table('users')
-          .select('is_service_provider, service_provider_bio')
-          .eq('id', userId)
-          .maybeSingle();
-      _isServiceProvider = row?['is_service_provider'] == true;
-      _providerBio = row?['service_provider_bio'] as String?;
+      _isServiceProvider = await ServiceService.isServiceProvider();
     } catch (_) {
       _isServiceProvider = null;
-      _providerBio = null;
     }
+    // Tolerant: null (not an error) while the bio column's migration is
+    // pending on the hosted database.
+    _providerBio = await ServiceService.getProviderBio(userId);
     notifyListeners();
   }
 

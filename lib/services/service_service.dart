@@ -9,7 +9,7 @@ import '../models/category_model.dart';
 class ServiceService {
   static const _select = '''
     *,
-    provider:users!services_provider_id_fkey(full_name, avatar_url, service_provider_bio),
+    provider:users!services_provider_id_fkey(full_name, avatar_url),
     category:categories(name, slug),
     packages:service_packages(*)
   ''';
@@ -74,7 +74,12 @@ class ServiceService {
         .eq('id', serviceId)
         .maybeSingle();
     if (response == null) return null;
-    return Service.fromJson(response);
+    final service = Service.fromJson(response);
+    // The bio is fetched separately (and tolerantly) rather than joined so
+    // detail pages keep working while the service_provider_bio migration
+    // is pending on the hosted database.
+    final bio = await getProviderBio(service.providerId);
+    return bio == null ? service : service.copyWith(providerBio: bio);
   }
 
   /// All listings of the current user (any status) — the "My Services"
@@ -96,13 +101,32 @@ class ServiceService {
     return row?['is_service_provider'] == true;
   }
 
-  /// One-way opt-in executed from the Services screen only. The RPC
-  /// requires a non-empty bio and stores it alongside the flag.
+  /// One-way opt-in executed from the Services screen only. Prefers the
+  /// bio-taking RPC; falls back to the legacy zero-arg one while the
+  /// service_provider_bio migration is pending on the hosted database.
   static Future<void> becomeServiceProvider(String bio) async {
-    await SupabaseService.client.rpc(
-      'become_service_provider',
-      params: {'p_bio': bio.trim()},
-    );
+    try {
+      await SupabaseService.client.rpc(
+        'become_service_provider',
+        params: {'p_bio': bio.trim()},
+      );
+    } catch (_) {
+      await SupabaseService.client.rpc('become_service_provider');
+    }
+  }
+
+  /// Best-effort provider bio lookup — returns null (never throws) while
+  /// the service_provider_bio migration hasn't been applied yet.
+  static Future<String?> getProviderBio(String providerId) async {
+    try {
+      final row = await SupabaseService.table('users')
+          .select('service_provider_bio')
+          .eq('id', providerId)
+          .maybeSingle();
+      return row?['service_provider_bio'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Updates the signed-in provider's marketplace bio.
