@@ -9,7 +9,7 @@ import '../models/category_model.dart';
 class ServiceService {
   static const _select = '''
     *,
-    provider:users!services_provider_id_fkey(full_name, avatar_url),
+    provider:users!services_provider_id_fkey(full_name, avatar_url, service_provider_bio),
     category:categories(name, slug),
     packages:service_packages(*)
   ''';
@@ -96,9 +96,22 @@ class ServiceService {
     return row?['is_service_provider'] == true;
   }
 
-  /// One-way opt-in executed from the Services screen only.
-  static Future<void> becomeServiceProvider() async {
-    await SupabaseService.client.rpc('become_service_provider');
+  /// One-way opt-in executed from the Services screen only. The RPC
+  /// requires a non-empty bio and stores it alongside the flag.
+  static Future<void> becomeServiceProvider(String bio) async {
+    await SupabaseService.client.rpc(
+      'become_service_provider',
+      params: {'p_bio': bio.trim()},
+    );
+  }
+
+  /// Updates the signed-in provider's marketplace bio.
+  static Future<void> updateServiceProviderBio(String bio) async {
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    await SupabaseService.table('users')
+        .update({'service_provider_bio': bio.trim()})
+        .eq('id', userId);
   }
 
   static Future<List<Category>> getServiceCategories() async {

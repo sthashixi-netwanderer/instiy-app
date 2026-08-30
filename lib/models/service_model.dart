@@ -144,6 +144,10 @@ class Service {
   final String providerId;
   final String? providerName;
   final String? providerAvatar;
+
+  /// Provider's marketplace bio, shown under their name on the detail
+  /// screen. Set at opt-in, editable from the Services screen.
+  final String? providerBio;
   final String title;
   final String? description;
   final String? categoryId;
@@ -166,6 +170,7 @@ class Service {
     required this.providerId,
     this.providerName,
     this.providerAvatar,
+    this.providerBio,
     required this.title,
     this.description,
     this.categoryId,
@@ -218,6 +223,7 @@ class Service {
       providerAvatar:
           provider?['avatar_url'] as String? ??
           json['provider_avatar'] as String?,
+      providerBio: provider?['service_provider_bio'] as String?,
       title: json['title'] as String,
       description: json['description'] as String?,
       categoryId:
@@ -294,6 +300,7 @@ class Service {
       providerId: providerId,
       providerName: providerName,
       providerAvatar: providerAvatar,
+      providerBio: providerBio,
       title: title ?? this.title,
       description: description ?? this.description,
       categoryId: categoryId ?? this.categoryId,

@@ -25,6 +25,10 @@ class ServiceProvider extends ChangeNotifier {
   String? _selectedInstitutionName;
   /// null = not checked yet (signed out or still loading).
   bool? _isServiceProvider;
+
+  /// The signed-in provider's marketplace bio (null when signed out or
+  /// not yet a provider).
+  String? _providerBio;
   String? _error;
 
   RealtimeChannel? _servicesChannel;
@@ -129,6 +133,7 @@ class ServiceProvider extends ChangeNotifier {
   String? get selectedCategoryId => _selectedCategoryId;
   String? get selectedInstitutionName => _selectedInstitutionName;
   bool? get isServiceProvider => _isServiceProvider;
+  String? get providerBio => _providerBio;
   String? get error => _error;
 
   Category? selectedCategory() {
@@ -215,22 +220,30 @@ class ServiceProvider extends ChangeNotifier {
   }
 
   Future<void> checkServiceProviderStatus() async {
-    if (_currentUserId == null) return;
+    final userId = _currentUserId;
+    if (userId == null) return;
     try {
-      _isServiceProvider = await ServiceService.isServiceProvider();
+      final row = await SupabaseService.table('users')
+          .select('is_service_provider, service_provider_bio')
+          .eq('id', userId)
+          .maybeSingle();
+      _isServiceProvider = row?['is_service_provider'] == true;
+      _providerBio = row?['service_provider_bio'] as String?;
     } catch (_) {
       _isServiceProvider = null;
+      _providerBio = null;
     }
     notifyListeners();
   }
 
   /// Returns true on success; error message otherwise.
-  Future<Object> becomeServiceProvider() async {
+  Future<Object> becomeServiceProvider(String bio) async {
     _optingIn = true;
     notifyListeners();
     try {
-      await ServiceService.becomeServiceProvider();
+      await ServiceService.becomeServiceProvider(bio);
       _isServiceProvider = true;
+      _providerBio = bio.trim();
       await loadMyServices();
       return true;
     } catch (e) {
@@ -238,6 +251,18 @@ class ServiceProvider extends ChangeNotifier {
     } finally {
       _optingIn = false;
       notifyListeners();
+    }
+  }
+
+  /// Saves the provider's marketplace bio; returns false on failure.
+  Future<bool> updateProviderBio(String bio) async {
+    try {
+      await ServiceService.updateServiceProviderBio(bio);
+      _providerBio = bio.trim();
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

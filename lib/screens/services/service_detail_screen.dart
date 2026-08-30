@@ -563,6 +563,18 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     color: AppTheme.mutedSteel,
                   ),
                 ),
+                if (service.providerBio != null &&
+                    service.providerBio!.isNotEmpty) ...[
+                  SizedBox(height: context.rh(4)),
+                  Text(
+                    service.providerBio!,
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      color: AppTheme.mutedSteel,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

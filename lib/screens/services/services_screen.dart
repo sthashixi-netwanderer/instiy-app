@@ -7,6 +7,7 @@ import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/adaptive_nav.dart';
+import '../../widgets/required_label.dart';
 import '../../models/service_model.dart';
 import '../../providers/providers.dart';
 import '../../providers/service_provider.dart';
@@ -310,7 +311,11 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         : myServices.isEmpty
             ? ListView(
                 padding: EdgeInsets.all(context.rw(16)),
-                children: [_buildNoServicesState()],
+                children: [
+                  _buildProviderBioCard(serviceProv),
+                  SizedBox(height: context.rh(12)),
+                  _buildNoServicesState(),
+                ],
               )
             : RefreshIndicator(
                 onRefresh: () =>
@@ -322,19 +327,23 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     context.rw(16),
                     context.rh(16),
                   ),
-                  itemCount: myServices.length,
+                  itemCount: myServices.length + 1,
                   separatorBuilder: (_, _) =>
                       SizedBox(height: context.rh(12)),
-                  itemBuilder: (context, index) => _MyServiceCard(
-                    service: myServices[index],
-                    onTap: () => _openService(myServices[index]),
-                    onEdit: () => Navigator.of(context).pushNamed(
-                      '/create-service',
-                      arguments: myServices[index],
-                    ),
-                    onToggleStatus: () => _toggleStatus(myServices[index]),
-                    onDelete: () => _confirmDelete(myServices[index]),
-                  ),
+                  itemBuilder: (context, index) {
+                    if (index == 0) return _buildProviderBioCard(serviceProv);
+                    final service = myServices[index - 1];
+                    return _MyServiceCard(
+                      service: service,
+                      onTap: () => _openService(service),
+                      onEdit: () => Navigator.of(context).pushNamed(
+                        '/create-service',
+                        arguments: service,
+                      ),
+                      onToggleStatus: () => _toggleStatus(service),
+                      onDelete: () => _confirmDelete(service),
+                    );
+                  },
                 ),
               );
   }
@@ -551,52 +560,92 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 
   Future<void> _showProviderOptInSheet() async {
+    final bioCtrl = TextEditingController();
     final confirmed = await showShadSheet<bool>(
       context: context,
-      builder: (ctx) => ShadSheet(
-        title: const Text('Become a Service Provider'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(height: context.rh(4)),
-            Text(
-              'You\'ll be able to create service listings, package them into '
-              'tiers and manage them from this screen. This can\'t be undone '
-              'later.',
-              style: TextStyle(
-                fontSize: context.rsp(13),
-                color: AppTheme.mutedSteel,
-                height: 1.5,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => ShadSheet(
+          title: const Text('Become a Service Provider'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: context.rh(4)),
+              Text(
+                'You\'ll be able to create service listings, package them into '
+                'tiers and manage them from this screen. This can\'t be undone '
+                'later.',
+                style: TextStyle(
+                  fontSize: context.rsp(13),
+                  color: AppTheme.mutedSteel,
+                  height: 1.5,
+                ),
               ),
-            ),
-            SizedBox(height: context.rh(18)),
-            Row(
-              children: [
-                Expanded(
-                  child: ShadButton.outline(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: const Text('Cancel'),
-                  ),
+              SizedBox(height: context.rh(16)),
+              RequiredLabel(
+                'Tell customers about your services',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: context.rsp(14),
+                  color: AppTheme.charcoalInk,
                 ),
-                SizedBox(width: context.rw(12)),
-                Expanded(
-                  child: ShadButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    child: const Text('Opt in'),
-                  ),
+              ),
+              SizedBox(height: context.rh(4)),
+              Text(
+                'Shown under your name on every listing you create',
+                style: TextStyle(
+                  fontSize: context.rsp(12),
+                  color: AppTheme.mutedSteel,
                 ),
-              ],
-            ),
-            SizedBox(height: context.rh(8)),
-          ],
+              ),
+              SizedBox(height: context.rh(8)),
+              ShadInput(
+                controller: bioCtrl,
+                placeholder: const Text(
+                  'e.g. Graphic designer with 3 years of experience in '
+                  'branding and logos',
+                ),
+                maxLines: 4,
+                maxLength: 300,
+                keyboardType: TextInputType.multiline,
+                onChanged: (_) => setSheetState(() {}),
+              ),
+              SizedBox(height: context.rh(18)),
+              Row(
+                children: [
+                  Expanded(
+                    child: ShadButton.outline(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  SizedBox(width: context.rw(12)),
+                  Expanded(
+                    child: ShadButton(
+                      onPressed: bioCtrl.text.trim().isNotEmpty
+                          ? () => Navigator.of(ctx).pop(true)
+                          : null,
+                      child: const Text('Opt in'),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: context.rh(8)),
+            ],
+          ),
         ),
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) {
+      bioCtrl.dispose();
+      return;
+    }
 
-    final result = await ref.read(serviceProvider).becomeServiceProvider();
+    final result = await ref
+        .read(serviceProvider)
+        .becomeServiceProvider(bioCtrl.text);
+    bioCtrl.dispose();
     if (!mounted) return;
     if (result == true) {
       ShadToaster.of(context).show(
@@ -609,6 +658,152 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         ShadToast(title: Text('Opt-in failed: $result')),
       );
     }
+  }
+
+  /// Compact card at the top of the My Services tab showing (and letting
+  /// the provider edit) the bio that appears on their listings.
+  Widget _buildProviderBioCard(ServiceProvider serviceProv) {
+    final bio = serviceProv.providerBio;
+    final hasBio = bio != null && bio.isNotEmpty;
+    return Container(
+      padding: context.rAll(14),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(context.rr(14)),
+        border: Border.all(color: AppTheme.whisperBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: context.rAll(10),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(context.rr(10)),
+            ),
+            child: Icon(
+              LucideIcons.user,
+              size: context.ri(18),
+              color: AppTheme.accent,
+            ),
+          ),
+          SizedBox(width: context.rw(12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Provider profile',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: context.rsp(14),
+                          color: AppTheme.charcoalInk,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _showEditProviderBioSheet,
+                      child: Container(
+                        padding: context.rAll(6),
+                        child: Icon(
+                          LucideIcons.pencil,
+                          size: context.ri(16),
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: context.rh(4)),
+                Text(
+                  hasBio
+                      ? bio
+                      : 'Add a short bio so customers know what you offer',
+                  style: TextStyle(
+                    fontSize: context.rsp(13),
+                    color: hasBio
+                        ? AppTheme.charcoalInk
+                        : AppTheme.mutedSteel,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditProviderBioSheet() async {
+    final bioCtrl = TextEditingController(
+      text: ref.read(serviceProvider).providerBio ?? '',
+    );
+    final confirmed = await showShadSheet<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => ShadSheet(
+          title: const Text('Edit provider bio'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: context.rh(4)),
+              ShadInput(
+                controller: bioCtrl,
+                placeholder: const Text(
+                  'Describe the services you offer...',
+                ),
+                maxLines: 5,
+                maxLength: 300,
+                keyboardType: TextInputType.multiline,
+                onChanged: (_) => setSheetState(() {}),
+              ),
+              SizedBox(height: context.rh(18)),
+              Row(
+                children: [
+                  Expanded(
+                    child: ShadButton.outline(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  SizedBox(width: context.rw(12)),
+                  Expanded(
+                    child: ShadButton(
+                      onPressed: bioCtrl.text.trim().isNotEmpty
+                          ? () => Navigator.of(ctx).pop(true)
+                          : null,
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: context.rh(8)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      bioCtrl.dispose();
+      return;
+    }
+
+    final ok = await ref
+        .read(serviceProvider)
+        .updateProviderBio(bioCtrl.text);
+    bioCtrl.dispose();
+    if (!mounted) return;
+    ShadToaster.of(context).show(
+      ShadToast(
+        title: Text(ok ? 'Provider bio updated' : 'Couldn\'t update your bio'),
+      ),
+    );
   }
 
   Widget _buildNoServicesState() {
