@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/service_model.dart';
 import '../models/category_model.dart';
@@ -8,10 +9,18 @@ import '../services/service_service.dart';
 import '../services/institution_service.dart';
 import '../services/supabase_service.dart';
 
+/// Outcome of saving the provider bio from the edit sheet.
+enum ProviderBioSaveResult { saved, savedLocally, failed }
+
 /// State for the Services marketplace screen: public browse results, the
 /// signed-in creator's own listings, service categories and the provider
 /// opt-in flag. Realtime keeps both lists fresh while subscribed.
 class ServiceProvider extends ChangeNotifier {
+  /// On-device mirror of the provider bio, used only while the hosted
+  /// database is missing the service_provider_bio column (its migration
+  /// is pending). Cleared as soon as a server save succeeds.
+  static const _localBioKey = 'service_provider_bio_local';
+
   List<Service> _services = [];
   List<Service> _myServices = [];
   List<Category> _categories = [];
@@ -228,9 +237,19 @@ class ServiceProvider extends ChangeNotifier {
       _isServiceProvider = null;
     }
     // Tolerant: null (not an error) while the bio column's migration is
-    // pending on the hosted database.
+    // pending on the hosted database — fall back to the on-device mirror.
     _providerBio = await ServiceService.getProviderBio(userId);
+    _providerBio ??= await _readLocalBio();
     notifyListeners();
+  }
+
+  Future<String?> _readLocalBio() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_localBioKey);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Returns true on success; error message otherwise.
@@ -241,6 +260,12 @@ class ServiceProvider extends ChangeNotifier {
       await ServiceService.becomeServiceProvider(bio);
       _isServiceProvider = true;
       _providerBio = bio.trim();
+      // Keep the opt-in bio across restarts even while the server column
+      // is undeployed (the mirror is ignored once the server has a bio).
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_localBioKey, _providerBio!);
+      } catch (_) {}
       await loadMyServices();
       return true;
     } catch (e) {
@@ -251,15 +276,30 @@ class ServiceProvider extends ChangeNotifier {
     }
   }
 
-  /// Saves the provider's marketplace bio; returns false on failure.
-  Future<bool> updateProviderBio(String bio) async {
+  /// Saves the provider's marketplace bio. [ProviderBioSaveResult.saved]
+  /// means the server accepted it; [ProviderBioSaveResult.savedLocally]
+  /// means it was mirrored on-device because the server column isn't
+  /// deployed yet (migration pending) — it syncs on the next save once
+  /// the column exists.
+  Future<ProviderBioSaveResult> updateProviderBio(String bio) async {
+    final trimmed = bio.trim();
     try {
-      await ServiceService.updateServiceProviderBio(bio);
-      _providerBio = bio.trim();
+      await ServiceService.updateServiceProviderBio(trimmed);
+      _providerBio = trimmed;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_localBioKey);
       notifyListeners();
-      return true;
+      return ProviderBioSaveResult.saved;
     } catch (_) {
-      return false;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_localBioKey, trimmed);
+        _providerBio = trimmed;
+        notifyListeners();
+        return ProviderBioSaveResult.savedLocally;
+      } catch (_) {
+        return ProviderBioSaveResult.failed;
+      }
     }
   }
 

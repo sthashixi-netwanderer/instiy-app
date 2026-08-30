@@ -368,6 +368,88 @@ Return ONLY the raw JSON object, without any markdown formatting or surrounding 
     }
   }
 
+  /// Rewrites a service-provider bio into a polished, professional
+  /// marketplace blurb. Text-only; returns null when AI is unavailable
+  /// or every key fails.
+  static Future<String?> enhanceProviderBio(String bio) async {
+    final config = await loadConfig();
+    if (config == null) return null;
+
+    final prompt = '''
+Rewrite the following service provider bio as a polished, professional marketplace profile.
+Rules:
+- Keep it under 60 words.
+- Confident and friendly; write in first person if the original is.
+- No emojis, no hashtags, no quotation marks around the output.
+- Return ONLY the rewritten bio text, nothing else.
+
+Bio: $bio
+''';
+
+    for (final apiKey in config.apiKeys) {
+      try {
+        if (config.provider == 'gemini') {
+          final url = 'https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=$apiKey';
+          final response = await http.post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'contents': [
+                {'parts': [{'text': prompt}]}
+              ],
+            }),
+          );
+          if (response.statusCode != 200) {
+            throw Exception('Gemini API call failed: ${response.statusCode}');
+          }
+          final text = jsonDecode(response.body)['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ?? '';
+          if (text.trim().isNotEmpty) return text.trim();
+        } else if (config.provider == 'groq') {
+          final response = await http.post(
+            Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode({
+              'model': config.model,
+              'messages': [{'role': 'user', 'content': prompt}],
+            }),
+          );
+          if (response.statusCode != 200) {
+            throw Exception('Groq API call failed: ${response.statusCode}');
+          }
+          final text = jsonDecode(response.body)['choices']?[0]?['message']?['content']?.toString() ?? '';
+          if (text.trim().isNotEmpty) return text.trim();
+        } else if (config.provider == 'cloudflare') {
+          if (config.cloudflareAccountId == null || config.cloudflareAccountId!.isEmpty) {
+            throw Exception('Cloudflare Account ID is not configured.');
+          }
+          final cfUrl = 'https://api.cloudflare.com/client/v4/accounts/${config.cloudflareAccountId}/ai/run/${config.model}';
+          final response = await http.post(
+            Uri.parse(cfUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode({
+              'messages': [{'role': 'user', 'content': prompt}],
+              'stream': false,
+            }),
+          );
+          if (response.statusCode != 200) {
+            throw Exception('Cloudflare Workers AI call failed: ${response.statusCode}');
+          }
+          final text = jsonDecode(response.body)['result']?['response']?.toString() ?? '';
+          if (text.trim().isNotEmpty) return text.trim();
+        }
+      } catch (e) {
+        debugPrint('Bio enhance call failed (${config.provider}): $e');
+      }
+    }
+    return null;
+  }
+
   static String _cleanJsonString(String rawText) {
     var cleaned = rawText.trim();
     if (cleaned.startsWith('```')) {

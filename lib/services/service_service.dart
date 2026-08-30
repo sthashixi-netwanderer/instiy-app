@@ -103,7 +103,9 @@ class ServiceService {
 
   /// One-way opt-in executed from the Services screen only. Prefers the
   /// bio-taking RPC; falls back to the legacy zero-arg one while the
-  /// service_provider_bio migration is pending on the hosted database.
+  /// service_provider_bio migration is pending on the hosted database
+  /// (then tries a direct bio save, which is a no-op until the column
+  /// exists).
   static Future<void> becomeServiceProvider(String bio) async {
     try {
       await SupabaseService.client.rpc(
@@ -112,6 +114,9 @@ class ServiceService {
       );
     } catch (_) {
       await SupabaseService.client.rpc('become_service_provider');
+      try {
+        await updateServiceProviderBio(bio);
+      } catch (_) {}
     }
   }
 
