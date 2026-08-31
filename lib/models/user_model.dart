@@ -9,6 +9,7 @@ class AppUser {
   final String? phoneNumber;
   final bool isVerified;
   final bool isSeller;
+  final bool isServiceProvider;
   final bool suspended;
   final DateTime? suspendedAt;
   final String? suspendedReportId;
@@ -26,6 +27,7 @@ class AppUser {
     this.phoneNumber,
     this.isVerified = false,
     this.isSeller = false,
+    this.isServiceProvider = false,
     this.suspended = false,
     this.suspendedAt,
     this.suspendedReportId,
@@ -45,6 +47,7 @@ class AppUser {
       phoneNumber: json['phone_number'] as String?,
       isVerified: json['is_verified'] as bool? ?? false,
       isSeller: json['is_seller'] as bool? ?? false,
+      isServiceProvider: json['is_service_provider'] as bool? ?? false,
       suspended: json['suspended'] as bool? ?? false,
       suspendedAt: json['suspended_at'] != null
           ? DateTime.tryParse(json['suspended_at'] as String)
@@ -67,6 +70,7 @@ class AppUser {
       'phone_number': phoneNumber,
       'is_verified': isVerified,
       'is_seller': isSeller,
+      'is_service_provider': isServiceProvider,
       'suspended': suspended,
       'suspended_at': suspendedAt?.toIso8601String(),
       'suspended_report_id': suspendedReportId,
@@ -84,6 +88,7 @@ class AppUser {
     String? phoneNumber,
     bool? isVerified,
     bool? isSeller,
+    bool? isServiceProvider,
     bool? suspended,
     DateTime? suspendedAt,
     String? suspendedReportId,
@@ -99,6 +104,7 @@ class AppUser {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       isVerified: isVerified ?? this.isVerified,
       isSeller: isSeller ?? this.isSeller,
+      isServiceProvider: isServiceProvider ?? this.isServiceProvider,
       suspended: suspended ?? this.suspended,
       suspendedAt: suspendedAt ?? this.suspendedAt,
       suspendedReportId: suspendedReportId ?? this.suspendedReportId,

@@ -198,10 +198,12 @@ class ListSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(
-        count,
-        (_) => const ListTileSkeleton(),
+    return SingleChildScrollView(
+      child: Column(
+        children: List.generate(
+          count,
+          (_) => const ListTileSkeleton(),
+        ),
       ),
     );
   }

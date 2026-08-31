@@ -107,6 +107,8 @@ class AppBottomNav extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final msgState = ref.watch(messageProvider);
     final unreadCount = msgState.unreadCount;
+    final unreadExploreCount = msgState.unreadExploreNotificationsCount;
+    final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
 
@@ -159,6 +161,7 @@ class AppBottomNav extends ConsumerWidget {
                             1,
                             LucideIcons.search,
                             'Explore',
+                            badgeCount: unreadExploreCount,
                           ),
                           _navButton(
                             context,
@@ -166,6 +169,7 @@ class AppBottomNav extends ConsumerWidget {
                             2,
                             LucideIcons.briefcaseBusiness,
                             'Services',
+                            badgeCount: unreadServiceCount,
                           ),
                           _navButton(
                             context,

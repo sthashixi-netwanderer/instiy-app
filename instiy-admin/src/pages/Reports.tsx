@@ -56,6 +56,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 	price_gouging: "Price Gouging",
 	misleading_service: "Misleading Service",
 	service_scam: "Service Scam / Fraud",
+	service_provider_appeal: "Service Provider Appeal",
 	other: "Other",
 };
 
@@ -75,6 +76,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 	price_gouging: "hsl(40, 90%, 45%)",
 	misleading_service: "hsl(25, 85%, 50%)",
 	service_scam: "hsl(30, 90%, 50%)",
+	service_provider_appeal: "hsl(35, 95%, 48%)",
 	other: "hsl(220, 10%, 50%)",
 };
 
@@ -272,6 +274,58 @@ export const Reports: React.FC = () => {
 				.eq("id", reportId);
 
 			if (error) throw error;
+
+			// If resolving a service provider appeal, reinstate provider access and send email
+			if (selectedReport?.category === "service_provider_appeal" && newStatus === "resolved") {
+				const providerUserId = selectedReport.reporter?.id;
+				if (providerUserId) {
+					try {
+						await supabase.rpc("admin_set_service_provider", {
+							p_user_id: providerUserId,
+							p_is_service_provider: true,
+						});
+
+						const { data: userData } = await supabase
+							.from("users")
+							.select("email, full_name")
+							.eq("id", providerUserId)
+							.maybeSingle();
+
+						if (userData?.email) {
+							await supabase.functions.invoke("send-email", {
+								body: {
+									to: userData.email,
+									subject: "Your Service Provider Account Has Been Reinstated",
+									html: `
+										<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+											<div style="background: linear-gradient(135deg, #7c3aed, #9333ea); color: white; padding: 32px 24px; text-align: center;">
+												<img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+												<h1 style="margin: 0; font-size: 22px; font-weight: 700; color: white;">Account Reinstated</h1>
+											</div>
+											<div style="padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px;">
+												<p>Hi <strong>${userData.full_name || "there"}</strong>,</p>
+												<p>Great news! Your <strong>Instiy Service Provider account</strong> has been reviewed and reinstated by our administrative team.</p>
+												<div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; padding: 14px 16px; margin: 20px 0; color: #5b21b6; font-size: 14px;">
+													<strong>You can now access your service dashboard:</strong> Create new service listings, manage packages, and connect with customers on Instiy.
+												</div>
+												<p>If you had existing listings that were set to inactive, you can visit the <strong>My Services</strong> tab in the app to review and publish them at any time.</p>
+												<div style="text-align: center; margin-top: 24px;">
+													<a href="https://instiy.com" style="display: block; width: 100%; box-sizing: border-box; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white !important; text-decoration: none; text-align: center; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 700;">Open Instiy Services</a>
+												</div>
+											</div>
+											<div style="background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4;">
+												<p style="margin: 0;">&copy; ${new Date().getFullYear()} Instiy Support Team</p>
+											</div>
+										</div>
+									`,
+								},
+							});
+						}
+					} catch (e) {
+						console.error("Failed to auto-reinstate or send email on appeal resolution:", e);
+					}
+				}
+			}
 
 			setStatusUpdate(null);
 			setAdminNotes("");

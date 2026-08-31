@@ -148,6 +148,11 @@ class Service {
   /// Provider's marketplace bio, shown under their name on the detail
   /// screen. Set at opt-in, editable from the Services screen.
   final String? providerBio;
+
+  /// Provider's public contact email, shown on the detail screen so
+  /// customers can reach them. Set at opt-in (defaults to the account email
+  /// when the user checks the option), editable from the Services screen.
+  final String? providerPublicEmail;
   final String title;
   final String? description;
   final String? categoryId;
@@ -171,6 +176,7 @@ class Service {
     this.providerName,
     this.providerAvatar,
     this.providerBio,
+    this.providerPublicEmail,
     required this.title,
     this.description,
     this.categoryId,
@@ -214,6 +220,20 @@ class Service {
   factory Service.fromJson(Map<String, dynamic> json) {
     final provider = json['provider'] as Map<String, dynamic>?;
     final category = json['category'] as Map<String, dynamic>?;
+    final reviewsList = json['reviews'] as List<dynamic>?;
+    double? avgRating;
+    int? count;
+    if (reviewsList != null && reviewsList.isNotEmpty) {
+      count = reviewsList.length;
+      final total = reviewsList.fold<double>(
+        0.0,
+        (sum, r) => sum + ((r['rating'] as num?)?.toDouble() ?? 0.0),
+      );
+      avgRating = total / count;
+    } else if (json['average_rating'] != null) {
+      avgRating = (json['average_rating'] as num?)?.toDouble();
+      count = (json['review_count'] as num?)?.toInt();
+    }
     return Service(
       id: json['id'] as String,
       providerId: json['provider_id'] as String,
@@ -224,6 +244,8 @@ class Service {
           provider?['avatar_url'] as String? ??
           json['provider_avatar'] as String?,
       providerBio: provider?['service_provider_bio'] as String?,
+      providerPublicEmail:
+          provider?['service_provider_email'] as String?,
       title: json['title'] as String,
       description: json['description'] as String?,
       categoryId:
@@ -250,8 +272,8 @@ class Service {
               .toList() ??
           [],
       status: ServiceStatusX.fromName(json['status'] as String?),
-      averageRating: (json['average_rating'] as num?)?.toDouble(),
-      reviewCount: (json['review_count'] as num?)?.toInt(),
+      averageRating: avgRating,
+      reviewCount: count,
       createdAt: DateTime.parse(json['created_at'] as String),
       packages:
           (json['packages'] as List<dynamic>?)
@@ -283,6 +305,7 @@ class Service {
 
   Service copyWith({
     String? providerBio,
+    String? providerPublicEmail,
     String? title,
     String? description,
     String? categoryId,
@@ -294,6 +317,8 @@ class Service {
     List<String>? institutionCodes,
     List<String>? searchTags,
     ServiceStatus? status,
+    double? averageRating,
+    int? reviewCount,
     List<ServicePackage>? packages,
   }) {
     return Service(
@@ -302,6 +327,7 @@ class Service {
       providerName: providerName,
       providerAvatar: providerAvatar,
       providerBio: providerBio ?? this.providerBio,
+      providerPublicEmail: providerPublicEmail ?? this.providerPublicEmail,
       title: title ?? this.title,
       description: description ?? this.description,
       categoryId: categoryId ?? this.categoryId,
@@ -314,8 +340,8 @@ class Service {
       institutionCodes: institutionCodes ?? this.institutionCodes,
       searchTags: searchTags ?? this.searchTags,
       status: status ?? this.status,
-      averageRating: averageRating,
-      reviewCount: reviewCount,
+      averageRating: averageRating ?? this.averageRating,
+      reviewCount: reviewCount ?? this.reviewCount,
       createdAt: createdAt,
       packages: packages ?? this.packages,
     );

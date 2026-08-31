@@ -101,6 +101,8 @@ class AppTopNav extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final msgState = ref.watch(messageProvider);
     final unreadCount = msgState.unreadCount;
+    final unreadExploreCount = msgState.unreadExploreNotificationsCount;
+    final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
 
@@ -158,6 +160,7 @@ class AppTopNav extends ConsumerWidget {
                   icon: LucideIcons.search,
                   label: 'Explore',
                   active: currentIndex == 1,
+                  badgeCount: unreadExploreCount,
                   onTap: _tabTap(
                     1,
                     () => Navigator.of(context).pushNamed('/explore'),
@@ -167,6 +170,7 @@ class AppTopNav extends ConsumerWidget {
                   icon: LucideIcons.briefcaseBusiness,
                   label: 'Services',
                   active: currentIndex == 2,
+                  badgeCount: unreadServiceCount,
                   onTap: _tabTap(
                     2,
                     () => Navigator.of(context).pushNamed('/services'),

@@ -8,9 +8,13 @@ import '../models/institution_model.dart';
 import '../services/service_service.dart';
 import '../services/institution_service.dart';
 import '../services/supabase_service.dart';
+import '../services/report_service.dart';
 
 /// Outcome of saving the provider bio from the edit sheet.
 enum ProviderBioSaveResult { saved, savedLocally, failed }
+
+/// Outcome of saving the provider public email from the edit sheet.
+enum ProviderEmailSaveResult { saved, savedLocally, failed }
 
 /// State for the Services marketplace screen: public browse results, the
 /// signed-in creator's own listings, service categories and the provider
@@ -20,6 +24,9 @@ class ServiceProvider extends ChangeNotifier {
   /// database is missing the service_provider_bio column (its migration
   /// is pending). Cleared as soon as a server save succeeds.
   static const _localBioKey = 'service_provider_bio_local';
+
+  /// On-device mirror of the provider public email, mirroring [_localBioKey].
+  static const _localEmailKey = 'service_provider_email_local';
 
   List<Service> _services = [];
   List<Service> _myServices = [];
@@ -38,13 +45,27 @@ class ServiceProvider extends ChangeNotifier {
   /// The signed-in provider's marketplace bio (null when signed out or
   /// not yet a provider).
   String? _providerBio;
+  String? _providerEmail;
   String? _error;
+  Map<String, dynamic>? _latestAppeal;
+  bool _appealSubmitting = false;
 
   RealtimeChannel? _servicesChannel;
+
+  /// Optional freshness signals (category chips, provider-status flips) on
+  /// a separate channel — see [_subscribeToRealtime].
+  RealtimeChannel? _auxChannel;
   String? _currentUserId;
   bool _loadedOnce = false;
+  Timer? _realtimeDebounce;
+
+  /// Monotonic token guarding against out-of-order browse responses —
+  /// debounced live search can leave a slower older request in flight when
+  /// a newer one resolves first.
+  int _browseGeneration = 0;
 
   ServiceProvider() {
+    _subscribeToRealtime();
     _initAuthListener();
   }
 
@@ -59,7 +80,6 @@ class ServiceProvider extends ChangeNotifier {
         checkServiceProviderStatus();
         loadMyServices();
       } else {
-        _unsubscribeFromRealtime();
         _currentUserId = null;
         _isServiceProvider = null;
         _myServices = [];
@@ -71,12 +91,17 @@ class ServiceProvider extends ChangeNotifier {
     final currentUser = SupabaseService.auth.currentUser;
     if (currentUser != null) {
       _currentUserId = currentUser.id;
-      _subscribeToRealtime();
       checkServiceProviderStatus();
       loadMyServices();
     }
   }
 
+  /// Realtime rejects an entire channel when any table it listens to is
+  /// missing from the supabase_realtime publication — one un-published
+  /// table would silently kill every callback on the channel. The core
+  /// listing refresh therefore lives on its own channel, and the optional
+  /// signals (categories, users) stay on a second one so they can only
+  /// degrade themselves.
   void _subscribeToRealtime() {
     _unsubscribeFromRealtime();
 
@@ -86,15 +111,62 @@ class ServiceProvider extends ChangeNotifier {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'services',
-          callback: (_) => _silentReload(),
+          callback: (_) => _onRealtimeChange(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'service_packages',
-          callback: (_) => _silentReload(),
+          callback: (_) => _onRealtimeChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'service_reviews',
+          callback: (_) => _onRealtimeChange(),
         );
-    _servicesChannel!.subscribe();
+    _servicesChannel!.subscribe(_onChannelStatus('services'));
+
+    _auxChannel = SupabaseService.client
+        .channel('public-services-aux-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'categories',
+          callback: (_) {
+            loadCategories(force: true);
+            _onRealtimeChange();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'users',
+          callback: (payload) {
+            final newRec = payload.newRecord;
+            final oldRec = payload.oldRecord;
+            final changedUserId =
+                newRec['id'] as String? ?? oldRec['id'] as String?;
+            if (_currentUserId != null && changedUserId == _currentUserId) {
+              checkServiceProviderStatus();
+            }
+            _onRealtimeChange();
+          },
+        );
+    _auxChannel!.subscribe(_onChannelStatus('aux'));
+  }
+
+  /// A failed subscription is otherwise invisible — the screen just stops
+  /// receiving updates. Surface it in debug logs so regressions (e.g. a
+  /// table dropped from the realtime publication) are noticeable.
+  void Function(RealtimeSubscribeStatus, [Object?]) _onChannelStatus(
+    String name,
+  ) {
+    return (RealtimeSubscribeStatus status, [Object? err]) {
+      if (status == RealtimeSubscribeStatus.channelError || err != null) {
+        debugPrint('ServiceProvider: $name realtime channel $status: $err');
+      }
+    };
   }
 
   void _unsubscribeFromRealtime() {
@@ -102,16 +174,29 @@ class ServiceProvider extends ChangeNotifier {
       SupabaseService.client.removeChannel(_servicesChannel!);
       _servicesChannel = null;
     }
+    if (_auxChannel != null) {
+      SupabaseService.client.removeChannel(_auxChannel!);
+      _auxChannel = null;
+    }
+  }
+
+  void _onRealtimeChange() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 250), () {
+      _silentReload();
+    });
   }
 
   Future<void> _silentReload() async {
     try {
-      _services = await ServiceService.getServices(
+      final results = await ServiceService.getServices(
         categoryId: _selectedCategoryId,
         institutionName: _selectedInstitutionName,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
+      _services = results;
       if (_currentUserId != null) {
+        await checkServiceProviderStatus();
         _myServices = await ServiceService.getMyServices();
       }
       notifyListeners();
@@ -125,6 +210,7 @@ class ServiceProvider extends ChangeNotifier {
     _searchQuery = '';
     _selectedCategoryId = null;
     _isServiceProvider = null;
+    _latestAppeal = null;
     _loadedOnce = false;
     notifyListeners();
   }
@@ -142,7 +228,14 @@ class ServiceProvider extends ChangeNotifier {
   String? get selectedCategoryId => _selectedCategoryId;
   String? get selectedInstitutionName => _selectedInstitutionName;
   bool? get isServiceProvider => _isServiceProvider;
+  bool get isProviderDisabled =>
+      (_isServiceProvider == false) &&
+      ((_providerBio != null && _providerBio!.trim().isNotEmpty) ||
+          _myServices.isNotEmpty);
   String? get providerBio => _providerBio;
+  String? get providerEmail => _providerEmail;
+  Map<String, dynamic>? get latestAppeal => _latestAppeal;
+  bool get appealSubmitting => _appealSubmitting;
   String? get error => _error;
 
   Category? selectedCategory() {
@@ -168,28 +261,39 @@ class ServiceProvider extends ChangeNotifier {
     loadServices();
   }
 
-  Future<void> loadServices() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  /// Loads the browse results. [silent] keeps the previous results visible
+  /// (no loading flag) — used by live search, where flashing a skeleton
+  /// between keystrokes would be jarring. Stale responses are discarded.
+  Future<void> loadServices({bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
+    final generation = ++_browseGeneration;
 
     try {
-      _services = await ServiceService.getServices(
+      final results = await ServiceService.getServices(
         categoryId: _selectedCategoryId,
         institutionName: _selectedInstitutionName,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
+      if (generation != _browseGeneration) return;
+      _services = results;
       _loadedOnce = true;
     } catch (e) {
+      if (generation != _browseGeneration) return;
       _error = e.toString();
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (generation == _browseGeneration) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
-  Future<void> loadCategories() async {
-    if (_categories.isNotEmpty) return;
+  Future<void> loadCategories({bool force = false}) async {
+    if (_categories.isNotEmpty && !force) return;
     _categoriesLoading = true;
     notifyListeners();
 
@@ -240,7 +344,40 @@ class ServiceProvider extends ChangeNotifier {
     // pending on the hosted database — fall back to the on-device mirror.
     _providerBio = await ServiceService.getProviderBio(userId);
     _providerBio ??= await _readLocalBio();
+    _providerEmail = await ServiceService.getProviderEmail(userId);
+    _providerEmail ??= await _readLocalEmail();
+    if (_isServiceProvider == false) {
+      await loadLatestAppeal();
+    }
     notifyListeners();
+  }
+
+  Future<void> loadLatestAppeal() async {
+    final userId = _currentUserId;
+    if (userId == null) return;
+    try {
+      _latestAppeal = await ReportService.getLatestServiceProviderAppeal();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<bool> submitAppeal(String complaintText) async {
+    final text = complaintText.trim();
+    if (text.isEmpty) return false;
+    _appealSubmitting = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await ReportService.submitServiceProviderAppeal(complaintText: text);
+      await loadLatestAppeal();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    } finally {
+      _appealSubmitting = false;
+      notifyListeners();
+    }
   }
 
   Future<String?> _readLocalBio() async {
@@ -252,19 +389,33 @@ class ServiceProvider extends ChangeNotifier {
     }
   }
 
+  Future<String?> _readLocalEmail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_localEmailKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Returns true on success; error message otherwise.
-  Future<Object> becomeServiceProvider(String bio) async {
+  Future<Object> becomeServiceProvider(String bio, String? email) async {
     _optingIn = true;
     notifyListeners();
     try {
-      await ServiceService.becomeServiceProvider(bio);
+      await ServiceService.becomeServiceProvider(bio, email);
       _isServiceProvider = true;
       _providerBio = bio.trim();
-      // Keep the opt-in bio across restarts even while the server column
-      // is undeployed (the mirror is ignored once the server has a bio).
+      _providerEmail = email?.trim();
+      // Keep the opt-in bio/email across restarts even while the server
+      // columns are undeployed (the mirror is ignored once the server has
+      // the value).
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_localBioKey, _providerBio!);
+        if (_providerEmail != null && _providerEmail!.isNotEmpty) {
+          await prefs.setString(_localEmailKey, _providerEmail!);
+        }
       } catch (_) {}
       await loadMyServices();
       return true;
@@ -273,6 +424,37 @@ class ServiceProvider extends ChangeNotifier {
     } finally {
       _optingIn = false;
       notifyListeners();
+    }
+  }
+
+  /// Saves the provider's public contact email. Mirrors [updateProviderBio]:
+  /// [ProviderEmailSaveResult.saved] when the server accepts it,
+  /// [ProviderEmailSaveResult.savedLocally] when mirrored on-device because
+  /// the server column isn't deployed yet.
+  Future<ProviderEmailSaveResult> updateProviderEmail(String email) async {
+    final trimmed = email.trim();
+    try {
+      await ServiceService.updateServiceProviderEmail(trimmed);
+      _providerEmail = trimmed.isEmpty ? null : trimmed;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_localEmailKey);
+      notifyListeners();
+      return ProviderEmailSaveResult.saved;
+    } catch (_) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (trimmed.isEmpty) {
+          await prefs.remove(_localEmailKey);
+          _providerEmail = null;
+        } else {
+          await prefs.setString(_localEmailKey, trimmed);
+          _providerEmail = trimmed;
+        }
+        notifyListeners();
+        return ProviderEmailSaveResult.savedLocally;
+      } catch (_) {
+        return ProviderEmailSaveResult.failed;
+      }
     }
   }
 
@@ -332,6 +514,9 @@ class ServiceProvider extends ChangeNotifier {
         packages: packages,
       );
       await loadMyServices();
+      // Realtime also reloads the browse list, but don't depend on it for
+      // the user's own action — the Discover tab should update immediately.
+      unawaited(loadServices(silent: true));
       return true;
     } catch (e) {
       return e;
@@ -369,6 +554,7 @@ class ServiceProvider extends ChangeNotifier {
         packages: packages,
       );
       await loadMyServices();
+      unawaited(loadServices(silent: true));
       return true;
     } catch (e) {
       return e;
@@ -383,6 +569,8 @@ class ServiceProvider extends ChangeNotifier {
         _myServices[index] = _myServices[index].copyWith(status: status);
         notifyListeners();
       }
+      // Pausing hides the listing from Discover; publishing reveals it.
+      unawaited(loadServices(silent: true));
       return true;
     } catch (_) {
       return false;
@@ -393,6 +581,7 @@ class ServiceProvider extends ChangeNotifier {
     try {
       await ServiceService.deleteService(serviceId);
       _myServices.removeWhere((s) => s.id == serviceId);
+      _services.removeWhere((s) => s.id == serviceId);
       notifyListeners();
       return true;
     } catch (_) {
@@ -402,6 +591,7 @@ class ServiceProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
     _unsubscribeFromRealtime();
     super.dispose();
   }

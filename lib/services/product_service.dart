@@ -416,7 +416,14 @@ class ProductService {
     if (status != null) updates['status'] = status.name;
     if (campuses != null) updates['campus'] = campuses.join(', ');
     if (specifications != null) updates['specifications'] = specifications;
-    if (stockQuantity != null) updates['stock_quantity'] = stockQuantity;
+    if (stockQuantity != null) {
+      updates['stock_quantity'] = stockQuantity;
+      // Restocking re-lists products the order flow auto-marked 'sold' —
+      // sellers have no manual status control in the listing editor.
+      if (stockQuantity > 0 && status == null) {
+        updates['status'] = ProductStatus.available.name;
+      }
+    }
     if (deliveryOption != null) updates['delivery_option'] = deliveryOption;
     if (deliveryFee != null) updates['delivery_fee'] = deliveryFee;
     if (discountPercent != null) updates['discount_percent'] = discountPercent;
@@ -524,6 +531,7 @@ class ProductService {
         ''')
         .eq('status', 'available')
         .eq('is_featured', true)
+        .gt('stock_quantity', 0)
         .order('created_at', ascending: false)
         .limit(limit);
 
@@ -552,6 +560,7 @@ class ProductService {
           category:categories(name, type)
         ''')
         .eq('status', 'available')
+        .gt('stock_quantity', 0)
         .order('created_at', ascending: false)
         .limit(limit);
 
@@ -582,7 +591,8 @@ class ProductService {
           seller:users!seller_id(full_name, avatar_url, email, phone_number, is_verified, business_profiles(business_name)),
           category:categories(name, type)
         ''')
-        .eq('status', 'available');
+        .eq('status', 'available')
+        .gt('stock_quantity', 0);
 
     if (categoryId != null) {
       query = query.eq('category_id', categoryId);

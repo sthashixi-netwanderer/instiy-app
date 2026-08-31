@@ -22,10 +22,16 @@ enum NotificationFilter {
   orders,
   wallet,
   chats,
+  reviews,
 }
 
 class NotificationsScreen extends ConsumerStatefulWidget {
-  const NotificationsScreen({super.key});
+  final NotificationScope scope;
+
+  const NotificationsScreen({
+    super.key,
+    this.scope = NotificationScope.all,
+  });
 
   @override
   ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -110,6 +116,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         type: typeFilter,
         isRead: _selectedFilter == NotificationFilter.unread ? false : null,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        scope: widget.scope,
       );
       if (mounted) {
         setState(() {
@@ -131,6 +138,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         type: typeFilter,
         isRead: _selectedFilter == NotificationFilter.unread ? false : null,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        scope: widget.scope,
       );
       if (mounted) {
         setState(() {
@@ -153,11 +161,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         return 'payment';
       case NotificationFilter.chats:
         return 'message';
+      case NotificationFilter.reviews:
+        return 'review';
     }
   }
 
   Future<void> _markAllRead() async {
-    await NotificationService.markAllAsRead();
+    await NotificationService.markAllAsRead(scope: widget.scope);
     setState(() {
       _notifications = _notifications.map((n) {
         return AppNotification(
@@ -237,14 +247,22 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
     final filteredNotifications = _notifications;
 
+    final String defaultTitle = widget.scope == NotificationScope.services
+        ? 'Service Notifications'
+        : widget.scope == NotificationScope.explore
+            ? 'Explore Notifications'
+            : 'Notifications';
+
     final appBarTitle = _isSearching
         ? TextField(
             controller: _searchController,
             autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Search notifications...',
+            decoration: InputDecoration(
+              hintText: widget.scope == NotificationScope.services
+                  ? 'Search service notifications...'
+                  : 'Search notifications...',
               border: InputBorder.none,
-              hintStyle: TextStyle(color: AppTheme.mutedSteel, fontSize: 15),
+              hintStyle: const TextStyle(color: AppTheme.mutedSteel, fontSize: 15),
             ),
             style: const TextStyle(fontSize: 16, color: AppTheme.charcoalInk),
             onChanged: (val) {
@@ -256,7 +274,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               _loadNotifications();
             },
           )
-        : const Text('Notifications');
+        : Text(defaultTitle);
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
@@ -301,33 +319,56 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildFilterItem(
-                    filter: NotificationFilter.all,
-                    icon: LucideIcons.bell,
-                    label: 'All',
-                  ),
-                  _buildFilterItem(
-                    filter: NotificationFilter.unread,
-                    icon: LucideIcons.mail,
-                    label: 'Unread Only',
-                  ),
-                  _buildFilterItem(
-                    filter: NotificationFilter.orders,
-                    icon: LucideIcons.shoppingBag,
-                    label: 'Orders & Deliveries',
-                  ),
-                  _buildFilterItem(
-                    filter: NotificationFilter.wallet,
-                    icon: LucideIcons.wallet,
-                    label: 'Transactions',
-                  ),
-                  _buildFilterItem(
-                    filter: NotificationFilter.chats,
-                    icon: LucideIcons.messageSquare,
-                    label: 'Chats',
-                  ),
-                ],
+                children: widget.scope == NotificationScope.services
+                    ? [
+                        _buildFilterItem(
+                          filter: NotificationFilter.all,
+                          icon: LucideIcons.bell,
+                          label: 'All',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.unread,
+                          icon: LucideIcons.mail,
+                          label: 'Unread Only',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.orders,
+                          icon: LucideIcons.briefcase,
+                          label: 'Service Orders',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.reviews,
+                          icon: LucideIcons.star,
+                          label: 'Reviews',
+                        ),
+                      ]
+                    : [
+                        _buildFilterItem(
+                          filter: NotificationFilter.all,
+                          icon: LucideIcons.bell,
+                          label: 'All',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.unread,
+                          icon: LucideIcons.mail,
+                          label: 'Unread Only',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.orders,
+                          icon: LucideIcons.shoppingBag,
+                          label: 'Orders & Deliveries',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.wallet,
+                          icon: LucideIcons.wallet,
+                          label: 'Transactions',
+                        ),
+                        _buildFilterItem(
+                          filter: NotificationFilter.chats,
+                          icon: LucideIcons.messageSquare,
+                          label: 'Chats',
+                        ),
+                      ],
               ),
             ),
             child: GestureDetector(
@@ -631,14 +672,42 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       case 'wallet':
         Navigator.of(context).pushNamed('/wallet');
         break;
+      case 'service':
+      case 'service_order':
+      case 'service_review':
+      case 'service_inquiry':
+        final serviceId = data?['service_id'] as String?;
+        if (serviceId != null) {
+          Navigator.of(context).pushNamed('/service-detail', arguments: serviceId);
+        } else {
+          Navigator.of(context).pushNamed('/services');
+        }
+        break;
       case 'review':
-        // Navigate to the product that was reviewed
+        final serviceId = data?['service_id'] as String?;
+        if (serviceId != null) {
+          Navigator.of(context).pushNamed('/service-detail', arguments: serviceId);
+          break;
+        }
         final productId = data?['product_id'] as String?;
         if (productId != null) {
           Navigator.of(context).pushNamed('/product', arguments: productId);
         }
         break;
       default:
+        if (NotificationService.isServiceNotification(
+          type: notification.type,
+          data: data,
+          title: notification.title,
+          body: notification.body,
+        )) {
+          final serviceId = data?['service_id'] as String?;
+          if (serviceId != null) {
+            Navigator.of(context).pushNamed('/service-detail', arguments: serviceId);
+          } else {
+            Navigator.of(context).pushNamed('/services');
+          }
+        }
         break;
     }
   }
@@ -734,19 +803,28 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   Widget _buildEmptyState() {
     final isFilteringOrSearching = _searchQuery.isNotEmpty || _selectedFilter != NotificationFilter.all;
+    final emptyTitle = isFilteringOrSearching
+        ? 'No matching notifications'
+        : widget.scope == NotificationScope.services
+            ? 'No service notifications yet'
+            : 'No notifications yet';
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            isFilteringOrSearching ? LucideIcons.search : LucideIcons.bell,
+            isFilteringOrSearching
+                ? LucideIcons.search
+                : (widget.scope == NotificationScope.services
+                    ? LucideIcons.briefcaseBusiness
+                    : LucideIcons.bell),
             size: context.ri(64),
             color: AppTheme.whisperBorder,
           ),
           SizedBox(height: context.rh(16)),
           Text(
-            isFilteringOrSearching ? 'No matching notifications' : 'No notifications yet',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            emptyTitle,
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           if (isFilteringOrSearching) ...[
             SizedBox(height: context.rh(8)),

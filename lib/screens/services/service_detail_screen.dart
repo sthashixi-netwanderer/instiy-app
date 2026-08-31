@@ -40,26 +40,28 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     _loadService();
   }
 
-  Future<void> _loadService() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _loadService({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
     try {
       final service = await ServiceService.getService(widget.serviceId);
       if (!mounted) return;
       setState(() {
         _service = service;
         _isLoading = false;
-        _selectedPackageIndex = 0;
-        _galleryPage = 0;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
+      if (!silent) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -103,6 +105,22 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     final newStatus = service.isActive
         ? ServiceStatus.paused
         : ServiceStatus.active;
+    if (newStatus == ServiceStatus.active) {
+      final isProvider = await ServiceService.isServiceProvider();
+      if (!isProvider) {
+        if (mounted) {
+          ShadToaster.of(context).show(
+            const ShadToast.destructive(
+              title: Text('Provider access required'),
+              description: Text(
+                'Your service provider status is disabled. You cannot publish services.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
     try {
       await ServiceService.setServiceStatus(service.id, newStatus);
       await _loadService();
@@ -128,8 +146,13 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(serviceProvider, (previous, next) {
+      if (mounted) _loadService(silent: true);
+    });
+
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: Text(
@@ -584,26 +607,56 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                       height: 1.4,
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: ShadButton.ghost(
-                      size: ShadButtonSize.sm,
-                      foregroundColor: AppTheme.accent,
-                      onPressed: () => _showProviderBioSheet(service),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Read full bio',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          SizedBox(width: 4),
-                          Icon(LucideIcons.chevronRight, size: 14),
-                        ],
+                ],
+                if (service.providerPublicEmail != null &&
+                    service.providerPublicEmail!.isNotEmpty) ...[
+                  SizedBox(height: context.rh(6)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.mail,
+                        size: context.ri(13),
+                        color: AppTheme.accent,
                       ),
-                    ),
+                      SizedBox(width: context.rw(6)),
+                      Flexible(
+                        child: Text(
+                          service.providerPublicEmail!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: context.rsp(12),
+                            color: AppTheme.accent,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ShadButton.ghost(
+                    size: ShadButtonSize.sm,
+                    foregroundColor: AppTheme.accent,
+                    onPressed: () => _showProviderBioSheet(service),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          (service.providerBio != null &&
+                                  service.providerBio!.isNotEmpty)
+                              ? 'Read full bio'
+                              : 'About provider',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(LucideIcons.chevronRight, size: 14),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -612,31 +665,110 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     );
   }
 
-  /// Full provider bio in a scrollable sheet.
+  /// Full provider bio in a full-height modal sheet — opens covering the
+  /// screen, drags down to dismiss and snaps between heights.
   void _showProviderBioSheet(Service service) {
+    final bio = service.providerBio;
+    final hasBio = bio != null && bio.trim().isNotEmpty;
+    final email = service.providerPublicEmail;
+    final hasEmail = email != null && email.trim().isNotEmpty;
     showShadSheet(
       context: context,
       builder: (ctx) => ShadSheet(
+        expandable: true,
+        initialSize: 1,
+        minSize: 0.4,
+        maxSize: 1,
+        snap: true,
+        snapSizes: const [0.7, 0.95],
+        backgroundColor: AppTheme.pureSurface,
         title: Text(
           'About ${service.providerName ?? 'the provider'}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            context.rw(16),
-            context.rh(4),
-            context.rw(16),
-            context.rh(16),
-          ),
-          child: Text(
-            service.providerBio ?? '',
-            style: TextStyle(
-              fontSize: context.rsp(14),
-              color: AppTheme.charcoalInk,
-              height: 1.6,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ShadAvatar(
+                  (service.providerAvatar != null &&
+                          service.providerAvatar!.isNotEmpty)
+                      ? service.providerAvatar
+                      : null,
+                  backgroundColor: AppTheme.accent,
+                  placeholder: Text(
+                    (service.providerName ?? 'S')[0].toUpperCase(),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: ctx.rsp(14),
+                    ),
+                  ),
+                ),
+                SizedBox(width: ctx.rw(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        service.providerName ?? 'Service Provider',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: ctx.rsp(15),
+                          color: AppTheme.charcoalInk,
+                        ),
+                      ),
+                      Text(
+                        'Service Provider',
+                        style: TextStyle(
+                          fontSize: ctx.rsp(12),
+                          color: AppTheme.mutedSteel,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
+            SizedBox(height: ctx.rh(16)),
+            Text(
+              hasBio
+                  ? bio
+                  : 'No bio available for this provider yet.',
+              style: TextStyle(
+                fontSize: ctx.rsp(14),
+                color: hasBio ? AppTheme.charcoalInk : AppTheme.mutedSteel,
+                height: 1.6,
+              ),
+            ),
+            if (hasEmail) ...[
+              SizedBox(height: ctx.rh(16)),
+              Row(
+                children: [
+                  Icon(
+                    LucideIcons.mail,
+                    size: ctx.ri(14),
+                    color: AppTheme.accent,
+                  ),
+                  SizedBox(width: ctx.rw(6)),
+                  Flexible(
+                    child: Text(
+                      email,
+                      style: TextStyle(
+                        fontSize: ctx.rsp(13),
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
     );

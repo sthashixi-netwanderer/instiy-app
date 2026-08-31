@@ -1041,4 +1041,194 @@ class EmailService {
       htmlBody: htmlBody,
     );
   }
+
+  // ─── Service Provider Disabled Appeal / Complaint ────────────────
+
+  static Future<void> sendServiceProviderComplaintConfirmation({
+    required String userEmail,
+    required String userName,
+    required String complaintText,
+  }) async {
+    final subject = 'Your Service Provider Complaint Has Been Received';
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>$subject</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .label { color: #78716c; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; font-weight: 600; }
+    .desc-box { background: #f5f5f4; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 14px 18px; margin: 16px 0; color: #1c1917; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+    .notice-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 14px 16px; margin: 20px 0; color: #1e40af; font-size: 14px; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Complaint Under Review</h1>
+    </div>
+    <div class="content">
+      <p>Hi <strong>$userName</strong>,</p>
+      <p>We have received your complaint regarding the disabled status of your service provider account. Our administrative moderation team has been notified and is reviewing your request.</p>
+      
+      <div class="label">Your Submitted Statement:</div>
+      <div class="desc-box">$complaintText</div>
+
+      <div class="notice-box">
+        <strong>Please keep watch in your email.</strong> We will notify you here as soon as our administrative team completes the review of your account.
+      </div>
+      
+      <p>Thank you for your patience while we review your account.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; ${DateTime.now().year} Instiy Support Team</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: userEmail,
+      subject: subject,
+      htmlBody: htmlBody,
+    );
+  }
+
+  static Future<void> sendAdminServiceProviderComplaintNotification({
+    required String adminEmail,
+    required String userName,
+    required String userEmail,
+    required String userUniversity,
+    required String complaintText,
+    required String userId,
+  }) async {
+    final subject = '[Action Required] Service Provider Appeal — $userName';
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>$subject</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .divider { border-top: 1px solid #e7e5e4; margin: 16px 0; }
+    .label { color: #78716c; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; font-weight: 600; }
+    .value { color: #1c1917; font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+    .desc-box { background: #f5f5f4; border-left: 4px solid #ef4444; border-radius: 8px; padding: 14px 18px; margin: 16px 0; color: #1c1917; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+    .btn { display: block; width: 100%; box-sizing: border-box; background: linear-gradient(135deg, #ef4444, #dc2626); color: white !important; text-decoration: none; text-align: center; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 700; margin: 24px 0 8px; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Service Provider Appeal</h1>
+    </div>
+    <div class="content">
+      <p>A user whose service provider account is disabled has submitted a complaint/appeal for administrative review.</p>
+      
+      <div class="divider"></div>
+      <div class="label">Provider Name</div>
+      <div class="value">$userName</div>
+
+      <div class="label">Email</div>
+      <div class="value">$userEmail</div>
+
+      <div class="label">University</div>
+      <div class="value">$userUniversity</div>
+
+      <div class="label">User ID</div>
+      <div class="value" style="font-family: monospace; font-size: 13px;">$userId</div>
+
+      <div class="label">Submitted Complaint / Appeal</div>
+      <div class="desc-box">$complaintText</div>
+
+      <div style="text-align: center;">
+        <a href="https://instiy.com/admin/reports" class="btn">Open Reports in Admin Panel</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p>Instiy — Admin Report System</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: adminEmail,
+      subject: subject,
+      htmlBody: htmlBody,
+    );
+  }
+
+  static Future<void> sendServiceProviderReinstatedNotification({
+    required String userEmail,
+    required String userName,
+  }) async {
+    final subject = 'Your Service Provider Account Has Been Reinstated';
+    final htmlBody = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>$subject</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f5f4; margin: 0; padding: 40px 20px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #7c3aed, #9333ea); color: white; padding: 32px 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .content { padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px; }
+    .notice-box { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; padding: 14px 16px; margin: 20px 0; color: #5b21b6; font-size: 14px; }
+    .btn { display: block; width: 100%; box-sizing: border-box; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white !important; text-decoration: none; text-align: center; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 700; margin: 24px 0 8px; }
+    .footer { background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4; }
+    .footer p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>Account Reinstated</h1>
+    </div>
+    <div class="content">
+      <p>Hi <strong>$userName</strong>,</p>
+      <p>Great news! Your <strong>Instiy Service Provider account</strong> has been reviewed and reinstated by our administrative moderation team.</p>
+      
+      <div class="notice-box">
+        <strong>You can now access your service dashboard:</strong> Create new service listings, manage pricing tiers, and connect with customers on Instiy.
+      </div>
+
+      <p>If you had existing listings that were set to inactive during the review period, you can now visit the <strong>My Services</strong> tab in the app to review and publish them at any time.</p>
+
+      <div style="text-align: center;">
+        <a href="https://instiy.com" class="btn">Open Instiy Services</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p>&copy; ${DateTime.now().year} Instiy Support Team</p>
+    </div>
+  </div>
+</body>
+</html>''';
+
+    await _sendEmail(
+      to: userEmail,
+      subject: subject,
+      htmlBody: htmlBody,
+    );
+  }
 }

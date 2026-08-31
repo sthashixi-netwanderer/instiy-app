@@ -30,7 +30,7 @@ dependencies:
   # Image handling
   image_picker: ^1.1.2
   image_cropper: ^12.2.1
-  cached_network_image: ^3.4.1
+  cached_network_image: ^4.0.0
   # Direct dependency (used by CategoryImageCacheManager for persistent
   # category artwork caching); also pulled transitively by cached_network_image.
   flutter_cache_manager: ^3.4.2

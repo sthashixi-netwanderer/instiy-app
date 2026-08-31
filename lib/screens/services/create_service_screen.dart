@@ -131,6 +131,20 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       Navigator.of(context).pushReplacementNamed('/login');
       return;
     }
+    final isProvider = await ServiceService.isServiceProvider();
+    if (!mounted) return;
+    if (!isProvider) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Provider access required'),
+          description: Text(
+            'Your service provider status is disabled. You cannot create or edit services.',
+          ),
+        ),
+      );
+      Navigator.of(context).pop();
+      return;
+    }
     if (widget.existingService != null &&
         widget.existingService!.providerId != auth.user?.id) {
       Navigator.of(context).pop();

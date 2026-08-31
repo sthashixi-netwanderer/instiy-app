@@ -14,6 +14,7 @@ import {
 	Ban,
 	Unlock,
 	Pencil,
+	Briefcase,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/dialog";
 import { useAlert, useConfirm } from '../components/use-alert';
@@ -193,6 +194,75 @@ export const Users: React.FC = () => {
 					setSelectedUser({ ...selectedUser, is_admin: !currentStatus });
 			} catch (error) {
 				showAlert("Error", "Error updating admin status: " + (error as any).message, "error");
+			}
+		});
+	};
+
+	const toggleServiceProvider = async (userId: string, currentStatus: boolean) => {
+		const msg = currentStatus
+			? "Disable Service Provider status for this user? This will restrict them from creating services and automatically suspend/hide all their existing services from Discover."
+			: "Enable Service Provider status for this user?";
+		showConfirm("Confirm", msg, async () => {
+			try {
+				const { error } = await supabase.rpc("admin_set_service_provider", {
+					p_user_id: userId,
+					p_is_service_provider: !currentStatus,
+				});
+				if (error) throw error;
+				setUsers(
+					users.map((u) =>
+						u.id === userId ? { ...u, is_service_provider: !currentStatus } : u,
+					),
+				);
+				if (selectedUser?.id === userId)
+					setSelectedUser({ ...selectedUser, is_service_provider: !currentStatus });
+
+				if (!currentStatus) {
+					// Send reinstatement email to the user
+					const targetUser = users.find((u) => u.id === userId) || selectedUser;
+					if (targetUser?.email) {
+						try {
+							await supabase.functions.invoke("send-email", {
+								body: {
+									to: targetUser.email,
+									subject: "Your Service Provider Account Has Been Reinstated",
+									html: `
+										<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+											<div style="background: linear-gradient(135deg, #7c3aed, #9333ea); color: white; padding: 32px 24px; text-align: center;">
+												<img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+												<h1 style="margin: 0; font-size: 22px; font-weight: 700; color: white;">Account Reinstated</h1>
+											</div>
+											<div style="padding: 32px 24px; color: #44403c; line-height: 1.6; font-size: 15px;">
+												<p>Hi <strong>${targetUser.full_name || "there"}</strong>,</p>
+												<p>Great news! Your <strong>Instiy Service Provider account</strong> has been reviewed and reinstated by our administrative team.</p>
+												<div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; padding: 14px 16px; margin: 20px 0; color: #5b21b6; font-size: 14px;">
+													<strong>You can now access your service dashboard:</strong> Create new service listings, manage packages, and connect with customers on Instiy.
+												</div>
+												<p>If you had existing listings that were set to inactive, you can visit the <strong>My Services</strong> tab in the app to review and publish them at any time.</p>
+												<div style="text-align: center; margin-top: 24px;">
+													<a href="https://instiy.com" style="display: block; width: 100%; box-sizing: border-box; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white !important; text-decoration: none; text-align: center; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 700;">Open Instiy Services</a>
+												</div>
+											</div>
+											<div style="background: #f5f5f4; padding: 20px; text-align: center; font-size: 12px; color: #78716c; border-top: 1px solid #e7e5e4;">
+												<p style="margin: 0;">&copy; ${new Date().getFullYear()} Instiy Support Team</p>
+											</div>
+										</div>
+									`,
+								},
+							});
+						} catch (emailErr) {
+							console.error("Failed to send service provider reinstatement email:", emailErr);
+						}
+					}
+				}
+
+				showAlert(
+					"Success",
+					`Service provider status ${!currentStatus ? "enabled and confirmation email sent" : "disabled and services suspended"}.`,
+					"success",
+				);
+			} catch (error) {
+				showAlert("Error", "Error updating service provider status: " + (error as any).message, "error");
 			}
 		});
 	};
@@ -476,11 +546,18 @@ export const Users: React.FC = () => {
 											{user.university || "N/A"}
 										</td>
 										<td>
-											<span
-												className={`badge ${user.is_verified ? "badge-success" : "badge-warning"}`}
-											>
-												{user.is_verified ? "Verified" : "Standard"}
-											</span>
+											<div style={{ display: "flex", gap: "4px", flexWrap: "wrap", alignItems: "center" }}>
+												<span
+													className={`badge ${user.is_verified ? "badge-success" : "badge-warning"}`}
+												>
+													{user.is_verified ? "Verified" : "Standard"}
+												</span>
+												{user.is_service_provider && (
+													<span className="badge badge-info" title="Service Provider">
+														Provider
+													</span>
+												)}
+											</div>
 										</td>
 										<td>
 											{user.is_admin ? (
@@ -597,14 +674,24 @@ export const Users: React.FC = () => {
 								}}
 							/>
 							<h3 style={{ fontSize: "1.1rem" }}>{selectedUser.full_name}</h3>
-							{selectedUser.suspended && (
-								<span
-									className="badge badge-danger"
-									style={{ fontSize: "0.7rem", padding: "2px 8px" }}
-								>
-									Suspended
-								</span>
-							)}
+							<div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
+								{selectedUser.suspended && (
+									<span
+										className="badge badge-danger"
+										style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+									>
+										Suspended
+									</span>
+								)}
+								{selectedUser.is_service_provider && (
+									<span
+										className="badge badge-info"
+										style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+									>
+										Service Provider
+									</span>
+								)}
+							</div>
 							<p
 								style={{
 									color: "hsl(var(--text-tertiary))",
@@ -1123,6 +1210,27 @@ export const Users: React.FC = () => {
 									{selectedUser.is_admin ? "Remove Admin" : "Grant Admin"}
 								</button>
 							</div>
+							<button
+								className={`btn ${selectedUser.is_service_provider ? "btn-danger" : "btn-primary"}`}
+								style={{
+									marginTop: "0.25rem",
+									display: "flex",
+									alignItems: "center",
+									justifyContent: "center",
+									gap: "0.5rem",
+								}}
+								onClick={() =>
+									toggleServiceProvider(
+										selectedUser.id,
+										!!selectedUser.is_service_provider,
+									)
+								}
+							>
+								<Briefcase size={14} />{" "}
+								{selectedUser.is_service_provider
+									? "Disable Service Provider"
+									: "Enable Service Provider"}
+							</button>
 							{selectedUser.suspended ? (
 								<button
 									className="btn btn-success"

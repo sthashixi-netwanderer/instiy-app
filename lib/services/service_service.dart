@@ -9,9 +9,10 @@ import '../models/category_model.dart';
 class ServiceService {
   static const _select = '''
     *,
-    provider:users!services_provider_id_fkey(full_name, avatar_url),
+    provider:users!services_provider_id_fkey(full_name, avatar_url, is_service_provider, suspended),
     category:categories(name, slug),
-    packages:service_packages(*)
+    packages:service_packages(*),
+    reviews:service_reviews(rating)
   ''';
 
   /// Browse published services. Signed-out friendly (public read policy).
@@ -54,16 +55,42 @@ class ServiceService {
       );
     }
     if (searchQuery != null && searchQuery.isNotEmpty) {
-      query = query.or(
-        'title.ilike.%$searchQuery%,description.ilike.%$searchQuery%',
-      );
+      // Match each typed keyword independently (title OR description) so
+      // live, as-you-type search keeps surfacing results while more words
+      // are being typed.
+      final keywords = searchQuery
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((word) => word.isNotEmpty)
+          .take(5);
+      if (keywords.isNotEmpty) {
+        query = query.or(
+          keywords
+              .map((word) => 'title.ilike.%$word%,description.ilike.%$word%')
+              .join(','),
+        );
+      }
     }
 
     final ordered = query.order('created_at', ascending: false);
     final response = limit != null
         ? await ordered.range(offset ?? 0, (offset ?? 0) + limit - 1)
         : await ordered;
-    return response
+    
+    // In browse mode (providerId == null), ensure services whose provider is
+    // no longer an active service provider or suspended are excluded.
+    final rawList = response as List<dynamic>;
+    return rawList
+        .where((row) {
+          if (providerId == null) {
+            final provider = row['provider'] as Map<String, dynamic>?;
+            if (provider != null) {
+              if (provider['is_service_provider'] == false) return false;
+              if (provider['suspended'] == true) return false;
+            }
+          }
+          return true;
+        })
         .map<Service>((row) => Service.fromJson(row))
         .toList();
   }
@@ -75,11 +102,15 @@ class ServiceService {
         .maybeSingle();
     if (response == null) return null;
     final service = Service.fromJson(response);
-    // The bio is fetched separately (and tolerantly) rather than joined so
-    // detail pages keep working while the service_provider_bio migration
-    // is pending on the hosted database.
+    // The bio and public email are fetched separately (and tolerantly)
+    // rather than joined so detail pages keep working while their columns'
+    // migrations are pending on the hosted database.
     final bio = await getProviderBio(service.providerId);
-    return bio == null ? service : service.copyWith(providerBio: bio);
+    final email = await getProviderEmail(service.providerId);
+    return service.copyWith(
+      providerBio: bio ?? service.providerBio,
+      providerPublicEmail: email ?? service.providerPublicEmail,
+    );
   }
 
   /// All listings of the current user (any status) — the "My Services"
@@ -90,33 +121,45 @@ class ServiceService {
     return getServices(providerId: userId, statuses: ServiceStatus.values);
   }
 
-  /// Whether the current user has opted in as a service provider.
+  /// Whether the current user has opted in as a service provider and is active.
   static Future<bool> isServiceProvider() async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) return false;
     final row = await SupabaseService.table('users')
-        .select('is_service_provider')
+        .select('is_service_provider, suspended')
         .eq('id', userId)
         .maybeSingle();
-    return row?['is_service_provider'] == true;
+    return row?['is_service_provider'] == true && row?['suspended'] != true;
   }
 
-  /// One-way opt-in executed from the Services screen only. Prefers the
-  /// bio-taking RPC; falls back to the legacy zero-arg one while the
-  /// service_provider_bio migration is pending on the hosted database
-  /// (then tries a direct bio save, which is a no-op until the column
-  /// exists).
-  static Future<void> becomeServiceProvider(String bio) async {
+  /// One-way opt-in executed from the Services screen only. Stores the bio
+  /// and (optionally) the public contact email. Prefers the two-arg RPC; if
+  /// only the service_provider_bio migration is deployed (not the email one
+  /// yet) it falls back to the one-arg RPC and then tries a direct email
+  /// save, which is a no-op until that column exists.
+  static Future<void> becomeServiceProvider(String bio, String? email) async {
     try {
       await SupabaseService.client.rpc(
         'become_service_provider',
-        params: {'p_bio': bio.trim()},
+        params: {
+          'p_bio': bio.trim(),
+          'p_email': email?.trim(),
+        },
       );
     } catch (_) {
-      await SupabaseService.client.rpc('become_service_provider');
       try {
-        await updateServiceProviderBio(bio);
-      } catch (_) {}
+        await SupabaseService.client.rpc(
+          'become_service_provider',
+          params: {'p_bio': bio.trim()},
+        );
+      } catch (_) {
+        await SupabaseService.client.rpc('become_service_provider');
+      }
+      if (email != null && email.trim().isNotEmpty) {
+        try {
+          await updateServiceProviderEmail(email);
+        } catch (_) {}
+      }
     }
   }
 
@@ -134,13 +177,47 @@ class ServiceService {
     }
   }
 
-  /// Updates the signed-in provider's marketplace bio.
+  /// Best-effort provider public-email lookup — returns null (never throws)
+  /// while the service_provider_email migration hasn't been applied yet.
+  static Future<String?> getProviderEmail(String providerId) async {
+    try {
+      final row = await SupabaseService.table('users')
+          .select('service_provider_email')
+          .eq('id', providerId)
+          .maybeSingle();
+      return row?['service_provider_email'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Updates the signed-in provider's marketplace bio. Round-trips the
+  /// written row so a filtered-out update (RLS or missing profile) throws
+  /// instead of silently reporting success.
   static Future<void> updateServiceProviderBio(String bio) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
-    await SupabaseService.table('users')
+    final rows = await SupabaseService.table('users')
         .update({'service_provider_bio': bio.trim()})
-        .eq('id', userId);
+        .eq('id', userId)
+        .select('id');
+    if (rows.isEmpty) throw Exception('Profile row not found');
+  }
+
+  /// Updates the signed-in provider's public contact email. Round-trips the
+  /// written row like [updateServiceProviderBio].
+  static Future<void> updateServiceProviderEmail(String email) async {
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    final trimmed = email.trim();
+    final rows = await SupabaseService.table('users')
+        .update({
+          'service_provider_email':
+              trimmed.isEmpty ? null : trimmed,
+        })
+        .eq('id', userId)
+        .select('id');
+    if (rows.isEmpty) throw Exception('Profile row not found');
   }
 
   static Future<List<Category>> getServiceCategories() async {
@@ -180,6 +257,11 @@ class ServiceService {
   }) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
+
+    final isProvider = await isServiceProvider();
+    if (!isProvider) {
+      throw Exception('You must be an active service provider to create services.');
+    }
 
     final inserted = await SupabaseService.table('services').insert({
       'provider_id': userId,
@@ -232,6 +314,11 @@ class ServiceService {
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
   }) async {
+    final isProvider = await isServiceProvider();
+    if (!isProvider) {
+      throw Exception('You must be an active service provider to edit services.');
+    }
+
     await SupabaseService.table('services').update({
       'title': title,
       'description': description,
@@ -253,6 +340,12 @@ class ServiceService {
     String serviceId,
     ServiceStatus status,
   ) async {
+    if (status == ServiceStatus.active) {
+      final isProvider = await isServiceProvider();
+      if (!isProvider) {
+        throw Exception('You must be an active service provider to publish services.');
+      }
+    }
     await SupabaseService.table('services')
         .update({'status': status.name})
         .eq('id', serviceId);

@@ -32,6 +32,8 @@ class MessageProvider extends ChangeNotifier {
   int _messagePage = 0;
   int _unreadCount = 0;
   int _unreadNotificationsCount = 0;
+  int _unreadServiceNotificationsCount = 0;
+  int _unreadExploreNotificationsCount = 0;
   String? _error;
   bool _initialized = false;
   bool _isOtherUserTyping = false;
@@ -67,6 +69,8 @@ class MessageProvider extends ChangeNotifier {
   bool get hasMoreMessages => _hasMoreMessages;
   int get unreadCount => _unreadCount;
   int get unreadNotificationsCount => _unreadNotificationsCount;
+  int get unreadServiceNotificationsCount => _unreadServiceNotificationsCount;
+  int get unreadExploreNotificationsCount => _unreadExploreNotificationsCount;
   String? get error => _error;
   bool get isInitialized => _initialized;
   bool get isOtherUserTyping => _isOtherUserTyping;
@@ -99,6 +103,8 @@ class MessageProvider extends ChangeNotifier {
         _hiddenAtMap.clear();
         _unreadCount = 0;
         _unreadNotificationsCount = 0;
+        _unreadServiceNotificationsCount = 0;
+        _unreadExploreNotificationsCount = 0;
         _error = null;
         _currentUserId = null;
         _initialized = false;
@@ -1142,7 +1148,10 @@ class MessageProvider extends ChangeNotifier {
 
   Future<void> loadUnreadNotificationsCount() async {
     try {
-      _unreadNotificationsCount = await NotificationService.getUnreadCount();
+      final counts = await NotificationService.getUnreadCounts();
+      _unreadNotificationsCount = counts.total;
+      _unreadServiceNotificationsCount = counts.services;
+      _unreadExploreNotificationsCount = counts.explore;
       notifyListeners();
     } catch (_) {}
   }

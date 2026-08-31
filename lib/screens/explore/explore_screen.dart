@@ -8,6 +8,7 @@ import '../../config/app_theme.dart';
 import '../../models/institution_model.dart';
 import '../../models/product_model.dart';
 import '../../models/category_model.dart';
+import '../../models/notification_model.dart';
 import '../../providers/providers.dart';
 import '../../services/institution_service.dart';
 import '../../services/product_service.dart';
@@ -785,7 +786,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                   builder: (context) {
                                     final unreadNotifs = ref
                                         .watch(messageProvider)
-                                        .unreadNotificationsCount;
+                                        .unreadExploreNotificationsCount;
                                     return BadgeIconButton(
                                       icon: LucideIcons.bell,
                                       count: unreadNotifs,
@@ -794,7 +795,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                         context,
                                         () => Navigator.of(
                                           context,
-                                        ).pushNamed('/notifications'),
+                                        ).pushNamed(
+                                          '/notifications',
+                                          arguments: NotificationScope.explore,
+                                        ),
                                       ),
                                     );
                                   },

@@ -35,3 +35,22 @@ class AppNotification {
     );
   }
 }
+
+enum NotificationScope {
+  all,
+  services,
+  explore,
+}
+
+class NotificationUnreadCounts {
+  final int total;
+  final int services;
+  final int explore;
+
+  const NotificationUnreadCounts({
+    this.total = 0,
+    this.services = 0,
+    this.explore = 0,
+  });
+}
+

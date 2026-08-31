@@ -304,11 +304,9 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                   // Total views across all listings
                   Row(
                     children: [
-                      Expanded(
-                        child: _StatCard(
-                          label: 'Total Views (all listings)',
-                          value: '$_totalListingViews',
-                        ),
+                      _StatCard(
+                        label: 'Total Views (all listings)',
+                        value: '$_totalListingViews',
                       ),
                     ],
                   ),

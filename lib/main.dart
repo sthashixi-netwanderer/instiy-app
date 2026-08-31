@@ -39,6 +39,7 @@ import 'screens/services/service_detail_screen.dart';
 import 'screens/services/create_service_screen.dart';
 import 'models/service_model.dart';
 import 'screens/wishlist/wishlist_screen.dart';
+import 'models/notification_model.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/account/account_settings_screen.dart';
 import 'screens/profile/following_screen.dart';
@@ -567,7 +568,14 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/wishlist':
               return route(const WishlistScreen());
             case '/notifications':
-              return route(const NotificationsScreen());
+              final scope = settings.arguments is NotificationScope
+                  ? settings.arguments as NotificationScope
+                  : (settings.arguments is String && settings.arguments == 'services')
+                      ? NotificationScope.services
+                      : (settings.arguments is String && settings.arguments == 'explore')
+                          ? NotificationScope.explore
+                          : NotificationScope.all;
+              return route(NotificationsScreen(scope: scope));
             case '/account':
               final initialTab = settings.arguments is int
                   ? settings.arguments as int
