@@ -861,14 +861,8 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             ShadButton.outline(
               size: ShadButtonSize.sm,
               onPressed: _pickImages,
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(LucideIcons.plus, size: 14),
-                  SizedBox(width: 4),
-                  Text('Add'),
-                ],
-              ),
+              leading: const Icon(LucideIcons.plus, size: 14),
+              child: const Text('Add'),
             ),
           ],
         ),
@@ -1397,20 +1391,40 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                     ),
                   ),
                 ),
-                ShadButton.ghost(
-                  size: ShadButtonSize.sm,
-                  onPressed: () {
+                GestureDetector(
+                  onTap: () {
                     setState(() {
                       draft.addFeature();
                     });
                   },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(LucideIcons.plus, size: context.ri(14)),
-                      SizedBox(width: context.rw(4)),
-                      const Text('Add Feature'),
-                    ],
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: context.rw(10),
+                      vertical: context.rh(5),
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(context.rr(8)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          LucideIcons.plus,
+                          size: context.ri(13),
+                          color: AppTheme.accent,
+                        ),
+                        SizedBox(width: context.rw(4)),
+                        Text(
+                          'Add Feature',
+                          style: TextStyle(
+                            fontSize: context.rsp(11),
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1466,20 +1480,41 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                 ),
               ),
             SizedBox(height: context.rh(4)),
-            ShadButton.outline(
-              size: ShadButtonSize.sm,
-              onPressed: () {
+            GestureDetector(
+              onTap: () {
                 setState(() {
                   draft.addFeature();
                 });
               },
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(LucideIcons.plus, size: 14),
-                  SizedBox(width: 4),
-                  Text('Add another feature'),
-                ],
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.rw(12),
+                  vertical: context.rh(8),
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.pureSurface,
+                  borderRadius: BorderRadius.circular(context.rr(8)),
+                  border: Border.all(color: AppTheme.whisperBorder),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      LucideIcons.plus,
+                      size: context.ri(14),
+                      color: AppTheme.charcoalInk,
+                    ),
+                    SizedBox(width: context.rw(6)),
+                    Text(
+                      'Add another feature',
+                      style: TextStyle(
+                        fontSize: context.rsp(12),
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.charcoalInk,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
