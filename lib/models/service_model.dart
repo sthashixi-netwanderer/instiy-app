@@ -66,9 +66,18 @@ class ServicePackage {
   final String description;
   final double price;
   final int deliveryDays;
+  final int? _deliveryDuration;
+  final String? _deliveryUnit;
   final int revisions;
   final bool isPopular;
+  final List<String>? _features;
   final DateTime? createdAt;
+
+  int get deliveryDuration =>
+      _deliveryDuration ?? (deliveryDays > 0 ? deliveryDays : 3);
+  String get deliveryUnit => _deliveryUnit ?? 'days';
+  List<String> get features =>
+      _features ?? _parseFeaturesList(description);
 
   ServicePackage({
     this.id,
@@ -78,22 +87,72 @@ class ServicePackage {
     this.description = '',
     required this.price,
     this.deliveryDays = 3,
+    int? deliveryDuration,
+    String? deliveryUnit = 'days',
     this.revisions = 1,
     this.isPopular = false,
+    List<String>? features,
     this.createdAt,
-  });
+  })  : _deliveryDuration = deliveryDuration ?? deliveryDays,
+        _deliveryUnit = deliveryUnit ?? 'days',
+        _features = features ?? _parseFeaturesList(description);
+
+  static List<String> _parseFeaturesList(String desc) {
+    if (desc.trim().isEmpty) return [];
+    return desc
+        .split(RegExp(r'[\n\r]+'))
+        .map((line) => line.replaceAll(RegExp(r'^[•\-\*✓\d\.\)\s]+'), '').trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  String get deliveryTimeFormatted {
+    final duration = deliveryDuration > 0 ? deliveryDuration : (deliveryDays > 0 ? deliveryDays : 1);
+    final unit = deliveryUnit.toLowerCase().trim();
+    if (unit.contains('min')) {
+      return '$duration minute${duration == 1 ? '' : 's'}';
+    } else if (unit.contains('hour') || unit.contains('hr')) {
+      return '$duration hour${duration == 1 ? '' : 's'}';
+    } else if (unit.contains('month') || unit.contains('mo')) {
+      return '$duration month${duration == 1 ? '' : 's'}';
+    } else if (unit.contains('year') || unit.contains('yr')) {
+      return '$duration year${duration == 1 ? '' : 's'}';
+    } else {
+      return '$duration day${duration == 1 ? '' : 's'}';
+    }
+  }
 
   factory ServicePackage.fromJson(Map<String, dynamic> json) {
+    final desc = json['description'] as String? ?? '';
+    final rawFeatures = json['features'];
+    List<String> parsedFeatures = [];
+    if (rawFeatures is List) {
+      parsedFeatures = rawFeatures
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    if (parsedFeatures.isEmpty) {
+      parsedFeatures = _parseFeaturesList(desc);
+    }
+
+    final days = (json['delivery_days'] as num?)?.toInt() ?? 3;
+    final duration = (json['delivery_duration'] as num?)?.toInt() ?? days;
+    final unit = json['delivery_unit'] as String? ?? 'days';
+
     return ServicePackage(
       id: json['id'] as String?,
       serviceId: json['service_id'] as String?,
       tier: ServiceTierX.fromName(json['tier'] as String?),
       name: json['name'] as String? ?? '',
-      description: json['description'] as String? ?? '',
+      description: desc,
       price: (json['price'] as num?)?.toDouble() ?? 0,
-      deliveryDays: (json['delivery_days'] as num?)?.toInt() ?? 3,
+      deliveryDays: days,
+      deliveryDuration: duration,
+      deliveryUnit: unit,
       revisions: (json['revisions'] as num?)?.toInt() ?? 1,
       isPopular: json['is_popular'] as bool? ?? false,
+      features: parsedFeatures,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -101,15 +160,24 @@ class ServicePackage {
   }
 
   Map<String, dynamic> toJson({String? serviceId}) {
+    // If unit is days, keep delivery_days equal to duration.
+    // If hours/minutes, delivery_days can be 0 or 1.
+    final calculatedDays = deliveryUnit == 'minutes' || deliveryUnit == 'hours'
+        ? 0
+        : (deliveryUnit == 'months' ? deliveryDuration * 30 : (deliveryUnit == 'years' ? deliveryDuration * 365 : deliveryDuration));
+
     return {
       'service_id': ?serviceId,
       'tier': tier.name,
       'name': name,
       'description': description,
       'price': price,
-      'delivery_days': deliveryDays,
+      'delivery_days': calculatedDays,
+      'delivery_duration': deliveryDuration,
+      'delivery_unit': deliveryUnit,
       'revisions': revisions,
       'is_popular': isPopular,
+      'features': features,
     };
   }
 
@@ -121,8 +189,11 @@ class ServicePackage {
     String? description,
     double? price,
     int? deliveryDays,
+    int? deliveryDuration,
+    String? deliveryUnit,
     int? revisions,
     bool? isPopular,
+    List<String>? features,
   }) {
     return ServicePackage(
       id: id ?? this.id,
@@ -132,8 +203,11 @@ class ServicePackage {
       description: description ?? this.description,
       price: price ?? this.price,
       deliveryDays: deliveryDays ?? this.deliveryDays,
+      deliveryDuration: deliveryDuration ?? this.deliveryDuration,
+      deliveryUnit: deliveryUnit ?? this.deliveryUnit,
       revisions: revisions ?? this.revisions,
       isPopular: isPopular ?? this.isPopular,
+      features: features ?? this.features,
       createdAt: createdAt,
     );
   }
@@ -208,6 +282,36 @@ class Service {
       : packages
             .map((p) => p.deliveryDays)
             .reduce((a, b) => a < b ? a : b);
+
+  /// Human-friendly delivery time estimate (e.g. '30 minutes', '2 hours', '3 days').
+  String? get minDeliveryTimeFormatted {
+    if (packages.isEmpty) {
+      if (deliveryDays == null) return null;
+      return '$deliveryDays day${deliveryDays == 1 ? '' : 's'}';
+    }
+    final sorted = [...packages]..sort((a, b) {
+      final aM = a.deliveryUnit == 'minutes'
+          ? a.deliveryDuration
+          : (a.deliveryUnit == 'hours'
+              ? a.deliveryDuration * 60
+              : (a.deliveryUnit == 'months'
+                  ? a.deliveryDuration * 43200
+                  : (a.deliveryUnit == 'years'
+                      ? a.deliveryDuration * 525600
+                      : a.deliveryDuration * 1440)));
+      final bM = b.deliveryUnit == 'minutes'
+          ? b.deliveryDuration
+          : (b.deliveryUnit == 'hours'
+              ? b.deliveryDuration * 60
+              : (b.deliveryUnit == 'months'
+                  ? b.deliveryDuration * 43200
+                  : (b.deliveryUnit == 'years'
+                      ? b.deliveryDuration * 525600
+                      : b.deliveryDuration * 1440)));
+      return aM.compareTo(bM);
+    });
+    return sorted.first.deliveryTimeFormatted;
+  }
 
   /// Packages ordered Basic → Standard → Premium.
   List<ServicePackage> get sortedPackages {

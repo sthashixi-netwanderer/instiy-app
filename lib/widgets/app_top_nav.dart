@@ -105,6 +105,7 @@ class AppTopNav extends ConsumerWidget {
     final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
+    final isServicesTab = currentIndex == 2;
 
     return ClipRRect(
       child: BackdropFilter(
@@ -176,15 +177,16 @@ class AppTopNav extends ConsumerWidget {
                     () => Navigator.of(context).pushNamed('/services'),
                   ),
                 ),
-                _buildNavItem(
-                  icon: LucideIcons.video,
-                  label: 'Clips',
-                  active: currentIndex == 3,
-                  onTap: _tabTap(
-                    3,
-                    () => Navigator.of(context).pushNamed('/clips'),
+                if (!isServicesTab)
+                  _buildNavItem(
+                    icon: LucideIcons.video,
+                    label: 'Clips',
+                    active: currentIndex == 3,
+                    onTap: _tabTap(
+                      3,
+                      () => Navigator.of(context).pushNamed('/clips'),
+                    ),
                   ),
-                ),
                 _buildNavItem(
                   icon: LucideIcons.messageSquare,
                   label: 'Messages',
@@ -243,15 +245,16 @@ class AppTopNav extends ConsumerWidget {
                     () => Navigator.of(context).pushNamed('/services'),
                   ),
                 ),
-                _buildNavItem(
-                  icon: LucideIcons.video,
-                  label: 'Clips',
-                  active: currentIndex == 3,
-                  onTap: _tabTap(
-                    3,
-                    () => Navigator.of(context).pushNamed('/clips'),
+                if (!isServicesTab)
+                  _buildNavItem(
+                    icon: LucideIcons.video,
+                    label: 'Clips',
+                    active: currentIndex == 3,
+                    onTap: _tabTap(
+                      3,
+                      () => Navigator.of(context).pushNamed('/clips'),
+                    ),
                   ),
-                ),
                 _buildNavItem(
                   icon: LucideIcons.info,
                   label: 'Info',

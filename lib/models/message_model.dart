@@ -98,12 +98,17 @@ class ProductReference {
   /// reference card navigates.
   final String type;
 
+  /// For service references: the plan the customer selected before
+  /// contacting the provider. The quoted [price] is this package's price.
+  final String? packageName;
+
   ProductReference({
     required this.productId,
     required this.title,
     required this.price,
     this.imageUrl,
     this.type = 'product',
+    this.packageName,
   });
 
   bool get isService => type == 'service';
@@ -115,6 +120,7 @@ class ProductReference {
       price: (json['price'] as num).toDouble(),
       imageUrl: json['image_url'] as String?,
       type: json['type'] as String? ?? 'product',
+      packageName: json['package_name'] as String?,
     );
   }
 
@@ -125,6 +131,8 @@ class ProductReference {
       'price': price,
       'image_url': imageUrl,
       'type': type,
+      if (packageName != null && packageName!.isNotEmpty)
+        'package_name': packageName,
     };
   }
 }

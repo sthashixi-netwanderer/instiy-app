@@ -31,8 +31,14 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   Service? _service;
   bool _isLoading = true;
   String? _error;
-  int _selectedPackageIndex = 0;
+
+  /// Index into the sorted packages list, or null while the customer
+  /// hasn't picked a plan yet — contacting the provider requires an
+  /// explicit selection so the quoted price matches what they chose.
+  int? _selectedPackageIndex;
   int _galleryPage = 0;
+  final GlobalKey _packagesKey = GlobalKey();
+  final ScrollController _scrollCtrl = ScrollController();
 
   @override
   void initState() {
@@ -63,6 +69,12 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         });
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
   }
 
   bool get _isOwnService {
@@ -233,8 +245,11 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
   Widget _buildContent(BuildContext context, Service service) {
     final packages = service.sortedPackages;
-    if (_selectedPackageIndex >= packages.length) _selectedPackageIndex = 0;
+    if (_selectedPackageIndex != null && _selectedPackageIndex! >= packages.length) {
+      _selectedPackageIndex = null;
+    }
     return ListView(
+      controller: _scrollCtrl,
       padding: EdgeInsets.fromLTRB(
         context.rw(16),
         MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16),
@@ -308,14 +323,66 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         _buildAvailability(context, service),
         if (packages.isNotEmpty) ...[
           SizedBox(height: context.rh(24)),
-          _buildSectionTitle('Packages'),
-          SizedBox(height: context.rh(8)),
-          for (var i = 0; i < packages.length; i++)
-            _PackageCard(
-              package: packages[i],
-              selected: _selectedPackageIndex == i,
-              onTap: () => setState(() => _selectedPackageIndex = i),
+          Row(
+            key: _packagesKey,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildSectionTitle('Plans & Packages'),
+              if (packages.length > 1)
+                Padding(
+                  padding: EdgeInsets.only(bottom: context.rh(2)),
+                  child: Text(
+                    'Swipe to view all →',
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      color: AppTheme.mutedSteel,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: context.rh(4)),
+          Text(
+            _selectedPackageIndex == null
+                ? 'Select a plan to contact the provider.'
+                : 'Selected: ${_planLabel(packages[_selectedPackageIndex!])}',
+            style: TextStyle(
+              fontSize: context.rsp(12),
+              color: _selectedPackageIndex == null
+                  ? AppTheme.mutedSteel
+                  : AppTheme.accent,
+              fontWeight: FontWeight.w500,
             ),
+          ),
+          SizedBox(height: context.rh(12)),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            clipBehavior: Clip.none,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < packages.length; i++) ...[
+                  _PlanCard(
+                    package: packages[i],
+                    isSelected: _selectedPackageIndex == i,
+                    isOwnService: _isOwnService,
+                    onSelect: () => setState(() => _selectedPackageIndex = i),
+                    // "Get started" doubles as the selection: tapping it on a
+                    // card means the customer wants that specific package.
+                    onAction: () {
+                      setState(() => _selectedPackageIndex = i);
+                      _contactProvider(context, ref, service);
+                    },
+                  ),
+                  if (i < packages.length - 1)
+                    SizedBox(width: context.rw(14)),
+                ],
+              ],
+            ),
+          ),
         ],
         SizedBox(height: context.rh(24)),
         if (service.providerName != null) _buildProviderCard(service),
@@ -323,9 +390,12 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         if (!_isOwnService)
           ShadButton(
             onPressed: () => _contactProvider(context, ref, service),
-            child: const Text(
-              'Contact Provider',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            child: Text(
+              packages.isNotEmpty && _selectedPackageIndex == null
+                  ? 'Select a Package to Continue'
+                  : 'Contact Provider',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         SizedBox(height: context.rh(32)),
@@ -457,7 +527,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 
   Widget _buildMetaRow(Service service) {
-    final delivery = service.minDeliveryDays;
+    final delivery = service.minDeliveryTimeFormatted ??
+        (service.minDeliveryDays != null
+            ? '${service.minDeliveryDays} day${service.minDeliveryDays == 1 ? '' : 's'}'
+            : null);
     return Wrap(
       spacing: context.rw(14),
       runSpacing: context.rh(6),
@@ -495,7 +568,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             color: AppTheme.mutedSteel,
           ),
           Text(
-            '$delivery day${delivery == 1 ? '' : 's'} delivery',
+            delivery,
             style: TextStyle(
               color: AppTheme.mutedSteel,
               fontSize: context.rsp(13),
@@ -774,6 +847,26 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     );
   }
 
+  String _planLabel(ServicePackage package) {
+    final name = package.name.isNotEmpty
+        ? package.name
+        : package.tier.displayName;
+    return '$name — ${formatGhs(package.price)}';
+  }
+
+  /// Brings the Plans & Packages row into view so the customer sees the
+  /// options they need to pick from.
+  void _scrollToPackages() {
+    final ctx = _packagesKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+      alignment: 0.1,
+    );
+  }
+
   Future<void> _contactProvider(
     BuildContext context,
     WidgetRef ref,
@@ -795,6 +888,28 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
       return;
     }
 
+    // A package must be chosen explicitly so the chat quotes the exact
+    // plan the customer wants. Services without any packages fall back to
+    // the service-level starting price.
+    final packages = service.sortedPackages;
+    ServicePackage? selectedPackage;
+    if (packages.isNotEmpty) {
+      final index = _selectedPackageIndex;
+      if (index == null || index >= packages.length) {
+        _scrollToPackages();
+        ShadToaster.of(context).show(
+          const ShadToast.destructive(
+            title: Text('Select a package first'),
+            description: Text(
+              'Tap the plan you want, then contact the provider.',
+            ),
+          ),
+        );
+        return;
+      }
+      selectedPackage = packages[index];
+    }
+
     unawaited(showDialog(
       context: context,
       barrierDismissible: false,
@@ -807,13 +922,18 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
       final serviceRef = {
         'product_id': service.id,
         'title': service.title,
-        'price': service.startingPrice,
+        'price': selectedPackage?.price ?? service.startingPrice,
         'image_url': service.imageUrls.isNotEmpty
             ? service.imageUrls.first
             : null,
         // Marks this reference as a service so the chat's card routes to
         // the service detail screen instead of the product one.
         'type': 'service',
+        // Quoted plan — the chat card shows the package name + its price.
+        if (selectedPackage != null)
+          'package_name': selectedPackage.name.isNotEmpty
+              ? selectedPackage.name
+              : selectedPackage.tier.displayName,
       };
 
       await msgProv.createAndOpenConversation(
@@ -844,147 +964,340 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 }
 
-class _PackageCard extends StatelessWidget {
+class _PlanCard extends StatelessWidget {
   final ServicePackage package;
-  final bool selected;
-  final VoidCallback onTap;
+  final bool isSelected;
+  final bool isOwnService;
+  final VoidCallback onSelect;
+  final VoidCallback onAction;
 
-  const _PackageCard({
+  const _PlanCard({
     required this.package,
-    required this.selected,
-    required this.onTap,
+    required this.isSelected,
+    required this.isOwnService,
+    required this.onSelect,
+    required this.onAction,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isPopular = package.isPopular;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: onSelect,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        margin: EdgeInsets.only(bottom: context.rh(10)),
-        padding: context.rAll(14),
+        duration: const Duration(milliseconds: 200),
+        width: context.rw(290),
+        padding: context.rAll(20),
         decoration: BoxDecoration(
           color: AppTheme.pureSurface,
-          borderRadius: BorderRadius.circular(context.rr(14)),
+          borderRadius: BorderRadius.circular(context.rr(18)),
           border: Border.all(
-            color: selected ? AppTheme.accent : AppTheme.whisperBorder,
-            width: selected ? 1.6 : 1,
+            color: isPopular
+                ? AppTheme.accent
+                : (isSelected
+                    ? AppTheme.accent.withValues(alpha: 0.8)
+                    : AppTheme.whisperBorder),
+            width: isPopular ? 2.0 : (isSelected ? 1.6 : 1.0),
           ),
+          boxShadow: isPopular
+              ? [
+                  BoxShadow(
+                    color: AppTheme.accent.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : (isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.accent.withValues(alpha: 0.06),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Top Badge / Header (RECOMMENDED / POPULAR)
+            if (isPopular) ...[
+              Text(
+                'RECOMMENDED',
+                style: TextStyle(
+                  fontSize: context.rsp(11),
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.accent,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              SizedBox(height: context.rh(6)),
+            ],
+
+            // Plan Title / Custom Package Name
             Row(
               children: [
+                Expanded(
+                  child: Text(
+                    package.name.isNotEmpty
+                        ? package.name
+                        : package.tier.displayName,
+                    style: TextStyle(
+                      fontSize: context.rsp(19),
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.charcoalInk,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
                 Container(
                   padding: EdgeInsets.symmetric(
-                    horizontal: context.rw(10),
-                    vertical: context.rh(4),
+                    horizontal: context.rw(8),
+                    vertical: context.rh(3),
                   ),
                   decoration: BoxDecoration(
-                    color: selected
-                        ? AppTheme.accent
+                    color: isPopular
+                        ? AppTheme.accent.withValues(alpha: 0.12)
                         : AppTheme.warmMist,
-                    borderRadius: BorderRadius.circular(context.rr(10)),
+                    borderRadius: BorderRadius.circular(context.rr(8)),
                   ),
                   child: Text(
                     package.tier.displayName,
                     style: TextStyle(
-                      fontSize: context.rsp(11),
+                      fontSize: context.rsp(10),
                       fontWeight: FontWeight.w600,
-                      color: selected ? Colors.white : AppTheme.charcoalInk,
+                      color: isPopular ? AppTheme.accent : AppTheme.mutedSteel,
                     ),
-                  ),
-                ),
-                if (package.isPopular) ...[
-                  SizedBox(width: context.rw(8)),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: context.rw(8),
-                      vertical: context.rh(4),
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(context.rr(10)),
-                    ),
-                    child: Text(
-                      'Popular',
-                      style: TextStyle(
-                        fontSize: context.rsp(10),
-                        fontWeight: FontWeight.w600,
-                        color: Colors.amber[800],
-                      ),
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                Text(
-                  formatGhs(package.price),
-                  style: TextStyle(
-                    fontSize: context.rsp(17),
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.accent,
                   ),
                 ),
               ],
             ),
-            if (package.name.isNotEmpty) ...[
-              SizedBox(height: context.rh(8)),
-              Text(
-                package.name,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: context.rsp(14),
-                  color: AppTheme.charcoalInk,
+            SizedBox(height: context.rh(8)),
+
+            // Delivery time pill (e.g. ⏱ 30 minutes, ⏱ 2 hours, ⏱ 3 days)
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.rw(10),
+                vertical: context.rh(4),
+              ),
+              decoration: BoxDecoration(
+                color: AppTheme.warmMist,
+                borderRadius: BorderRadius.circular(context.rr(10)),
+                border: Border.all(
+                  color: AppTheme.whisperBorder.withValues(alpha: 0.5),
                 ),
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    LucideIcons.clock,
+                    size: context.ri(13),
+                    color: AppTheme.mutedSteel,
+                  ),
+                  SizedBox(width: context.rw(5)),
+                  Text(
+                    package.deliveryTimeFormatted,
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.charcoalInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: context.rh(14)),
+
+            // Pricing & Revisions
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  formatGhs(package.price),
+                  style: TextStyle(
+                    fontSize: context.rsp(22),
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+                SizedBox(width: context.rw(6)),
+                Text(
+                  package.revisions >= 99
+                      ? '• Unlimited revs'
+                      : '• ${package.revisions} rev${package.revisions == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    fontSize: context.rsp(11),
+                    color: AppTheme.mutedSteel,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
             if (package.description.isNotEmpty) ...[
               SizedBox(height: context.rh(4)),
               Text(
                 package.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: context.rsp(12),
+                  fontSize: context.rsp(11),
                   color: AppTheme.mutedSteel,
-                  height: 1.5,
+                  height: 1.4,
                 ),
               ),
             ],
-            SizedBox(height: context.rh(10)),
+            SizedBox(height: context.rh(14)),
+
+            // Call to Action Button
+            SizedBox(
+              width: double.infinity,
+              height: context.rh(40),
+              child: isPopular
+                  ? ShadButton(
+                      onPressed: isOwnService ? onSelect : onAction,
+                      child: Text(
+                        isOwnService ? 'Select Plan' : 'Get started',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    )
+                  : ShadButton.outline(
+                      onPressed: isOwnService ? onSelect : onAction,
+                      child: Text(
+                        isOwnService ? 'Select Plan' : 'Get started',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? AppTheme.accent
+                              : AppTheme.charcoalInk,
+                        ),
+                      ),
+                    ),
+            ),
+            SizedBox(height: context.rh(16)),
+
+            // Divider
+            const Divider(color: AppTheme.whisperBorder, height: 1),
+            SizedBox(height: context.rh(14)),
+
+            // Features header
             Row(
               children: [
                 Icon(
-                  LucideIcons.clock,
+                  LucideIcons.sparkles,
                   size: context.ri(14),
-                  color: AppTheme.mutedSteel,
+                  color: isPopular ? AppTheme.accent : AppTheme.mutedSteel,
                 ),
-                SizedBox(width: context.rw(4)),
-                Text(
-                  '${package.deliveryDays}-day delivery',
-                  style: TextStyle(
-                    fontSize: context.rsp(12),
-                    color: AppTheme.mutedSteel,
-                  ),
-                ),
-                SizedBox(width: context.rw(14)),
-                Icon(
-                  LucideIcons.refreshCw,
-                  size: context.ri(14),
-                  color: AppTheme.mutedSteel,
-                ),
-                SizedBox(width: context.rw(4)),
-                Text(
-                  package.revisions >= 99
-                      ? 'Unlimited revisions'
-                      : '${package.revisions} revision'
-                        '${package.revisions == 1 ? '' : 's'}',
-                  style: TextStyle(
-                    fontSize: context.rsp(12),
-                    color: AppTheme.mutedSteel,
+                SizedBox(width: context.rw(6)),
+                Expanded(
+                  child: Text(
+                    '${package.name.isNotEmpty ? package.name : package.tier.displayName} includes:',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.charcoalInk,
+                    ),
                   ),
                 ),
               ],
             ),
+            SizedBox(height: context.rh(10)),
+
+            // Features list (vertically arranged)
+            if (package.features.isNotEmpty) ...[
+              for (final feature in package.features)
+                Padding(
+                  padding: EdgeInsets.only(bottom: context.rh(10)),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: context.rh(2)),
+                        child: Icon(
+                          LucideIcons.check,
+                          size: context.ri(15),
+                          color: isPopular
+                              ? AppTheme.accent
+                              : AppTheme.charcoalInk,
+                        ),
+                      ),
+                      SizedBox(width: context.rw(8)),
+                      Expanded(
+                        child: Text(
+                          feature,
+                          style: TextStyle(
+                            fontSize: context.rsp(12),
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.charcoalInk,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ] else ...[
+              Padding(
+                padding: EdgeInsets.only(bottom: context.rh(6)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(top: context.rh(2)),
+                      child: Icon(
+                        LucideIcons.check,
+                        size: context.ri(15),
+                        color: AppTheme.charcoalInk,
+                      ),
+                    ),
+                    SizedBox(width: context.rw(8)),
+                    Expanded(
+                      child: Text(
+                        'Full delivery within ${package.deliveryTimeFormatted}',
+                        style: TextStyle(
+                          fontSize: context.rsp(12),
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.charcoalInk,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(top: context.rh(2)),
+                    child: Icon(
+                      LucideIcons.check,
+                      size: context.ri(15),
+                      color: AppTheme.charcoalInk,
+                    ),
+                  ),
+                  SizedBox(width: context.rw(8)),
+                  Expanded(
+                    child: Text(
+                      package.revisions >= 99
+                          ? 'Unlimited revisions included'
+                          : '${package.revisions} revision${package.revisions == 1 ? '' : 's'} included',
+                      style: TextStyle(
+                        fontSize: context.rsp(12),
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.charcoalInk,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

@@ -111,6 +111,7 @@ class AppBottomNav extends ConsumerWidget {
     final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
+    final isServicesTab = currentIndex == 2;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -171,13 +172,14 @@ class AppBottomNav extends ConsumerWidget {
                             'Services',
                             badgeCount: unreadServiceCount,
                           ),
-                          _navButton(
-                            context,
-                            isAuth,
-                            3,
-                            LucideIcons.video,
-                            'Clips',
-                          ),
+                          if (!isServicesTab)
+                            _navButton(
+                              context,
+                              isAuth,
+                              3,
+                              LucideIcons.video,
+                              'Clips',
+                            ),
                           _navButton(
                             context,
                             isAuth,
@@ -219,13 +221,14 @@ class AppBottomNav extends ConsumerWidget {
                             LucideIcons.briefcaseBusiness,
                             'Services',
                           ),
-                          _navButton(
-                            context,
-                            isAuth,
-                            3,
-                            LucideIcons.video,
-                            'Clips',
-                          ),
+                          if (!isServicesTab)
+                            _navButton(
+                              context,
+                              isAuth,
+                              3,
+                              LucideIcons.video,
+                              'Clips',
+                            ),
                           _navButton(
                             context,
                             isAuth,
@@ -353,17 +356,19 @@ class _NavButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 iconArea,
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? AppTheme.accent : AppTheme.mutedSteel,
+                if (!selected) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.mutedSteel,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

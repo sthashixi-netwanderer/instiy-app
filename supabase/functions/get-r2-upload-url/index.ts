@@ -97,6 +97,7 @@ serve(async (req) => {
       "reviews",
       "avatars",
       "products",
+      "services",
       "banners",
       "chat-media",
       "carousel",

@@ -101,15 +101,24 @@ class StorageService {
     final session = SupabaseService.client.auth.currentSession;
     final token = session?.accessToken ?? AppConfig.supabaseAnonKey;
 
+    // Ensure extension is strictly valid and normalized
+    String safeExt = extension.toLowerCase().replaceAll('.', '').trim();
+    const allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'pdf', 'm4a'];
+    if (!allowed.contains(safeExt)) {
+      safeExt = PickedMedia.detectExtension(bytes) ?? 'jpg';
+    }
+    if (safeExt == 'jpeg') safeExt = 'jpg';
+    final safeContentType = _getContentType(safeExt);
+
     final uri = Uri.parse('${AppConfig.apiBaseUrl}/functions/v1/upload-to-r2');
     final response = await http.put(
       uri,
       headers: {
-        'Content-Type': contentType,
+        'Content-Type': safeContentType,
         'Authorization': 'Bearer $token',
         'apikey': AppConfig.supabaseAnonKey,
         'X-R2-Folder': folder,
-        'X-R2-Extension': extension,
+        'X-R2-Extension': safeExt,
       },
       body: bytes,
     ).timeout(const Duration(seconds: 60));

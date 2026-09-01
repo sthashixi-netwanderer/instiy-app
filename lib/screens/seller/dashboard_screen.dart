@@ -311,54 +311,17 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // Add product — the dashboard's primary CTA, styled with the
-                  // app's accent gradient so it stands out from the outline
-                  // and ghost buttons below it.
-                  SizedBox(
-                    width: double.infinity,
-                    height: context.rh(52),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppTheme.accentBright, AppTheme.accent],
-                        ),
-                        borderRadius: BorderRadius.circular(context.rr(12)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.accent.withValues(alpha: 0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _addProduct,
-                          borderRadius: BorderRadius.circular(context.rr(12)),
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(LucideIcons.plusCircle, size: context.ri(20), color: Colors.white),
-                                  SizedBox(width: context.rw(8)),
-                                  Text(
-                                    'Add Product',
-                                    style: TextStyle(
-                                      fontSize: context.rsp(15),
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                  // Add product CTA
+                  AppButton(
+                    onPressed: _addProduct,
+                    leading: const Icon(LucideIcons.plusCircle, size: 18),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Add Product',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ),

@@ -1855,7 +1855,7 @@ class _ServiceCard extends StatelessWidget {
                           ),
                         ),
                       ],
-                      if (delivery != null) ...[
+                      if (delivery != null || service.minDeliveryTimeFormatted != null) ...[
                         const Spacer(),
                         Icon(
                           LucideIcons.clock,
@@ -1864,7 +1864,17 @@ class _ServiceCard extends StatelessWidget {
                         ),
                         SizedBox(width: context.rw(2)),
                         Text(
-                          '${delivery}d',
+                          service.minDeliveryTimeFormatted != null
+                              ? (service.minDeliveryTimeFormatted!.contains('minute')
+                                  ? '${service.minDeliveryTimeFormatted!.split(' ').first}m'
+                                  : (service.minDeliveryTimeFormatted!.contains('hour')
+                                      ? '${service.minDeliveryTimeFormatted!.split(' ').first}h'
+                                      : (service.minDeliveryTimeFormatted!.contains('month')
+                                          ? '${service.minDeliveryTimeFormatted!.split(' ').first}mo'
+                                          : (service.minDeliveryTimeFormatted!.contains('year')
+                                              ? '${service.minDeliveryTimeFormatted!.split(' ').first}yr'
+                                              : '${service.minDeliveryTimeFormatted!.split(' ').first}d'))))
+                              : '${delivery}d',
                           style: TextStyle(
                             fontSize: context.rsp(10),
                             color: AppTheme.mutedSteel,

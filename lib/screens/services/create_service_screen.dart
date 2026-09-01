@@ -28,6 +28,8 @@ class CreateServiceScreen extends ConsumerStatefulWidget {
       _CreateServiceScreenState();
 }
 
+const _deliveryUnits = ['minutes', 'hours', 'days', 'months', 'years'];
+
 /// Draft fields for one pricing tier. Basic is always present; Standard and
 /// Premium can be toggled on.
 class _PackageDraft {
@@ -35,36 +37,93 @@ class _PackageDraft {
   final TextEditingController name = TextEditingController();
   final TextEditingController description = TextEditingController();
   final TextEditingController price = TextEditingController();
-  final TextEditingController deliveryDays = TextEditingController();
+  final TextEditingController deliveryDuration = TextEditingController();
+  String deliveryUnit = 'days';
   final TextEditingController revisions = TextEditingController();
+  bool isPopular = false;
   bool enabled;
+  final List<TextEditingController> featureCtrls = [];
 
   _PackageDraft(this.tier, {this.enabled = false});
 
   factory _PackageDraft.basic() {
     final d = _PackageDraft(ServiceTier.basic, enabled: true);
-    d.deliveryDays.text = '3';
+    d.name.text = 'Basic';
+    d.deliveryDuration.text = '3';
+    d.deliveryUnit = 'days';
     d.revisions.text = '1';
+    d.addFeature();
     return d;
+  }
+
+  void addFeature([String text = '']) {
+    featureCtrls.add(TextEditingController(text: text));
+  }
+
+  void removeFeature(int index) {
+    if (index >= 0 && index < featureCtrls.length) {
+      featureCtrls[index].dispose();
+      featureCtrls.removeAt(index);
+    }
+  }
+
+  List<String> get features => featureCtrls
+      .map((c) => c.text.trim())
+      .where((t) => t.isNotEmpty)
+      .toList();
+
+  String get displayName =>
+      name.text.trim().isNotEmpty ? name.text.trim() : tier.displayName;
+
+  String get deliveryTimeFormatted {
+    final duration = int.tryParse(deliveryDuration.text.trim()) ?? 1;
+    final unit = deliveryUnit.toLowerCase().trim();
+    if (unit.contains('min')) {
+      return '$duration minute${duration == 1 ? '' : 's'}';
+    } else if (unit.contains('hour') || unit.contains('hr')) {
+      return '$duration hour${duration == 1 ? '' : 's'}';
+    } else if (unit.contains('month') || unit.contains('mo')) {
+      return '$duration month${duration == 1 ? '' : 's'}';
+    } else if (unit.contains('year') || unit.contains('yr')) {
+      return '$duration year${duration == 1 ? '' : 's'}';
+    } else {
+      return '$duration day${duration == 1 ? '' : 's'}';
+    }
   }
 
   void populate(ServicePackage p) {
     enabled = true;
-    name.text = p.name;
+    name.text = p.name.isNotEmpty ? p.name : p.tier.displayName;
     description.text = p.description;
     price.text = p.price == p.price.roundToDouble()
         ? p.price.round().toString()
         : p.price.toString();
-    deliveryDays.text = p.deliveryDays.toString();
+    deliveryDuration.text = p.deliveryDuration.toString();
+    deliveryUnit = p.deliveryUnit;
     revisions.text = p.revisions.toString();
+    isPopular = p.isPopular;
+
+    for (final c in featureCtrls) {
+      c.dispose();
+    }
+    featureCtrls.clear();
+    for (final feat in p.features) {
+      addFeature(feat);
+    }
+    if (featureCtrls.isEmpty) {
+      addFeature();
+    }
   }
 
   void dispose() {
     name.dispose();
     description.dispose();
     price.dispose();
-    deliveryDays.dispose();
+    deliveryDuration.dispose();
     revisions.dispose();
+    for (final c in featureCtrls) {
+      c.dispose();
+    }
   }
 }
 
@@ -76,9 +135,18 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   int _currentStep = 0;
   bool _isPublishing = false;
 
+  /// Whether the provider offers tiered packages. Default on; turning it
+  /// off publishes a single-price service. Creating packages requires at
+  /// least one gallery image of the service.
+  bool _packagesEnabled = true;
+
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _tagsCtrl = TextEditingController();
+
+  /// Price used when packages are toggled off (services.price is NOT NULL).
+  final _basePriceCtrl = TextEditingController();
+
   Category? _selectedCategory;
   List<Category> _categories = [];
 
@@ -106,12 +174,13 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       _titleCtrl,
       _descCtrl,
       _tagsCtrl,
+      _basePriceCtrl,
       ..._packages.expand(
         (p) => [
           p.name,
           p.description,
           p.price,
-          p.deliveryDays,
+          p.deliveryDuration,
           p.revisions,
         ],
       ),
@@ -165,6 +234,10 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       _selectedCategory = _categories
           .where((c) => c.id == existing.categoryId)
           .firstOrNull;
+      _packagesEnabled = existing.packages.isNotEmpty;
+      _basePriceCtrl.text = existing.price == existing.price.roundToDouble()
+          ? existing.price.round().toString()
+          : existing.price.toString();
       if (existing.institutionCodes.isEmpty) {
         _allInstitutions = true;
       } else {
@@ -186,6 +259,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _tagsCtrl.dispose();
+    _basePriceCtrl.dispose();
     for (final p in _packages) {
       p.dispose();
     }
@@ -206,6 +280,10 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
 
   List<_PackageDraft> get _enabledPackages =>
       _packages.where((p) => p.enabled).toList();
+
+  /// Package drafts that will actually be saved — the toggle gates them all.
+  List<_PackageDraft> get _activePackages =>
+      _packagesEnabled ? _enabledPackages : const [];
 
   String? _validateStep(int step) {
     switch (step) {
@@ -228,21 +306,31 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
         }
         return null;
       case 2:
+        if (!_packagesEnabled) {
+          final basePrice = double.tryParse(_basePriceCtrl.text.trim());
+          if (basePrice == null || basePrice <= 0) {
+            return 'Set a starting price above 0 for your service';
+          }
+          return null;
+        }
+        if (_totalImageCount == 0) {
+          return 'Add at least one image of your service before creating packages';
+        }
         for (final p in _enabledPackages) {
-          if (p.name.text.trim().isEmpty) {
+          if (p.displayName.isEmpty) {
             return 'Name your ${p.tier.displayName} package';
           }
           final price = double.tryParse(p.price.text.trim());
           if (price == null || price <= 0) {
-            return 'Set a price above 0 for the ${p.tier.displayName} package';
+            return 'Set a price above 0 for the ${p.displayName} package';
           }
-          final delivery = int.tryParse(p.deliveryDays.text.trim());
-          if (delivery == null || delivery < 1 || delivery > 120) {
-            return 'Delivery for ${p.tier.displayName} must be 1–120 days';
+          final duration = int.tryParse(p.deliveryDuration.text.trim());
+          if (duration == null || duration < 1) {
+            return 'Enter a valid delivery time for ${p.displayName}';
           }
           final revisions = int.tryParse(p.revisions.text.trim());
           if (revisions == null || revisions < 0 || revisions > 99) {
-            return 'Revisions for ${p.tier.displayName} must be 0–99';
+            return 'Revisions for ${p.displayName} must be 0–99';
           }
         }
         return null;
@@ -271,26 +359,47 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       final uploaded = await ServiceService.uploadServiceImages(_newImages);
       final imageUrls = [..._existingImageUrls, ...uploaded];
 
-      final enabled = _enabledPackages;
+      final enabled = _activePackages;
       final packageModels = enabled
           .map(
-            (p) => ServicePackage(
-              tier: p.tier,
-              name: p.name.text.trim(),
-              description: p.description.text.trim(),
-              price: double.parse(p.price.text.trim()),
-              deliveryDays: int.parse(p.deliveryDays.text.trim()),
-              revisions: int.parse(p.revisions.text.trim()),
-              isPopular: p.tier == ServiceTier.standard && enabled.length > 1,
-            ),
+            (p) {
+              final duration = int.parse(p.deliveryDuration.text.trim());
+              final unit = p.deliveryUnit;
+              final days = unit == 'minutes' || unit == 'hours'
+                  ? 0
+                  : (unit == 'months'
+                      ? duration * 30
+                      : (unit == 'years' ? duration * 365 : duration));
+              return ServicePackage(
+                tier: p.tier,
+                name: p.displayName,
+                description: p.description.text.trim(),
+                price: double.parse(p.price.text.trim()),
+                deliveryDays: days,
+                deliveryDuration: duration,
+                deliveryUnit: unit,
+                revisions: int.parse(p.revisions.text.trim()),
+                isPopular: p.isPopular,
+                features: p.features,
+              );
+            },
           )
           .toList();
-      final startingPrice = packageModels
-          .map((p) => p.price)
-          .reduce((a, b) => a < b ? a : b);
-      final deliveryDays = packageModels
-          .map((p) => p.deliveryDays)
-          .reduce((a, b) => a < b ? a : b);
+      // Without packages the service sells at a single base price; keep the
+      // previous delivery estimate when editing.
+      final double startingPrice;
+      final int? deliveryDays;
+      if (packageModels.isEmpty) {
+        startingPrice = double.parse(_basePriceCtrl.text.trim());
+        deliveryDays = widget.existingService?.deliveryDays;
+      } else {
+        startingPrice = packageModels
+            .map((p) => p.price)
+            .reduce((a, b) => a < b ? a : b);
+        deliveryDays = packageModels
+            .map((p) => p.deliveryDays)
+            .reduce((a, b) => a < b ? a : b);
+      }
       // "All institutions" persists as an empty list (matches products).
       final institutionCodes = _allInstitutions
           ? <String>[]
@@ -845,28 +954,162 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepIntro(
-          'Packages',
-          'Offer tiers so customers can pick the level of service they need. '
-          'Basic is required; your cheapest tier becomes the starting price.',
+          'Packages & Plans',
+          _packagesEnabled
+              ? 'Offer tiers so customers can pick the level of service they need. '
+                  'You can customize package names, delivery duration/units, add vertical features, and mark a popular plan.'
+              : 'Packages are off — your service is offered at a single starting price.',
         ),
-        for (final draft in _packages) _buildPackageEditor(draft),
+        _buildPackagesToggle(),
+        SizedBox(height: context.rh(16)),
+        if (_packagesEnabled)
+          for (final draft in _packages) _buildPackageEditor(draft)
+        else ...[
+          ShadInputFormField(
+            id: 'base-price',
+            controller: _basePriceCtrl,
+            label: RequiredLabel('Starting price (GH₵)'),
+            placeholder: const Text('150'),
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            textInputAction: TextInputAction.done,
+          ),
+          SizedBox(height: context.rh(8)),
+          Text(
+            'Customers will contact you about this price. You can add packages '
+            'later by editing the service.',
+            style: TextStyle(
+              fontSize: context.rsp(12),
+              color: AppTheme.mutedSteel,
+            ),
+          ),
+        ],
       ],
     );
   }
 
+  /// Master switch for packages. Defaults to on; enabling requires at least
+  /// one service image so every tiered listing shows the provider's work.
+  Widget _buildPackagesToggle() {
+    final canUsePackages = _totalImageCount > 0;
+    return GestureDetector(
+      onTap: () => _setPackagesEnabled(!_packagesEnabled),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: context.rAll(14),
+        decoration: BoxDecoration(
+          color: _packagesEnabled
+              ? AppTheme.accent.withValues(alpha: 0.08)
+              : AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rr(12)),
+          border: Border.all(
+            color: _packagesEnabled
+                ? AppTheme.accent.withValues(alpha: 0.5)
+                : AppTheme.whisperBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: context.rAll(10),
+              decoration: BoxDecoration(
+                color: _packagesEnabled
+                    ? AppTheme.accent.withValues(alpha: 0.15)
+                    : AppTheme.warmMist,
+                borderRadius: BorderRadius.circular(context.rr(10)),
+              ),
+              child: Icon(
+                LucideIcons.layers,
+                size: context.ri(18),
+                color: _packagesEnabled
+                    ? AppTheme.accent
+                    : AppTheme.mutedSteel,
+              ),
+            ),
+            SizedBox(width: context.rw(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Offer packages / plans',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: context.rsp(14),
+                      color: _packagesEnabled
+                          ? AppTheme.accent
+                          : AppTheme.charcoalInk,
+                    ),
+                  ),
+                  SizedBox(height: context.rh(2)),
+                  Text(
+                    canUsePackages
+                        ? (_packagesEnabled
+                              ? 'Customers pick a plan (Basic, Standard, Premium) before contacting you'
+                              : 'Off — your service is listed at one starting price')
+                        : 'Add at least one image of your service (Details step) to create packages',
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ShadSwitch(
+              value: _packagesEnabled,
+              onChanged: _setPackagesEnabled,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setPackagesEnabled(bool value) {
+    if (value && _totalImageCount == 0) {
+      ShadToaster.of(context).show(
+        const ShadToast.destructive(
+          title: Text('Add a service image first'),
+          description: Text(
+            'Upload at least one image of your service in the Details step '
+            'before creating packages.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _packagesEnabled = value);
+  }
+
   Widget _buildPackageEditor(_PackageDraft draft) {
     final isBasic = draft.tier == ServiceTier.basic;
+    final isPopular = draft.isPopular;
+
     return Container(
-      margin: EdgeInsets.only(bottom: context.rh(14)),
-      padding: context.rAll(14),
+      margin: EdgeInsets.only(bottom: context.rh(16)),
+      padding: context.rAll(16),
       decoration: BoxDecoration(
         color: AppTheme.pureSurface,
-        borderRadius: BorderRadius.circular(context.rr(14)),
+        borderRadius: BorderRadius.circular(context.rr(16)),
         border: Border.all(
-          color: draft.enabled
-              ? AppTheme.accent.withValues(alpha: 0.4)
-              : AppTheme.whisperBorder,
+          color: isPopular
+              ? AppTheme.accent
+              : (draft.enabled
+                  ? AppTheme.accent.withValues(alpha: 0.4)
+                  : AppTheme.whisperBorder),
+          width: isPopular ? 2.0 : 1.0,
         ),
+        boxShadow: isPopular
+            ? [
+                BoxShadow(
+                  color: AppTheme.accent.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -874,15 +1117,37 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           Row(
             children: [
               Text(
-                draft.tier.displayName,
+                draft.displayName,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: context.rsp(15),
+                  fontSize: context.rsp(16),
                   color: draft.enabled
                       ? AppTheme.charcoalInk
                       : AppTheme.mutedSteel,
                 ),
               ),
+              if (isPopular) ...[
+                SizedBox(width: context.rw(8)),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: context.rw(8),
+                    vertical: context.rh(3),
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(context.rr(8)),
+                  ),
+                  child: Text(
+                    'POPULAR',
+                    style: TextStyle(
+                      fontSize: context.rsp(10),
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.accent,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
               const Spacer(),
               if (isBasic)
                 Container(
@@ -906,29 +1171,100 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               else
                 ShadSwitch(
                   value: draft.enabled,
-                  onChanged: (v) =>
-                      setState(() => draft.enabled = v),
+                  onChanged: (v) => setState(() => draft.enabled = v),
                 ),
             ],
           ),
           if (draft.enabled) ...[
-            SizedBox(height: context.rh(12)),
+            SizedBox(height: context.rh(14)),
+            // Custom Package Title
             ShadInputFormField(
               id: '${draft.tier.name}-name',
               controller: draft.name,
-              label: RequiredLabel('Package name'),
-              placeholder: const Text('e.g. Essential logo pack'),
+              label: RequiredLabel('Package title / name'),
+              placeholder: Text(draft.tier.displayName),
               textInputAction: TextInputAction.next,
             ),
-            SizedBox(height: context.rh(10)),
-            ShadInputFormField(
-              id: '${draft.tier.name}-desc',
-              controller: draft.description,
-              label: const Text('What\'s included (optional)'),
-              placeholder: const Text('1 concept, source file, ...'),
-              maxLines: 2,
+            SizedBox(height: context.rh(12)),
+
+            // Popular Plan Toggle
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  draft.isPopular = !draft.isPopular;
+                  if (draft.isPopular) {
+                    for (final p in _packages) {
+                      if (p != draft) p.isPopular = false;
+                    }
+                  }
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: context.rAll(12),
+                decoration: BoxDecoration(
+                  color: isPopular
+                      ? AppTheme.accent.withValues(alpha: 0.08)
+                      : AppTheme.warmMist,
+                  borderRadius: BorderRadius.circular(context.rr(12)),
+                  border: Border.all(
+                    color: isPopular
+                        ? AppTheme.accent.withValues(alpha: 0.5)
+                        : AppTheme.whisperBorder,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isPopular ? Icons.star : Icons.star_border,
+                      size: context.ri(20),
+                      color: isPopular ? AppTheme.accent : AppTheme.mutedSteel,
+                    ),
+                    SizedBox(width: context.rw(10)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Mark as Popular / Recommended Plan',
+                            style: TextStyle(
+                              fontSize: context.rsp(13),
+                              fontWeight: FontWeight.w600,
+                              color: isPopular
+                                  ? AppTheme.accent
+                                  : AppTheme.charcoalInk,
+                            ),
+                          ),
+                          Text(
+                            'Highlights this plan for customers to make it stand out',
+                            style: TextStyle(
+                              fontSize: context.rsp(11),
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ShadSwitch(
+                      value: isPopular,
+                      onChanged: (v) {
+                        setState(() {
+                          draft.isPopular = v;
+                          if (v) {
+                            for (final p in _packages) {
+                              if (p != draft) p.isPopular = false;
+                            }
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
-            SizedBox(height: context.rh(10)),
+            SizedBox(height: context.rh(12)),
+
+            // Price & Revisions
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -947,17 +1283,6 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                 SizedBox(width: context.rw(10)),
                 Expanded(
                   child: ShadInputFormField(
-                    id: '${draft.tier.name}-delivery',
-                    controller: draft.deliveryDays,
-                    label: RequiredLabel('Delivery (days)'),
-                    placeholder: const Text('3'),
-                    keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-                SizedBox(width: context.rw(10)),
-                Expanded(
-                  child: ShadInputFormField(
                     id: '${draft.tier.name}-revisions',
                     controller: draft.revisions,
                     label: RequiredLabel('Revisions'),
@@ -968,6 +1293,195 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                 ),
               ],
             ),
+            SizedBox(height: context.rh(12)),
+
+            // Delivery Time: duration + unit
+            Text(
+              'Delivery Time',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: context.rsp(14),
+                color: AppTheme.charcoalInk,
+              ),
+            ),
+            SizedBox(height: context.rh(6)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: ShadInputFormField(
+                    id: '${draft.tier.name}-duration',
+                    controller: draft.deliveryDuration,
+                    label: RequiredLabel('Duration'),
+                    placeholder: const Text('3'),
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+                SizedBox(width: context.rw(10)),
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(bottom: context.rh(8)),
+                        child: Text(
+                          'Unit',
+                          style: TextStyle(
+                            fontSize: context.rsp(14),
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.charcoalInk,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        height: context.rh(44),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.rw(12),
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.pureSurface,
+                          borderRadius: BorderRadius.circular(context.rr(10)),
+                          border: Border.all(color: AppTheme.whisperBorder),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: draft.deliveryUnit,
+                            isExpanded: true,
+                            icon: Icon(
+                              LucideIcons.chevronDown,
+                              size: context.ri(16),
+                              color: AppTheme.mutedSteel,
+                            ),
+                            items: _deliveryUnits.map((unit) {
+                              return DropdownMenuItem<String>(
+                                value: unit,
+                                child: Text(
+                                  unit[0].toUpperCase() + unit.substring(1),
+                                  style: TextStyle(
+                                    fontSize: context.rsp(13),
+                                    color: AppTheme.charcoalInk,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (newUnit) {
+                              if (newUnit != null) {
+                                setState(() => draft.deliveryUnit = newUnit);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: context.rh(14)),
+
+            // Features List (Vertically Arranged)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: RequiredLabel(
+                    'Features in this plan',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: context.rsp(14),
+                      color: AppTheme.charcoalInk,
+                    ),
+                  ),
+                ),
+                ShadButton.ghost(
+                  size: ShadButtonSize.sm,
+                  onPressed: () {
+                    setState(() {
+                      draft.addFeature();
+                    });
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.plus, size: context.ri(14)),
+                      SizedBox(width: context.rw(4)),
+                      const Text('Add Feature'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: context.rh(4)),
+            Text(
+              'List each feature vertically with checkmarks (e.g. 1 Concept, Source files included)',
+              style: TextStyle(
+                fontSize: context.rsp(12),
+                color: AppTheme.mutedSteel,
+              ),
+            ),
+            SizedBox(height: context.rh(8)),
+            for (var i = 0; i < draft.featureCtrls.length; i++)
+              Padding(
+                padding: EdgeInsets.only(bottom: context.rh(8)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: context.rAll(6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        LucideIcons.check,
+                        size: context.ri(12),
+                        color: AppTheme.accent,
+                      ),
+                    ),
+                    SizedBox(width: context.rw(8)),
+                    Expanded(
+                      child: ShadInput(
+                        controller: draft.featureCtrls[i],
+                        placeholder: const Text('e.g. Research and exam prep'),
+                      ),
+                    ),
+                    if (draft.featureCtrls.length > 1)
+                      ShadIconButton.ghost(
+                        icon: Icon(
+                          LucideIcons.x,
+                          size: context.ri(16),
+                          color: AppTheme.mutedSteel,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            draft.removeFeature(i);
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            SizedBox(height: context.rh(4)),
+            ShadButton.outline(
+              size: ShadButtonSize.sm,
+              onPressed: () {
+                setState(() {
+                  draft.addFeature();
+                });
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.plus, size: 14),
+                  SizedBox(width: 4),
+                  Text('Add another feature'),
+                ],
+              ),
+            ),
           ],
         ],
       ),
@@ -977,13 +1491,13 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   // Step 4: review ------------------------------------------------
 
   Widget _buildReviewStep() {
-    final enabled = _enabledPackages;
+    final enabled = _activePackages;
     final cheapest = enabled
         .map((p) => double.tryParse(p.price.text.trim()) ?? 0)
         .where((v) => v > 0)
         .toList();
     final startingPrice = cheapest.isEmpty
-        ? 0
+        ? (double.tryParse(_basePriceCtrl.text.trim()) ?? 0)
         : cheapest.reduce((a, b) => a < b ? a : b);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1039,15 +1553,219 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             height: 1.5,
           ),
         ),
-        SizedBox(height: context.rh(10)),
-        for (final p in enabled)
-          _reviewRow(
-            '${p.tier.displayName} package',
-            '${p.name.text.trim()} — '
-            '${formatGhs(double.tryParse(p.price.text.trim()) ?? 0)}, '
-            '${p.deliveryDays.text.trim()}-day delivery',
+        SizedBox(height: context.rh(16)),
+        Text(
+          enabled.isEmpty
+              ? 'Pricing'
+              : 'Configured Plans (${enabled.length})',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: context.rsp(14),
+            color: AppTheme.charcoalInk,
+          ),
+        ),
+        SizedBox(height: context.rh(8)),
+        if (enabled.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: context.rAll(14),
+            decoration: BoxDecoration(
+              color: AppTheme.warmMist,
+              borderRadius: BorderRadius.circular(context.rr(12)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.tag,
+                  size: context.ri(16),
+                  color: AppTheme.mutedSteel,
+                ),
+                SizedBox(width: context.rw(8)),
+                Expanded(
+                  child: Text(
+                    'Single price service — customers contact you at '
+                    '${formatGhs(startingPrice)}',
+                    style: TextStyle(
+                      fontSize: context.rsp(13),
+                      color: AppTheme.charcoalInk,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < enabled.length; i++) ...[
+                  _buildPlanPreviewCard(enabled[i]),
+                  if (i < enabled.length - 1) SizedBox(width: context.rw(12)),
+                ],
+              ],
+            ),
           ),
       ],
+    );
+  }
+
+  Widget _buildPlanPreviewCard(_PackageDraft draft) {
+    final isPopular = draft.isPopular;
+    final price = double.tryParse(draft.price.text.trim()) ?? 0;
+    final revisions = int.tryParse(draft.revisions.text.trim()) ?? 1;
+
+    return Container(
+      width: context.rw(270),
+      padding: context.rAll(16),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(context.rr(16)),
+        border: Border.all(
+          color: isPopular ? AppTheme.accent : AppTheme.whisperBorder,
+          width: isPopular ? 2.0 : 1.0,
+        ),
+        boxShadow: isPopular
+            ? [
+                BoxShadow(
+                  color: AppTheme.accent.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isPopular) ...[
+            Text(
+              'RECOMMENDED',
+              style: TextStyle(
+                fontSize: context.rsp(10),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.accent,
+                letterSpacing: 0.5,
+              ),
+            ),
+            SizedBox(height: context.rh(4)),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  draft.displayName,
+                  style: TextStyle(
+                    fontSize: context.rsp(16),
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.rw(6),
+                  vertical: context.rh(2),
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.warmMist,
+                  borderRadius: BorderRadius.circular(context.rr(6)),
+                ),
+                child: Text(
+                  draft.tier.displayName,
+                  style: TextStyle(
+                    fontSize: context.rsp(10),
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.mutedSteel,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: context.rh(6)),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: context.rw(8),
+              vertical: context.rh(3),
+            ),
+            decoration: BoxDecoration(
+              color: AppTheme.warmMist,
+              borderRadius: BorderRadius.circular(context.rr(8)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  LucideIcons.clock,
+                  size: context.ri(12),
+                  color: AppTheme.mutedSteel,
+                ),
+                SizedBox(width: context.rw(4)),
+                Text(
+                  draft.deliveryTimeFormatted,
+                  style: TextStyle(
+                    fontSize: context.rsp(11),
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: context.rh(10)),
+          Text(
+            formatGhs(price),
+            style: TextStyle(
+              fontSize: context.rsp(20),
+              fontWeight: FontWeight.w800,
+              color: AppTheme.charcoalInk,
+            ),
+          ),
+          Text(
+            revisions >= 99
+                ? 'Unlimited revisions'
+                : '$revisions revision${revisions == 1 ? '' : 's'}',
+            style: TextStyle(
+              fontSize: context.rsp(11),
+              color: AppTheme.mutedSteel,
+            ),
+          ),
+          SizedBox(height: context.rh(12)),
+          Divider(color: AppTheme.whisperBorder, height: 1),
+          SizedBox(height: context.rh(10)),
+          if (draft.features.isNotEmpty)
+            for (final f in draft.features)
+              Padding(
+                padding: EdgeInsets.only(bottom: context.rh(6)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(top: context.rh(2)),
+                      child: Icon(
+                        LucideIcons.check,
+                        size: context.ri(13),
+                        color: isPopular ? AppTheme.accent : AppTheme.charcoalInk,
+                      ),
+                    ),
+                    SizedBox(width: context.rw(6)),
+                    Expanded(
+                      child: Text(
+                        f,
+                        style: TextStyle(
+                          fontSize: context.rsp(11),
+                          color: AppTheme.charcoalInk,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
     );
   }
 

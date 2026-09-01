@@ -2698,6 +2698,7 @@ class _ProductReferenceCard extends StatelessWidget {
     final title = reference['title'] as String? ?? '';
     final price = (reference['price'] as num?)?.toDouble() ?? 0;
     final isService = (reference['type'] as String?) == 'service';
+    final packageName = reference['package_name'] as String?;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
@@ -2773,6 +2774,19 @@ class _ProductReferenceCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (packageName != null && packageName.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Package: $packageName',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.mutedSteel,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
                 const SizedBox(height: 2),
                 Row(
                   children: [
@@ -3395,6 +3409,7 @@ class _InlineProductCard extends StatelessWidget {
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
     final productId = reference.productId as String?;
     final isService = reference.isService == true;
+    final packageName = reference.packageName as String?;
 
     return GestureDetector(
       onTap: productId != null
@@ -3481,6 +3496,21 @@ class _InlineProductCard extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          if (packageName != null && packageName.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Package: $packageName',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: isMe
+                                    ? Colors.white.withValues(alpha: 0.8)
+                                    : AppTheme.mutedSteel,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                           const SizedBox(height: 2),
                           Row(
                             children: [
