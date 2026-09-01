@@ -695,10 +695,11 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   /// Shows the jump-to-newest button whenever the user is scrolled away
-  /// from the bottom of the chat.
+  /// from the bottom of the chat (WhatsApp-style: even a partial screen of
+  /// scroll is enough).
   void _updateScrollButtonVisibility() {
     if (!_scrollCtrl.hasClients) return;
-    final show = _scrollCtrl.offset < _scrollCtrl.position.maxScrollExtent - 200;
+    final show = _scrollCtrl.offset < _scrollCtrl.position.maxScrollExtent - 120;
     if (show != _showScrollDownButton) {
       setState(() {
         _showScrollDownButton = show;
@@ -1205,15 +1206,33 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     } catch (_) {}
   }
 
+  /// WhatsApp-style jump back to the newest messages. Long distances
+  /// (deep in old history) animate faster per pixel so the button always
+  /// feels like a quick fling to the bottom, never a slow crawl.
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted && _scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      final pos = _scrollCtrl.position;
+      final distance = pos.maxScrollExtent - pos.pixels;
+      if (distance <= 0) {
+        _updateScrollButtonVisibility();
+        return;
       }
+      final duration = Duration(
+        milliseconds:
+            (distance / pos.viewportDimension * 140 + 180)
+                .clamp(220, 450)
+                .round(),
+      );
+      _scrollCtrl
+          .animateTo(
+            pos.maxScrollExtent,
+            duration: duration,
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (mounted) _updateScrollButtonVisibility();
+          });
     });
   }
 
@@ -2043,6 +2062,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                           mediaThumbs.add(m.thumbnailUrl);
                                         }
                                         return ListView.builder(
+                                        // Attaching the controller is what
+                                        // brings the initial jump-to-latest,
+                                        // the jump-to-bottom button, reply
+                                        // jumps and top-pagination to life —
+                                        // every one of them no-ops without it.
+                                        controller: _scrollCtrl,
                                         padding: EdgeInsets.fromLTRB(
                                           16,
                                           MediaQuery.paddingOf(context).top + kToolbarHeight + 16,
@@ -2135,10 +2160,14 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                     ),
                                   ],
                                 ),
-                      if (_showScrollDownButton)
-                        Positioned(
-                          bottom: 16,
-                          right: 16,
+                      // Jump-to-bottom button (WhatsApp-style). Always in
+                      // the tree so it fades in/out smoothly; IgnorePointer
+                      // keeps the hidden state from swallowing taps.
+                      Positioned(
+                        bottom: 16,
+                        right: 16,
+                        child: IgnorePointer(
+                          ignoring: !_showScrollDownButton,
                           child: AnimatedOpacity(
                             opacity: _showScrollDownButton ? 1.0 : 0.0,
                             duration: const Duration(milliseconds: 200),
@@ -2155,6 +2184,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                             ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),
