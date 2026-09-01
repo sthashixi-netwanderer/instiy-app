@@ -53,6 +53,7 @@ class AuthService {
     required String walletTag,
     String? university,
     String? phoneNumber,
+    String? referralCode,
   }) async {
     final response = await SupabaseService.auth.signUp(
       email: email,
@@ -62,6 +63,10 @@ class AuthService {
         'wallet_tag': walletTag,
         'university': university,
         'phone_number': phoneNumber,
+        // Consumed by handle_new_user() to record the referral; invalid
+        // codes are ignored server-side.
+        if (referralCode != null && referralCode.trim().isNotEmpty)
+          'referral_code': referralCode.trim().toUpperCase(),
       },
     );
     

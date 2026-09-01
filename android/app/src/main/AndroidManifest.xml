@@ -114,6 +114,19 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="instiy.com" android:pathPrefix="/store/" />
             </intent-filter>
+            <!-- Referral links: https://instiy.com/referral?code=XXXX -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="instiy.com" android:pathPrefix="/referral" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="io.supabase.instiy" android:host="referral" />
+            </intent-filter>
 
             <!-- FCM push notifications tap intent filter -->
             <intent-filter>

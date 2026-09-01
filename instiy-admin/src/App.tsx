@@ -19,32 +19,34 @@ import { AISettings } from "./pages/AISettings";
 import { GPSConfig } from "./pages/GPSConfig";
 import { WithdrawalFees } from "./pages/WithdrawalFees";
 import { Transactions } from "./pages/Transactions";
+import { ReferralSettings } from "./pages/ReferralSettings";
 
 import { Routes, Route, Navigate, useLocation, Link } from "react-router-dom";
 
-import {
-	Shield,
-	LayoutDashboard,
-	Users as UsersIcon,
-	FolderTree,
-	ShoppingBag,
-	Briefcase,
-	Receipt,
-	Landmark,
-	LogOut,
-	Menu,
-	X,
-	User,
-	School,
-	FileText,
-	LayoutGrid,
-	Flag,
-	Images,
-	BrainCircuit,
-	MapPin,
-	Wallet,
-	Megaphone,
-} from "lucide-react";
+	import {
+		Shield,
+		LayoutDashboard,
+		Users as UsersIcon,
+		FolderTree,
+		ShoppingBag,
+		Briefcase,
+		Receipt,
+		Landmark,
+		LogOut,
+		Menu,
+		X,
+		User,
+		School,
+		FileText,
+		LayoutGrid,
+		Flag,
+		Images,
+		BrainCircuit,
+		MapPin,
+		Wallet,
+		Megaphone,
+		Gift,
+	} from "lucide-react";
 const instiyLogo = "/favicon.svg";
 
 export const App: React.FC = () => {
@@ -243,6 +245,12 @@ export const App: React.FC = () => {
 			label: "Transactions",
 			icon: <Wallet size={18} />,
 			path: "/transactions",
+		},
+		{
+			id: "referrals",
+			label: "Referrals",
+			icon: <Gift size={18} />,
+			path: "/referral-settings",
 		},
 		{
 			id: "institutions",
@@ -470,6 +478,7 @@ export const App: React.FC = () => {
 					<Route path="/ai-settings" element={<AISettings />} />
 					<Route path="/gps-settings" element={<GPSConfig />} />
 					<Route path="/withdrawal-fees" element={<WithdrawalFees />} />
+					<Route path="/referral-settings" element={<ReferralSettings />} />
 					<Route path="*" element={<Navigate to="/dashboard" replace />} />
 				</Routes>
 			</main>

@@ -251,6 +251,7 @@ class AuthProvider extends ChangeNotifier {
     required String walletTag,
     String? university,
     String? phoneNumber,
+    String? referralCode,
   }) async {
     _isLoading = true;
     _error = null;
@@ -264,6 +265,7 @@ class AuthProvider extends ChangeNotifier {
         walletTag: walletTag,
         university: university,
         phoneNumber: phoneNumber,
+        referralCode: referralCode,
       );
       _isLoading = false;
       // ignore: unawaited_futures

@@ -13,6 +13,14 @@ class AppUser {
   final bool suspended;
   final DateTime? suspendedAt;
   final String? suspendedReportId;
+
+  /// This user's shareable referral code (generated at signup).
+  final String? referralCode;
+
+  /// Lifetime referral points — awarded when referred users' orders
+  /// are delivered, reversed if the order is refunded.
+  final int referralPoints;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -31,6 +39,8 @@ class AppUser {
     this.suspended = false,
     this.suspendedAt,
     this.suspendedReportId,
+    this.referralCode,
+    this.referralPoints = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -53,6 +63,8 @@ class AppUser {
           ? DateTime.tryParse(json['suspended_at'] as String)
           : null,
       suspendedReportId: json['suspended_report_id'] as String?,
+      referralCode: json['referral_code'] as String?,
+      referralPoints: (json['referral_points'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -74,6 +86,8 @@ class AppUser {
       'suspended': suspended,
       'suspended_at': suspendedAt?.toIso8601String(),
       'suspended_report_id': suspendedReportId,
+      'referral_code': referralCode,
+      'referral_points': referralPoints,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -92,6 +106,8 @@ class AppUser {
     bool? suspended,
     DateTime? suspendedAt,
     String? suspendedReportId,
+    String? referralCode,
+    int? referralPoints,
   }) {
     return AppUser(
       id: id,
@@ -108,6 +124,8 @@ class AppUser {
       suspended: suspended ?? this.suspended,
       suspendedAt: suspendedAt ?? this.suspendedAt,
       suspendedReportId: suspendedReportId ?? this.suspendedReportId,
+      referralCode: referralCode ?? this.referralCode,
+      referralPoints: referralPoints ?? this.referralPoints,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
+import '../../services/referral_service.dart';
 import '../../services/sms_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/required_label.dart';
@@ -15,7 +17,11 @@ import '../../widgets/responsive_layout.dart';
 import '../../widgets/app_button.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
-  const RegisterScreen({super.key});
+  /// Referral code carried from a referral link — pre-fills the
+  /// optional referral field. The user can still edit or clear it.
+  final String? initialReferralCode;
+
+  const RegisterScreen({super.key, this.initialReferralCode});
 
   @override
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
@@ -30,6 +36,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _universityController = TextEditingController();
+  late final _referralCodeController = TextEditingController(
+    text: widget.initialReferralCode?.toUpperCase() ?? '',
+  );
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -55,6 +64,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _universityController.addListener(_onTextChanged);
     _passwordController.addListener(_onTextChanged);
     _confirmPasswordController.addListener(_onTextChanged);
+    _referralCodeController.addListener(_onTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && ref.read(authProvider).isAuthenticated) {
         Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
@@ -209,6 +219,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _universityController.dispose();
+    _referralCodeController.dispose();
     _tagDebounce?.cancel();
     _nameDebounce?.cancel();
     super.dispose();
@@ -233,6 +244,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         );
       }
       return;
+    }
+
+    // Optional referral code — if entered it must resolve to a real
+    // referrer, otherwise the signup would silently skip the referral.
+    final referralCode = _referralCodeController.text.trim().toUpperCase();
+    if (referralCode.isNotEmpty) {
+      final codeValid = await ReferralService.checkCode(referralCode);
+      if (!codeValid) {
+        if (mounted) {
+          ShadToaster.of(context).show(
+            const ShadToast.destructive(
+              title: Text('Referral code not found'),
+              description: Text(
+                'Check the code, or clear the field to continue without a '
+                'referral.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -577,6 +609,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                       walletTag: _tagController.text.trim().replaceAll(RegExp(r'^\$'), '').toLowerCase(),
                                       university: _universityController.text.trim(),
                                       phoneNumber: currentPhone,
+                                      referralCode: _referralCodeController.text.trim().isNotEmpty
+                                          ? _referralCodeController.text.trim().toUpperCase()
+                                          : null,
                                     );
 
                                     setDialogState(() {
@@ -820,6 +855,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       label: 'University',
                       isRequired: true,
                       hint: 'Select your university...',
+                    ),
+                    SizedBox(height: context.rh(12)),
+
+                    // Optional — auto-filled when signing up through a
+                    // referral link; may be pasted, edited or cleared.
+                    ShadInputFormField(
+                      id: 'referral_code',
+                      controller: _referralCodeController,
+                      label: const Text('Referral code (optional)'),
+                      placeholder: const Text('e.g. 7KX2QM4A'),
+                      leading: Icon(LucideIcons.gift, size: context.ri(18)),
+                      textInputAction: TextInputAction.next,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[A-Za-z0-9]'),
+                        ),
+                        LengthLimitingTextInputFormatter(32),
+                      ],
                     ),
                     SizedBox(height: context.rh(12)),
 

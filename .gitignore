@@ -52,3 +52,6 @@ node_modules/
 
 # Local MCP config (contains Supabase PAT - never commit)
 config/mcporter.json
+
+# ZCode session artifacts
+.zcode/

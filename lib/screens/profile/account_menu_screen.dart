@@ -352,6 +352,18 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                       color: AppTheme.whisperBorder.withValues(alpha: 0.6),
                     ),
                     _buildMenuRow(
+                      icon: LucideIcons.gift,
+                      label: 'Refer & Earn',
+                      onTap: () =>
+                          Navigator.of(context).pushNamed('/referral'),
+                    ),
+                    Divider(
+                      height: 1,
+                      indent: context.rw(44),
+                      endIndent: context.rw(12),
+                      color: AppTheme.whisperBorder.withValues(alpha: 0.6),
+                    ),
+                    _buildMenuRow(
                       icon: LucideIcons.users,
                       label: 'Following',
                       onTap: () =>

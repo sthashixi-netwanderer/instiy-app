@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/product_model.dart';
 import 'product_service.dart';
+import 'supabase_service.dart';
 
 class NavigationService {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -65,6 +66,24 @@ class NavigationService {
     });
   }
 
+  /// Referral link (https://instiy.com/referral?code=XXXX): signed-out
+  /// users land on register with the code pre-filled; signed-in users
+  /// land on their own referral screen.
+  static void _navigateToReferral(String? code) {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) return;
+
+    final cleaned = code?.trim().toUpperCase();
+    if (SupabaseService.auth.currentUser != null) {
+      navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navigatorKey.currentState?.pushNamed('/referral');
+      });
+    } else {
+      navigator.pushNamed('/register', arguments: cleaned);
+    }
+  }
+
   /// Handle a deep link URI. Pushes home first to ensure a clean back-stack,
   /// then pushes the target screen on top.
   static Future<void> handleDeepLink(Uri uri) async {
@@ -95,6 +114,19 @@ class NavigationService {
     }
 
     _handledLinks.add(uriStr);
+
+    // Referral links are handled before the generic route parsing — the
+    // target depends on auth state and the code may be absent.
+    final isReferralLink =
+        (uri.scheme == 'https' && uri.host == 'instiy.com' && uri.path == '/referral') ||
+        (uri.scheme == 'io.supabase.instiy' && uri.host == 'referral') ||
+        uri.path == '/referral';
+    if (isReferralLink) {
+      _navigateToReferral(
+        uri.queryParameters['code'] ?? uri.queryParameters['ref'],
+      );
+      return;
+    }
 
     final navigator = navigatorKey.currentState;
     if (navigator == null) {

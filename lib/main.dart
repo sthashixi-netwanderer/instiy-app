@@ -26,9 +26,11 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 // ── Eagerly-loaded screens (auth, home, explore, product detail,
 //    cart, checkout, deep-link targets, and high-traffic routes) ──
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/reset_password_screen.dart';
 import 'screens/auth/suspended_screen.dart';
+import 'screens/referral/referral_screen.dart';
 import 'screens/search/search_screen.dart';
 import 'screens/cart/cart_screen.dart';
 import 'screens/checkout/checkout_screen.dart';
@@ -449,6 +451,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                   if (productId.isNotEmpty) {
                     return route(ProductDetailScreen(productId: productId));
                   }
+                } else if (uri.path == '/referral') {
+                  // Referral link — register screen handles signed-out
+                  // users (code pre-filled); signed-in users are bounced
+                  // to /home by the register screen's auth check.
+                  final code = uri.queryParameters['code'] ??
+                      uri.queryParameters['ref'];
+                  return route(
+                    RegisterScreen(initialReferralCode: code?.toUpperCase()),
+                  );
                 } else if (uri.path.startsWith('/store/')) {
                   final sellerId = uri.pathSegments.length > 1
                       ? uri.pathSegments[1]
@@ -583,6 +594,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
               return route(AccountSettingsScreen(initialTab: initialTab));
             case '/account-menu':
               return route(const AccountMenuScreen());
+            case '/register':
+              // Arguments: optional referral code (String) from a
+              // referral deep link.
+              final referralCode = settings.arguments is String
+                  ? settings.arguments as String?
+                  : null;
+              return route(RegisterScreen(initialReferralCode: referralCode));
+            case '/referral':
+              return route(const ReferralScreen());
             case '/sell':
               return route(const SellerGate(child: SellScreen()));
             case '/curated-collection':
