@@ -1808,15 +1808,40 @@ class _ServiceCard extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: context.rh(4)),
-                  if (service.providerName != null)
-                    Text(
-                      service.providerName!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: context.rsp(11),
-                        color: AppTheme.mutedSteel,
-                      ),
+                  // Provider row — avatar + name (mirrors product cards).
+                  if (service.providerName != null &&
+                      service.providerName!.isNotEmpty)
+                    Row(
+                      children: [
+                        ShadAvatar(
+                          (service.providerAvatar != null &&
+                                  service.providerAvatar!.isNotEmpty)
+                              ? service.providerAvatar
+                              : null,
+                          size: Size(context.ri(18), context.ri(18)),
+                          backgroundColor: AppTheme.accent,
+                          placeholder: Text(
+                            service.providerName![0].toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: context.rsp(8),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: context.rw(4)),
+                        Expanded(
+                          child: Text(
+                            service.providerName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: context.rsp(11),
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   SizedBox(height: context.rh(6)),
                   Row(
