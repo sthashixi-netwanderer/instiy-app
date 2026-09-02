@@ -48,7 +48,9 @@ class AppUser {
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
       id: json['id'] as String,
-      email: json['email'] as String,
+      email: (json['email'] as String?)?.isNotEmpty == true
+          ? json['email'] as String
+          : '',
       fullName: json['full_name'] as String,
       walletTag: json['wallet_tag'] as String? ?? '',
       avatarUrl: json['avatar_url'] as String?,
@@ -94,6 +96,7 @@ class AppUser {
   }
 
   AppUser copyWith({
+    String? email,
     String? fullName,
     String? walletTag,
     String? avatarUrl,
@@ -111,7 +114,7 @@ class AppUser {
   }) {
     return AppUser(
       id: id,
-      email: email,
+      email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       walletTag: walletTag ?? this.walletTag,
       avatarUrl: avatarUrl ?? this.avatarUrl,

@@ -187,6 +187,22 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                               color: AppTheme.charcoalInk,
                             ),
                           ),
+                          if ((user?.email.isNotEmpty == true) ||
+                              (SupabaseService.instance.currentUser?.email?.isNotEmpty == true)) ...[
+                            SizedBox(height: context.rh(2)),
+                            Text(
+                              (user?.email.isNotEmpty == true)
+                                  ? user!.email
+                                  : (SupabaseService.instance.currentUser?.email ?? ''),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: context.rsp(12.5),
+                                color: AppTheme.mutedSteel,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
                           if (_businessName != null) ...[
                             SizedBox(height: context.rh(2)),
                             Text(

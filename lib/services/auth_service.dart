@@ -59,6 +59,7 @@ class AuthService {
       email: email,
       password: password,
       data: {
+        'email': email,
         'full_name': fullName,
         'wallet_tag': walletTag,
         'university': university,
@@ -73,6 +74,13 @@ class AuthService {
     if (response.user == null) {
       throw Exception('Failed to create account');
     }
+
+    // Explicitly guarantee email is bound to public.users profile
+    try {
+      await SupabaseService.table('users').update({
+        'email': email,
+      }).eq('id', response.user!.id);
+    } catch (_) {}
     
     // User profile is automatically created by the handle_new_user() trigger
     // Fetch the profile that was created by the trigger

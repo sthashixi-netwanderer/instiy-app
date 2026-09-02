@@ -578,6 +578,16 @@ AppTheme.showGlassDialog(
                         validator: (v) => v.isEmpty ? 'Required' : null,
                       ),
                       SizedBox(height: context.rh(16)),
+                      ShadInputFormField(
+                        id: 'email',
+                        initialValue: user?.email.isNotEmpty == true
+                            ? user!.email
+                            : (SupabaseService.instance.currentUser?.email ?? ''),
+                        enabled: false,
+                        label: const Text('Email Address'),
+                        leading: Icon(LucideIcons.mail, size: context.ri(16)),
+                      ),
+                      SizedBox(height: context.rh(16)),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [

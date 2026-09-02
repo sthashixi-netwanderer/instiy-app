@@ -151,6 +151,17 @@ class AuthProvider extends ChangeNotifier {
       _error = null;
       _syncAccountStatus();
 
+      // Ensure user email is bound and synced with auth account
+      if (_user != null && _user!.email.isEmpty) {
+        final authEmail = SupabaseService.instance.currentUser?.email;
+        if (authEmail != null && authEmail.isNotEmpty) {
+          _user = _user!.copyWith(email: authEmail);
+          try {
+            await SupabaseService.table('users').update({'email': authEmail}).eq('id', _user!.id);
+          } catch (_) {}
+        }
+      }
+
       // Check if user is suspended
       if (_user != null && _user!.suspended) {
         _isSuspended = true;
