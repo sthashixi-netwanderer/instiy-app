@@ -61,6 +61,7 @@
 				<key>CFBundleURLSchemes</key>
 				<array>
 					<string>io.supabase.instiy</string>
+					<string>instiy</string>
 				</array>
 			</dict>
 			<dict>

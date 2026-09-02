@@ -72,7 +72,7 @@
             </intent-filter>
 
             <!-- Deep linking for Supabase Authentication -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -80,7 +80,7 @@
             </intent-filter>
 
             <!-- Deep linking for Store Profile -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -88,7 +88,7 @@
             </intent-filter>
 
             <!-- Deep linking for Product Detail (custom scheme) -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -119,13 +119,21 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="instiy.com" android:path="/referral" />
                 <data android:scheme="https" android:host="instiy.com" android:pathPrefix="/referral" />
+                <data android:scheme="https" android:host="www.instiy.com" android:path="/referral" />
+                <data android:scheme="https" android:host="www.instiy.com" android:pathPrefix="/referral" />
             </intent-filter>
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="io.supabase.instiy" android:host="referral" />
+                <data android:scheme="io.supabase.instiy" android:pathPrefix="/referral" />
+                <data android:scheme="io.supabase.instiy" android:path="/referral" />
+                <data android:scheme="instiy" android:host="referral" />
+                <data android:scheme="instiy" android:pathPrefix="/referral" />
+                <data android:scheme="instiy" android:path="/referral" />
             </intent-filter>
 
             <!-- FCM push notifications tap intent filter -->

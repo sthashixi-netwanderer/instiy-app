@@ -42,7 +42,7 @@ function getAppleAppSiteAssociation(env: Env): object {
       details: [
         {
           appID: `${teamId}.com.instiy`,
-          paths: ['/product/*', '/products/*', '/store/*'],
+          paths: ['/product/*', '/products/*', '/store/*', '/referral', '/referral/*'],
         },
       ],
     },
@@ -215,6 +215,126 @@ function getStoreLandingHtml(sellerId: string, storeName: string, origin: string
 </html>`;
 }
 
+function getReferralLandingHtml(code: string, origin: string): string {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cleanCode = (code || '').trim().toUpperCase();
+  const title = cleanCode ? `Join Instiy with referral code ${cleanCode}` : 'Join Instiy — Campus Marketplace';
+  const desc = cleanCode
+    ? `Sign up on Instiy with referral code ${cleanCode} to get bonus points!`
+    : 'Join Instiy, the trusted marketplace for college students to buy and sell.';
+  const ogImage = 'https://media.instiy.com/assets/instiy-logo.png';
+
+  const androidRedirect = 'intent://referral?code=' + encodeURIComponent(cleanCode) + '#Intent;scheme=io.supabase.instiy;package=com.instiy;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.instiy;end;';
+  const iosRedirect = 'io.supabase.instiy://referral?code=' + encodeURIComponent(cleanCode);
+  const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.instiy';
+  const appStoreUrl = 'https://apps.apple.com/app/instiy/id6740879308';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${esc(title)}</title>
+    <meta name="description" content="${esc(desc)}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="${esc(title)}">
+    <meta property="og:description" content="${esc(desc)}">
+    <meta property="og:image" content="${esc(ogImage)}">
+    <meta property="og:url" content="${esc(origin)}/referral?code=${esc(cleanCode)}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="${esc(title)}">
+    <meta name="twitter:description" content="${esc(desc)}">
+    <meta name="twitter:image" content="${esc(ogImage)}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Inter',sans-serif;background:radial-gradient(circle at 10% 20%,rgba(108,71,255,0.08) 0%,transparent 40%),radial-gradient(circle at 90% 80%,rgba(108,71,255,0.05) 0%,transparent 50%),#FAFAF9;display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100vh;padding:20px;color:#1C1917;text-align:center}
+        .card{background:rgba(255,255,255,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(200,192,184,0.4);border-radius:24px;width:100%;max-width:420px;padding:32px 24px;box-shadow:0 20px 40px rgba(0,0,0,0.06),0 1px 3px rgba(0,0,0,0.02);animation:floatIn 0.5s ease-out}
+        .logo-wrap{width:72px;height:72px;border-radius:20px;background:#6C47FF;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 8px 20px rgba(108,71,255,0.25)}
+        .logo-wrap svg{width:40px;height:40px;fill:#fff}
+        .heading{font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;color:#1C1917;margin-bottom:8px}
+        .subheading{font-size:14px;color:#78716C;line-height:1.5;margin-bottom:24px}
+        .code-box{background:#F5F3FF;border:2px dashed #6C47FF;border-radius:16px;padding:16px;margin-bottom:24px;cursor:pointer;position:relative;transition:transform 0.15s ease}
+        .code-box:active{transform:scale(0.98)}
+        .code-label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6C47FF;margin-bottom:4px}
+        .code-val{font-family:'Outfit',monospace;font-size:26px;font-weight:800;letter-spacing:3px;color:#4F2EE8}
+        .code-hint{font-size:11px;color:#78716C;margin-top:4px}
+        .btn-open{display:block;width:100%;padding:16px;background-color:#6C47FF;color:#fff;text-decoration:none;border-radius:14px;font-weight:600;font-size:16px;margin-bottom:12px;transition:all 0.2s ease;box-shadow:0 6px 16px rgba(108,71,255,0.3)}
+        .btn-open:hover{background-color:#5833E6}
+        .btn-store{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px;background:#fff;border:1px solid #E7E5E4;color:#44403C;text-decoration:none;border-radius:14px;font-weight:500;font-size:14px}
+        .copied-toast{position:fixed;bottom:24px;background:#1C1917;color:#fff;padding:10px 20px;border-radius:30px;font-size:13px;opacity:0;transition:opacity 0.2s ease;pointer-events:none}
+        .copied-toast.show{opacity:1}
+        @keyframes floatIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo-wrap">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <h1 class="heading">You're Invited!</h1>
+        <p class="subheading">Join Instiy — the trusted marketplace for college students. Sign up with this referral code to get bonus points:</p>
+        ${cleanCode ? `
+        <div class="code-box" onclick="copyCode()">
+            <div class="code-label">Referral Code</div>
+            <div class="code-val" id="refCode">${esc(cleanCode)}</div>
+            <div class="code-hint">Tap to copy code</div>
+        </div>
+        ` : ''}
+        <a href="${androidRedirect}" class="btn-open" id="openBtn">Open in Instiy</a>
+        <a href="${playStoreUrl}" class="btn-store" id="storeBtn">Download Instiy App</a>
+    </div>
+    <div class="copied-toast" id="toast">Referral code copied!</div>
+
+    <script>
+        var isAndroid = /Android/i.test(navigator.userAgent);
+        var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        var code = "${esc(cleanCode)}";
+        var androidUrl = "${androidRedirect}";
+        var iosUrl = "${iosRedirect}";
+        var openBtn = document.getElementById("openBtn");
+        var storeBtn = document.getElementById("storeBtn");
+
+        if (isIOS) {
+            openBtn.href = iosUrl;
+            storeBtn.href = "${appStoreUrl}";
+            storeBtn.innerText = "Get on App Store";
+        } else if (isAndroid) {
+            openBtn.href = androidUrl;
+            storeBtn.href = "${playStoreUrl}";
+            storeBtn.innerText = "Get on Google Play";
+        }
+
+        // Auto redirect attempt on mobile
+        (function() {
+            var target = isAndroid ? androidUrl : (isIOS ? iosUrl : null);
+            if (target) {
+                var iframe = document.createElement("iframe");
+                iframe.style.display = "none";
+                iframe.src = target;
+                document.body.appendChild(iframe);
+                setTimeout(function() {
+                    window.location.href = target;
+                }, 200);
+            }
+        })();
+
+        function copyCode() {
+            var el = document.getElementById("refCode");
+            if (!el) return;
+            navigator.clipboard.writeText(el.innerText).then(function() {
+                var toast = document.getElementById("toast");
+                toast.classList.add("show");
+                setTimeout(function() { toast.classList.remove("show"); }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>`;
+}
+
 
 export async function handleDeepLinks(request: Request, env: Env): Promise<Response> {
   if (request.method === 'OPTIONS') {
@@ -311,6 +431,20 @@ export async function handleDeepLinks(request: Request, env: Env): Promise<Respo
     return new Response(null, {
       status: 302,
       headers: { ...corsHeaders, Location: `io.supabase.instiy://store/${sellerId}` },
+    });
+  }
+
+  // Referral landing page: /referral, /referral?code=XXXX or /referral/:code
+  if (path === '/referral' || path.startsWith('/referral/')) {
+    const codeFromPath = path.startsWith('/referral/') ? path.replace('/referral/', '').split('/')[0] : '';
+    const code = url.searchParams.get('code') || url.searchParams.get('ref') || codeFromPath || '';
+    const html = getReferralLandingHtml(code, url.origin);
+    return new Response(html, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      },
     });
   }
 

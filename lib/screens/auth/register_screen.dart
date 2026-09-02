@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
@@ -65,6 +66,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordController.addListener(_onTextChanged);
     _confirmPasswordController.addListener(_onTextChanged);
     _referralCodeController.addListener(_onTextChanged);
+    _checkPendingReferralCode();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && ref.read(authProvider).isAuthenticated) {
         Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
@@ -77,6 +79,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         }
       });
     });
+  }
+
+  Future<void> _checkPendingReferralCode() async {
+    if (_referralCodeController.text.isNotEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getString('pending_referral_code');
+      if (pending != null && pending.trim().isNotEmpty && mounted && _referralCodeController.text.isEmpty) {
+        setState(() {
+          _referralCodeController.text = pending.trim().toUpperCase();
+        });
+      }
+    } catch (_) {}
   }
 
   void _onTextChanged() {
@@ -608,7 +623,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                       fullName: _nameController.text.trim(),
                                       walletTag: _tagController.text.trim().replaceAll(RegExp(r'^\$'), '').toLowerCase(),
                                       university: _universityController.text.trim(),
-                                      phoneNumber: currentPhone,
+                                      phoneNumber: SmsService.normalizePhoneNumber(currentPhone),
                                       referralCode: _referralCodeController.text.trim().isNotEmpty
                                           ? _referralCodeController.text.trim().toUpperCase()
                                           : null,
@@ -619,6 +634,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     });
 
                                     if (success) {
+                                      unawaited(SharedPreferences.getInstance().then((p) => p.remove('pending_referral_code')));
                                       navigator.pop();
                                       if (mounted) {
                                         navigator.pushNamedAndRemoveUntil('/home', (_) => false); // ignore: unawaited_futures

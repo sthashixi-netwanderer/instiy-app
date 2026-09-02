@@ -4,7 +4,13 @@ import 'supabase_service.dart';
 class SmsService {
   static String normalizePhoneNumber(String phone) {
     var cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
-    if (cleaned.startsWith('0')) {
+    if (cleaned.startsWith('0') && cleaned.length == 10) {
+      cleaned = '+233${cleaned.substring(1)}';
+    } else if (cleaned.length == 9 && !cleaned.startsWith('+')) {
+      cleaned = '+233$cleaned';
+    } else if (cleaned.startsWith('233') && !cleaned.startsWith('+')) {
+      cleaned = '+$cleaned';
+    } else if (cleaned.startsWith('0')) {
       cleaned = '+233${cleaned.substring(1)}';
     } else if (cleaned.isNotEmpty && !cleaned.startsWith('+')) {
       cleaned = '+$cleaned';

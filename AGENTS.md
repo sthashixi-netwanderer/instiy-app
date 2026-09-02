@@ -215,6 +215,55 @@ Notes:
 
 ---
 
+## Deployment & CI/CD Protocol (TestFlight Pipeline)
+
+Whenever the user asks to push commits, deploy, or upload a build to TestFlight:
+
+### Core Rule: Public During Pipeline, Private Immediately After
+Because macOS GitHub Actions runners require public repository visibility for free workflow execution, agents **must** follow this strict protocol whenever pushing commits or triggering the iOS TestFlight pipeline:
+
+1. **Switch Repository to Public**:
+   Before pushing or triggering the build pipeline, change repository visibility to `public`:
+   ```bash
+   echo "y" | gh repo edit sthashixi-netwanderer/instiy-app --visibility public
+   ```
+   Verify visibility:
+   ```bash
+   gh repo view sthashixi-netwanderer/instiy-app --json visibility
+   ```
+
+2. **Push Commit / Trigger Workflow**:
+   Push changes to the `instiy` branch (which automatically triggers `.github/workflows/ios.yml`):
+   ```bash
+   git push origin instiy
+   ```
+   *(If triggering without a new commit, run `gh workflow run ios.yml --ref instiy`)*
+
+3. **Monitor & Watch the Pipeline**:
+   Find the active workflow run:
+   ```bash
+   gh run list --workflow=ios.yml --limit 1
+   ```
+   Watch the pipeline until completion (test, build, code signing, and TestFlight upload):
+   ```bash
+   gh run watch <run-id>
+   ```
+
+4. **Revert Repository to Private (Mandatory)**:
+   **Immediately** after the pipeline finishes (whether it succeeded or failed), revert the repository visibility back to `private`:
+   ```bash
+   echo "y" | gh repo edit sthashixi-netwanderer/instiy-app --visibility private
+   ```
+   Verify visibility is restored to `PRIVATE`:
+   ```bash
+   gh repo view sthashixi-netwanderer/instiy-app --json visibility
+   ```
+
+5. **Report to User**:
+   Report the pipeline outcome (TestFlight upload status) and confirm that the repository has been safely returned to `private`.
+
+---
+
 ## Version Compatibility Notes
 
 - Flutter SDK: ^3.12.0
@@ -224,5 +273,5 @@ Notes:
 
 ---
 
-*Last updated: 2026-08-22*
+*Last updated: 2026-09-02*
 *This file should be updated when packages are added, removed, or significantly upgraded.*

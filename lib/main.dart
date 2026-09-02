@@ -304,6 +304,9 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initDeepLinking();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NavigationService.flushPendingDeepLink();
+    });
   }
 
   @override
@@ -374,14 +377,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
       },
     );
 
-    // If the app was opened by a link (cold start), handle it immediately.
-    // There's no splash screen to wait for anymore.
+    // If the app was opened by a link (cold start), handle it after the navigator is ready.
     _appLinks
         .getInitialLink()
         .then((uri) {
           if (uri == null) return;
           debugPrint('Deep link (cold start): $uri');
-          NavigationService.handleDeepLink(uri);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            NavigationService.handleDeepLink(uri);
+          });
         })
         .catchError((err) {
           debugPrint('Failed to get initial deep link: $err');
@@ -442,7 +446,8 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             try {
               final uri = Uri.parse(name);
               // Handle HTTPS instiy.com links
-              if (uri.scheme == 'https' && uri.host == 'instiy.com') {
+              final isInstiyHost = uri.host == 'instiy.com' || uri.host == 'www.instiy.com';
+              if (uri.scheme == 'https' && isInstiyHost) {
                 if (uri.path.startsWith('/products/')) {
                   final slugId = uri.pathSegments.length > 1
                       ? uri.pathSegments[1]
@@ -451,12 +456,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                   if (productId.isNotEmpty) {
                     return route(ProductDetailScreen(productId: productId));
                   }
-                } else if (uri.path == '/referral') {
-                  // Referral link — register screen handles signed-out
-                  // users (code pre-filled); signed-in users are bounced
-                  // to /home by the register screen's auth check.
+                } else if (uri.path == '/referral' || uri.path.startsWith('/referral/')) {
                   final code = uri.queryParameters['code'] ??
-                      uri.queryParameters['ref'];
+                      uri.queryParameters['ref'] ??
+                      (uri.pathSegments.isNotEmpty && uri.pathSegments.last.toLowerCase() != 'referral'
+                          ? uri.pathSegments.last
+                          : null);
+                  if (SupabaseService.auth.currentUser != null) {
+                    return route(const ReferralScreen());
+                  }
                   return route(
                     RegisterScreen(initialReferralCode: code?.toUpperCase()),
                   );
@@ -468,6 +476,21 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                     return route(BusinessProfileScreen(sellerId: sellerId));
                   }
                 }
+              }
+              // Handle deep link io.supabase.instiy://referral or instiy://referral
+              if ((uri.scheme == 'io.supabase.instiy' || uri.scheme == 'instiy') &&
+                  (uri.host == 'referral' || uri.path == '/referral' || uri.path.startsWith('/referral/'))) {
+                final code = uri.queryParameters['code'] ??
+                    uri.queryParameters['ref'] ??
+                    (uri.pathSegments.isNotEmpty && uri.pathSegments.last.toLowerCase() != 'referral'
+                        ? uri.pathSegments.last
+                        : null);
+                if (SupabaseService.auth.currentUser != null) {
+                  return route(const ReferralScreen());
+                }
+                return route(
+                  RegisterScreen(initialReferralCode: code?.toUpperCase()),
+                );
               }
               // Handle deep link io.supabase.instiy://store/<sellerId>
               if (uri.scheme == 'io.supabase.instiy' && uri.host == 'store') {

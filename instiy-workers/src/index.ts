@@ -43,7 +43,7 @@ export default {
     }
 
     // Deep links & verification files (no /functions/v1 prefix)
-    if (path.startsWith('/.well-known/') || path.startsWith('/product/') || path.startsWith('/products/') || path.startsWith('/store/')) {
+    if (path.startsWith('/.well-known/') || path.startsWith('/product/') || path.startsWith('/products/') || path.startsWith('/store/') || path === '/referral' || path.startsWith('/referral/')) {
       return handleDeepLinks(request, env);
     }
 

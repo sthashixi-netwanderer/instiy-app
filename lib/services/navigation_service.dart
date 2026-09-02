@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product_model.dart';
 import 'product_service.dart';
 import 'supabase_service.dart';
@@ -69,11 +70,27 @@ class NavigationService {
   /// Referral link (https://instiy.com/referral?code=XXXX): signed-out
   /// users land on register with the code pre-filled; signed-in users
   /// land on their own referral screen.
-  static void _navigateToReferral(String? code) {
-    final navigator = navigatorKey.currentState;
-    if (navigator == null) return;
-
+  static void _navigateToReferral(String? code, [Uri? uri]) async {
     final cleaned = code?.trim().toUpperCase();
+
+    // Persist code to SharedPreferences immediately so it survives app restarts / navigation
+    if (cleaned != null && cleaned.isNotEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('pending_referral_code', cleaned);
+        debugPrint('Saved pending referral code: $cleaned');
+      } catch (e) {
+        debugPrint('Failed to save pending referral code: $e');
+      }
+    }
+
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) {
+      debugPrint('Navigator not ready, buffering referral deep link: $uri');
+      if (uri != null) pendingDeepLink = uri;
+      return;
+    }
+
     if (SupabaseService.auth.currentUser != null) {
       navigator.pushNamedAndRemoveUntil('/home', (route) => false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -90,6 +107,28 @@ class NavigationService {
     debugPrint('Handling deep link: $uri');
 
     final uriStr = uri.toString();
+
+    // Check if this is a referral link before dedup/grace checks to avoid false suppression
+    final host = uri.host.toLowerCase();
+    final path = uri.path.toLowerCase();
+    final isReferralLink =
+        ((host == 'instiy.com' || host == 'www.instiy.com') &&
+            (path == '/referral' || path.startsWith('/referral/'))) ||
+        ((uri.scheme == 'io.supabase.instiy' || uri.scheme == 'instiy') &&
+            (host == 'referral' || path == '/referral' || path.startsWith('/referral/'))) ||
+        path == '/referral' ||
+        path.startsWith('/referral/');
+
+    if (isReferralLink) {
+      final code = uri.queryParameters['code'] ??
+          uri.queryParameters['ref'] ??
+          (uri.pathSegments.isNotEmpty && uri.pathSegments.last.toLowerCase() != 'referral'
+              ? uri.pathSegments.last
+              : null);
+      _handledLinks.add(uriStr);
+      _navigateToReferral(code, uri);
+      return;
+    }
 
     // 1. Permanent session-level dedup: if this exact URI was already
     //    handled in the current foreground session, skip it.
@@ -114,19 +153,6 @@ class NavigationService {
     }
 
     _handledLinks.add(uriStr);
-
-    // Referral links are handled before the generic route parsing — the
-    // target depends on auth state and the code may be absent.
-    final isReferralLink =
-        (uri.scheme == 'https' && uri.host == 'instiy.com' && uri.path == '/referral') ||
-        (uri.scheme == 'io.supabase.instiy' && uri.host == 'referral') ||
-        uri.path == '/referral';
-    if (isReferralLink) {
-      _navigateToReferral(
-        uri.queryParameters['code'] ?? uri.queryParameters['ref'],
-      );
-      return;
-    }
 
     final navigator = navigatorKey.currentState;
     if (navigator == null) {

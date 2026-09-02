@@ -15,20 +15,21 @@ export async function handleSendSms(request: Request, env: Env, _corsHeaders: Re
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const apikey = request.headers.get('apikey');
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
+  const token = authHeader ? authHeader.replace('Bearer ', '').trim() : '';
 
-  const auth = await verifyAuth(request, env);
-  if (!auth.isAuthenticated) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+  const isAnonKey = apikey === env.SUPABASE_ANON_KEY || token === env.SUPABASE_ANON_KEY;
+  const isServiceKey = !!env.SUPABASE_SERVICE_ROLE_KEY && token === env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!isAnonKey && !isServiceKey) {
+    const auth = await verifyAuth(request, env);
+    if (!auth.isAuthenticated) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   try {
@@ -49,6 +50,9 @@ export async function handleSendSms(request: Request, env: Env, _corsHeaders: Re
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Hubtel expects international format WITHOUT leading '+' or '00' (e.g. 233244000000)
+    const hubtelTo = cleanTo.replace(/^\+/, '').replace(/^00/, '');
 
     if (content.length > 1600) {
       return new Response(JSON.stringify({ error: 'Message too long (max 1600 characters)' }), {
@@ -73,7 +77,7 @@ export async function handleSendSms(request: Request, env: Env, _corsHeaders: Re
       },
       body: JSON.stringify({
         from: env.HUBTEL_SENDER_ID || 'Instiy',
-        to: cleanTo,
+        to: hubtelTo,
         content,
       }),
     });
@@ -81,8 +85,8 @@ export async function handleSendSms(request: Request, env: Env, _corsHeaders: Re
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Hubtel responded with ${response.status}: ${errorText}`);
-      return new Response(JSON.stringify({ error: 'Failed to send SMS' }), {
-        status: 500,
+      return new Response(JSON.stringify({ error: 'Failed to send SMS', details: errorText, hubtelStatus: response.status }), {
+        status: response.status >= 400 && response.status < 500 ? 400 : 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
