@@ -25,6 +25,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
   ReferralSummary? _summary;
   ReferralProgramConfig _config = const ReferralProgramConfig();
   List<ReferralRecord> _history = [];
+  ReferredReward? _referredReward;
 
   @override
   void initState() {
@@ -46,12 +47,14 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
         ReferralService.getSummary(),
         ReferralService.getProgramConfig(),
         ReferralService.getHistory(),
+        ReferralService.getMyReferredReward(),
       ]);
       if (!mounted) return;
       setState(() {
         _summary = results[0] as ReferralSummary;
         _config = results[1] as ReferralProgramConfig;
         _history = results[2] as List<ReferralRecord>;
+        _referredReward = results[3] as ReferredReward?;
         _isLoading = false;
       });
     } catch (e) {
@@ -92,6 +95,7 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
+      extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
         title: const Text('Refer & Earn'),
@@ -141,6 +145,10 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
                       SizedBox(height: context.rh(16)),
                       _buildLinkCard(),
                       SizedBox(height: context.rh(16)),
+                      if (_referredReward != null) ...[
+                        _buildReferredRewardCard(),
+                        SizedBox(height: context.rh(16)),
+                      ],
                       if (_config.enabled) ...[
                         _buildHowItWorks(),
                         SizedBox(height: context.rh(16)),
@@ -271,74 +279,134 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
             ),
           ),
           SizedBox(height: context.rh(10)),
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: context.rw(12),
-              vertical: context.rh(12),
-            ),
-            decoration: BoxDecoration(
-              color: AppTheme.warmMist,
-              borderRadius: BorderRadius.circular(context.rr(10)),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  LucideIcons.link,
-                  size: context.ri(14),
-                  color: AppTheme.mutedSteel,
-                ),
-                SizedBox(width: context.rw(8)),
-                Expanded(
-                  child: Text(
-                    hasCode ? summary.link : 'Generating your code…',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: context.rsp(12),
-                      color: hasCode
-                          ? AppTheme.charcoalInk
-                          : AppTheme.mutedSteel,
+          GestureDetector(
+            onTap: hasCode ? _copyLink : null,
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.rw(12),
+                vertical: context.rh(12),
+              ),
+              decoration: BoxDecoration(
+                color: AppTheme.warmMist,
+                borderRadius: BorderRadius.circular(context.rr(10)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.link,
+                    size: context.ri(14),
+                    color: AppTheme.mutedSteel,
+                  ),
+                  SizedBox(width: context.rw(8)),
+                  Expanded(
+                    child: Text(
+                      hasCode ? summary.link : 'Generating your code…',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: context.rsp(12),
+                        color: hasCode
+                            ? AppTheme.charcoalInk
+                            : AppTheme.mutedSteel,
+                      ),
                     ),
+                  ),
+                  SizedBox(width: context.rw(8)),
+                  Icon(
+                    LucideIcons.copy,
+                    size: context.ri(15),
+                    color: hasCode
+                        ? AppTheme.accent
+                        : AppTheme.mutedSteel.withValues(alpha: 0.4),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: context.rh(12)),
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: context.rw(140)),
+              child: ShadButton(
+                onPressed: hasCode ? _share : null,
+                expands: true,
+                gap: 6,
+                leading: const Icon(LucideIcons.share2, size: 15),
+                child: const Text(
+                  'Share',
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReferredRewardCard() {
+    final reward = _referredReward!;
+    final referrer = reward.referrerName?.trim().isNotEmpty == true
+        ? reward.referrerName!.trim().split(' ').first
+        : 'a friend';
+    final awarded = reward.isAwarded;
+    final qualified = reward.isQualified;
+    final accent = awarded ? AppTheme.successMoss : AppTheme.accent;
+
+    return Container(
+      padding: context.rAll(16),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(context.rr(16)),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: context.rAll(9),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              awarded ? LucideIcons.badgeCheck : LucideIcons.gift,
+              size: context.ri(18),
+              color: accent,
+            ),
+          ),
+          SizedBox(width: context.rw(12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You were referred by $referrer',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: context.rsp(13),
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+                SizedBox(height: context.rh(2)),
+                Text(
+                  awarded
+                      ? '+${_fmtPoints(reward.refereePoints)} added to your balance'
+                      : qualified
+                          ? '${_fmtPoints(reward.refereePoints)} awaiting admin approval'
+                          : 'Shop your first order of '
+                              '${formatGhs(_config.minPurchaseAmountGhs)}+ to unlock '
+                              '${_fmtPoints((_config.pointsPerReferral / 2).floor())}',
+                  style: TextStyle(
+                    fontSize: context.rsp(12),
+                    color: AppTheme.mutedSteel,
+                    height: 1.4,
                   ),
                 ),
               ],
             ),
-          ),
-          SizedBox(height: context.rh(12)),
-          Row(
-            children: [
-              Expanded(
-                child: ShadButton.outline(
-                  onPressed: hasCode ? _copyLink : null,
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(LucideIcons.copy, size: 15),
-                      SizedBox(width: 6),
-                      Text('Copy link'),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(width: context.rw(10)),
-              Expanded(
-                flex: 2,
-                child: ShadButton(
-                  onPressed: hasCode ? _share : null,
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(LucideIcons.share2, size: 15),
-                      SizedBox(width: 6),
-                      Text(
-                        'Share with friends',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -381,6 +449,13 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
             'Points land in your account once their first order of '
             '${formatGhs(_config.minPurchaseAmountGhs)} or more is '
             'delivered.',
+          ),
+          _step(
+            LucideIcons.gift,
+            'They earn half too',
+            'Your friend gets '
+            '${_fmtPoints((_config.pointsPerReferral / 2).floor())} once an '
+            'admin approves their reward.',
             isLast: true,
           ),
         ],

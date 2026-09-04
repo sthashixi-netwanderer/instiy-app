@@ -71,3 +71,15 @@ export default defineConfig([
   },
 ])
 ```
+
+## PWA (Progressive Web App)
+
+The admin portal is installable as a PWA:
+
+- `public/manifest.webmanifest` — app identity, icons, theme (`#110f0d`) and shortcuts.
+- `public/icons/` — PNG icon set (`192`/`512`, plus `maskable` variants and `apple-touch-icon`), generated from `public/favicon.svg`.
+- `public/sw.js` — hand-rolled service worker (no dependencies). Same-origin app-shell assets are cached stale-while-revalidate, navigations fall back to cached `index.html`, Google Fonts are cached separately, and all other cross-origin traffic (Supabase API/Realtime/Storage) bypasses the cache so live data is never stale.
+- `src/pwa.ts` — registers `/sw.js` in production builds only and reloads once when a new version takes over.
+- `src/components/offline-banner.tsx` — slim banner shown while the device is offline.
+
+To regenerate icons after changing `favicon.svg`, rasterize it and re-run the compositing step that produces the `public/icons/*.png` files.

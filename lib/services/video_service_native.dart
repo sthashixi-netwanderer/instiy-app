@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_compress/video_compress.dart';
+import 'package:video_player/video_player.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
 import '../models/picked_media.dart';
@@ -237,4 +238,11 @@ class _SourceOption extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Builds a playback controller for a freshly picked local video file so it
+/// can be previewed before publishing. Returns null when [path] is missing.
+VideoPlayerController? previewLocalVideoController(String? path) {
+  if (path == null || path.isEmpty) return null;
+  return VideoPlayerController.file(File(path));
 }

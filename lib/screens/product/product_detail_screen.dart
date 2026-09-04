@@ -66,6 +66,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   bool _isGeneratingPermissionCode = false;
   bool _hasPermission = false;
   bool _hasPendingPermission = false;
+  bool _isOpeningChat = false;
+  String? _openChatConversationId;
   ProviderSubscription<int>? _productsVersionSub;
 
   @override
@@ -402,23 +404,34 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     String sellerId,
     Map<String, dynamic> productRefData,
   ) async {
-    await ref
-        .read(messageProvider)
-        .createAndOpenConversation(
-          buyerId: userId,
-          sellerId: sellerId,
-          productReference: productRefData,
-        );
-    if (!mounted) return;
-    final conv = ref.read(messageProvider).activeConversation;
-    if (conv != null) {
-      unawaited(
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ConversationScreen(conversation: conv),
-          ),
+    // Ignore repeated taps while a chat is opening so only one chat
+    // route is ever pushed for the referenced product.
+    if (_isOpeningChat) return;
+    _isOpeningChat = true;
+    try {
+      await ref
+          .read(messageProvider)
+          .createAndOpenConversation(
+            buyerId: userId,
+            sellerId: sellerId,
+            productReference: productRefData,
+          );
+      if (!mounted) return;
+      final conv = ref.read(messageProvider).activeConversation;
+      if (conv == null) return;
+      // A chat for this conversation is already on the navigation stack.
+      if (_openChatConversationId == conv.id) return;
+      _openChatConversationId = conv.id;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ConversationScreen(conversation: conv),
         ),
       );
+      if (_openChatConversationId == conv.id) {
+        _openChatConversationId = null;
+      }
+    } finally {
+      _isOpeningChat = false;
     }
   }
 

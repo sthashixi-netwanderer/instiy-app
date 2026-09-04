@@ -281,7 +281,13 @@ class AppTheme {
   }) {
     final topPad = MediaQuery.paddingOf(context).top;
     final bottomHeight = bottom?.preferredSize.height ?? 0.0;
-    final totalHeight = topPad + kToolbarHeight + 10 + bottomHeight;
+    // +4 accounts for the top padding around [bottom]; the extra tolerance
+    // absorbs fractional growth when the bottom (e.g. a TabBar) renders
+    // taller than its preferredSize under larger text scaling.
+    final totalHeight = topPad +
+        kToolbarHeight +
+        10 +
+        (bottom != null ? 12 + bottomHeight : 0);
 
     Widget? leadingWidget;
     if (leading != null) {
@@ -688,14 +694,15 @@ class AppTheme {
                                         ],
                                         if (actions != null && actions.isNotEmpty) ...[
                                           const SizedBox(height: 20),
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.end,
-                                            children: [
-                                              for (int i = 0; i < actions.length; i++) ...[
-                                                if (i > 0) const SizedBox(width: 8),
-                                                actions[i],
-                                              ],
-                                            ],
+                                          Align(
+                                            alignment: Alignment.centerRight,
+                                            child: Wrap(
+                                              alignment: WrapAlignment.end,
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: actions,
+                                            ),
                                           ),
                                         ],
                                       ],

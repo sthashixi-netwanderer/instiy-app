@@ -76,38 +76,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     AppTheme.showGlassDialog(
       context: context,
       title: const Text('Business Profile Required'),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'You need to set up your business profile before you can list products. '
-            'This helps buyers know who they\'re buying from.',
-            style: TextStyle(color: AppTheme.mutedSteel, height: 1.5),
-          ),
-          SizedBox(height: context.rh(20)),
-          Row(
-            children: [
-              Expanded(
-                child: ShadButton.outline(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-              ),
-              SizedBox(width: context.rw(12)),
-              Expanded(
-                flex: 2,
-                child: ShadButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).pushNamed('/edit-business-profile');
-                  },
-                  child: const Text('Set Up Profile'),
-                ),
-              ),
-            ],
-          ),
-        ],
+      description: const Text(
+        'You need to set up your business profile before you can list products. '
+        'This helps buyers know who they\'re buying from.',
       ),
+      actions: [
+        ShadButton.outline(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ShadButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            Navigator.of(context).pushNamed('/edit-business-profile');
+          },
+          child: const Text('Set Up Profile'),
+        ),
+      ],
     );
   }
 

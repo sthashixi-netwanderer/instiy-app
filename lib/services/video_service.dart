@@ -46,6 +46,13 @@ class VideoService {
     return true;
   }
 
+  /// Build a playback controller for a freshly picked local video so it
+  /// can be previewed before publishing. Null on web or when the video has
+  /// no local path.
+  static dynamic previewLocalVideo(String? path) {
+    return previewLocalVideoController(path);
+  }
+
   /// Extract a thumbnail (JPEG bytes) from a random frame of the video.
   /// Mobile only — returns null on web or when extraction fails.
   static Future<Uint8List?> generateThumbnail(String? path) async {

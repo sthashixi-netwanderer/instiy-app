@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
+import { registerServiceWorker } from './pwa.ts'
 
 const setupModalScrollLock = () => {
   const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
@@ -19,6 +20,7 @@ const setupModalScrollLock = () => {
 }
 
 setupModalScrollLock()
+registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

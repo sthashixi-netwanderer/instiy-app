@@ -1,7 +1,9 @@
+import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:video_player/video_player.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
@@ -9,6 +11,8 @@ import '../../models/service_model.dart';
 import '../../models/category_model.dart';
 import '../../models/picked_media.dart';
 import '../../services/service_service.dart';
+import '../../services/video_service.dart';
+import '../../widgets/media_viewer.dart';
 import '../../providers/providers.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/multi_institution_picker.dart';
@@ -156,8 +160,17 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   List<String> _selectedInstitutions = [];
   bool _allInstitutions = true;
 
+  static const int _maxImages = 15;
+  static const int _maxVideos = 3;
+
   final List<PickedMedia> _newImages = [];
   List<String> _existingImageUrls = [];
+
+  final List<PickedMedia> _newVideos = [];
+  List<String> _existingVideoUrls = [];
+
+  /// Thumbnails extracted from freshly picked videos, keyed by the media.
+  final Map<PickedMedia, Uint8List?> _videoThumbs = {};
 
   late final List<_PackageDraft> _packages = [
     _PackageDraft.basic(),
@@ -231,6 +244,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       _descCtrl.text = existing.description ?? '';
       _tagsCtrl.text = existing.searchTags.join(', ');
       _existingImageUrls = [...existing.imageUrls];
+      _existingVideoUrls = [...existing.videoUrls];
       _selectedCategory = _categories
           .where((c) => c.id == existing.categoryId)
           .firstOrNull;
@@ -278,6 +292,10 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
 
   int get _totalImageCount => _existingImageUrls.length + _newImages.length;
 
+  int get _totalVideoCount => _existingVideoUrls.length + _newVideos.length;
+
+  bool get _canAddVideo => _totalVideoCount < _maxVideos;
+
   List<_PackageDraft> get _enabledPackages =>
       _packages.where((p) => p.enabled).toList();
 
@@ -303,6 +321,12 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
         }
         if (_totalImageCount == 0) {
           return 'Add at least one image so customers can see your work';
+        }
+        if (_totalImageCount > _maxImages) {
+          return 'You can add at most $_maxImages photos';
+        }
+        if (_totalVideoCount > _maxVideos) {
+          return 'You can add at most $_maxVideos videos';
         }
         return null;
       case 2:
@@ -358,6 +382,12 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       // Upload newly picked images first.
       final uploaded = await ServiceService.uploadServiceImages(_newImages);
       final imageUrls = [..._existingImageUrls, ...uploaded];
+
+      // Compress (trimming to the first 30 seconds) and upload new videos.
+      final uploadedVideos = await ServiceService.uploadServiceVideos(
+        _newVideos,
+      );
+      final videoUrls = [..._existingVideoUrls, ...uploadedVideos];
 
       final enabled = _activePackages;
       final packageModels = enabled
@@ -416,6 +446,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               price: startingPrice,
               deliveryDays: deliveryDays,
               imageUrls: imageUrls,
+              videoUrls: videoUrls,
               institutionCodes: institutionCodes,
               searchTags: _parsedTags,
               packages: packageModels,
@@ -429,6 +460,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               price: startingPrice,
               deliveryDays: deliveryDays,
               imageUrls: imageUrls,
+              videoUrls: videoUrls,
               institutionCodes: institutionCodes,
               searchTags: _parsedTags,
               packages: packageModels,
@@ -477,9 +509,16 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   // ------------------------------------------------------------
 
   Future<void> _pickImages() async {
+    final remaining = _maxImages - _totalImageCount;
+    if (remaining <= 0) {
+      _toast('You can add at most $_maxImages photos');
+      return;
+    }
     final picked = await ImagePickerSheet.pickMultiple(context);
-    if (picked.isNotEmpty) {
-      setState(() => _newImages.addAll(picked));
+    if (picked.isEmpty) return;
+    setState(() => _newImages.addAll(picked.take(remaining)));
+    if (picked.length > remaining) {
+      _toast('Only $remaining more photo${remaining == 1 ? '' : 's'} allowed');
     }
   }
 
@@ -488,6 +527,54 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
 
   void _removeExistingImage(int index) =>
       setState(() => _existingImageUrls.removeAt(index));
+
+  Future<void> _pickVideos() async {
+    if (!_canAddVideo) {
+      _toast('You can add at most $_maxVideos videos');
+      return;
+    }
+    // Videos longer than 30 seconds surface a warning in the picker and
+    // are trimmed to their first 30 seconds when the service is published.
+    final video = await VideoService.pickVideo(context);
+    if (video == null) return;
+    if (!mounted) return;
+    setState(() => _newVideos.add(video));
+    _loadVideoThumb(video);
+  }
+
+  Future<void> _loadVideoThumb(PickedMedia video) async {
+    final bytes = await VideoService.generateThumbnail(video.path);
+    if (!mounted) return;
+    if (_newVideos.contains(video)) {
+      setState(() => _videoThumbs[video] = bytes);
+    }
+  }
+
+  void _removeNewVideo(int index) {
+    if (index < 0 || index >= _newVideos.length) return;
+    setState(() {
+      _videoThumbs.remove(_newVideos[index]);
+      _newVideos.removeAt(index);
+    });
+  }
+
+  void _removeExistingVideo(int index) {
+    if (index < 0 || index >= _existingVideoUrls.length) return;
+    setState(() => _existingVideoUrls.removeAt(index));
+  }
+
+  void _previewNewVideo(PickedMedia video) {
+    final VideoPlayerController? controller =
+        VideoService.previewLocalVideo(video.path);
+    if (controller == null) {
+      _toast('Video preview is not available on this device');
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (_) => _VideoPreviewDialog(controller: controller),
+    );
+  }
 
   // ------------------------------------------------------------
   // Build
@@ -828,7 +915,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       children: [
         _stepIntro(
           'Details',
-          'Explain what customers get and show your work with images.',
+          'Explain what customers get and show your work with photos and short videos.',
         ),
         ShadInputFormField(
           id: 'description',
@@ -851,7 +938,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             RequiredLabel(
-              'Gallery ($_totalImageCount)',
+              'Photos ($_totalImageCount/$_maxImages)',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: context.rsp(14),
@@ -937,6 +1024,97 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               );
             },
           ),
+        SizedBox(height: context.rh(16)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Videos ($_totalVideoCount/$_maxVideos)',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: context.rsp(14),
+                color: AppTheme.charcoalInk,
+              ),
+            ),
+            ShadButton.outline(
+              size: ShadButtonSize.sm,
+              onPressed: _canAddVideo ? _pickVideos : null,
+              leading: const Icon(LucideIcons.video, size: 14),
+              child: const Text('Add video'),
+            ),
+          ],
+        ),
+        SizedBox(height: context.rh(4)),
+        Text(
+          'Up to $_maxVideos videos, 30 seconds max each.',
+          style: TextStyle(
+            fontSize: context.rsp(12),
+            color: AppTheme.mutedSteel,
+          ),
+        ),
+        if (_totalVideoCount > 0) ...[
+          SizedBox(height: context.rh(8)),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+            ),
+            itemCount: _totalVideoCount,
+            itemBuilder: (context, index) {
+              if (index < _existingVideoUrls.length) {
+                final videoIndex = index;
+                return _GalleryTile(
+                  onRemove: () => _removeExistingVideo(videoIndex),
+                  badge: 'saved',
+                  child: GestureDetector(
+                    onTap: () => MediaViewer.open(
+                      context,
+                      _existingVideoUrls,
+                      initialIndex: videoIndex,
+                    ),
+                    child: _VideoThumbPlaceholder(),
+                  ),
+                );
+              }
+              final newIdx = index - _existingVideoUrls.length;
+              final media = _newVideos[newIdx];
+              final thumb = _videoThumbs[media];
+              return _GalleryTile(
+                onRemove: () => _removeNewVideo(newIdx),
+                badge: 'new',
+                child: GestureDetector(
+                  onTap: () => _previewNewVideo(media),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (thumb != null)
+                        Image.memory(thumb, fit: BoxFit.cover)
+                      else
+                        const _VideoThumbPlaceholder(),
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.black45,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            LucideIcons.play,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ],
     );
   }
@@ -1567,6 +1745,10 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
           'Images',
           '$_totalImageCount image${_totalImageCount == 1 ? '' : 's'}',
         ),
+        _reviewRow(
+          'Videos',
+          '$_totalVideoCount video${_totalVideoCount == 1 ? '' : 's'}',
+        ),
         if (_parsedTags.isNotEmpty)
           _reviewRow('Tags', _parsedTags.join(', ')),
         _reviewRow('Starting price', formatGhs(startingPrice)),
@@ -1913,6 +2095,96 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VideoThumbPlaceholder extends StatelessWidget {
+  const _VideoThumbPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black87,
+      child: const Center(
+        child: Icon(
+          LucideIcons.video,
+          size: 24,
+          color: Colors.white70,
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoPreviewDialog extends StatefulWidget {
+  final VideoPlayerController controller;
+
+  const _VideoPreviewDialog({required this.controller});
+
+  @override
+  State<_VideoPreviewDialog> createState() => _VideoPreviewDialogState();
+}
+
+class _VideoPreviewDialogState extends State<_VideoPreviewDialog> {
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => _ready = true);
+      widget.controller.play();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(16),
+      child: AspectRatio(
+        aspectRatio: _ready && widget.controller.value.aspectRatio > 0
+            ? widget.controller.value.aspectRatio
+            : 16 / 9,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_ready)
+              VideoPlayer(widget.controller)
+            else
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    LucideIcons.x,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

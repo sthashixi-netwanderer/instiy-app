@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:video_player/video_player.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
@@ -458,8 +459,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 
   Widget _buildGallery(Service service) {
+    final videos = service.videoUrls;
     final images = service.imageUrls;
-    if (images.isEmpty) {
+    final media = [...videos, ...images];
+    if (media.isEmpty) {
       return Container(
         height: context.rh(200),
         decoration: BoxDecoration(
@@ -482,31 +485,46 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           child: SizedBox(
             height: context.rh(220),
             child: PageView.builder(
-              itemCount: images.length,
+              itemCount: media.length,
               onPageChanged: (i) => setState(() => _galleryPage = i),
-              itemBuilder: (context, index) => GestureDetector(
-                onTap: () => MediaViewer.open(
-                  context,
-                  images,
-                  initialIndex: index,
-                ),
-                child: CachedNetworkImage(
-                  imageUrl: images[index],
-                  fit: BoxFit.cover,
-                  memCacheWidth: 800,
-                  placeholder: (_, _) => Container(color: AppTheme.warmMist),
-                  errorWidget: (_, _, _) => Container(color: AppTheme.warmMist),
-                ),
-              ),
+              itemBuilder: (context, index) {
+                if (index < videos.length) {
+                  return _ServiceVideoTile(
+                    videoUrl: videos[index],
+                    onTap: () => MediaViewer.open(
+                      context,
+                      media,
+                      initialIndex: index,
+                    ),
+                  );
+                }
+                final imageIndex = index - videos.length;
+                return GestureDetector(
+                  onTap: () => MediaViewer.open(
+                    context,
+                    media,
+                    initialIndex: index,
+                  ),
+                  child: CachedNetworkImage(
+                    imageUrl: images[imageIndex],
+                    fit: BoxFit.cover,
+                    memCacheWidth: 800,
+                    placeholder: (_, _) =>
+                        Container(color: AppTheme.warmMist),
+                    errorWidget: (_, _, _) =>
+                        Container(color: AppTheme.warmMist),
+                  ),
+                );
+              },
             ),
           ),
         ),
-        if (images.length > 1) ...[
+        if (media.length > 1) ...[
           SizedBox(height: context.rh(8)),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              for (var i = 0; i < images.length; i++)
+              for (var i = 0; i < media.length; i++)
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: EdgeInsets.symmetric(horizontal: context.rw(3)),
@@ -1300,6 +1318,66 @@ class _PlanCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ServiceVideoTile extends StatefulWidget {
+  final String videoUrl;
+  final VoidCallback onTap;
+
+  const _ServiceVideoTile({required this.videoUrl, required this.onTap});
+
+  @override
+  State<_ServiceVideoTile> createState() => _ServiceVideoTileState();
+}
+
+class _ServiceVideoTileState extends State<_ServiceVideoTile> {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        if (mounted) setState(() => _initialized = true);
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_initialized)
+            VideoPlayer(_controller!)
+          else
+            Container(color: Colors.black),
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Colors.black45,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _initialized ? LucideIcons.play : LucideIcons.video,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

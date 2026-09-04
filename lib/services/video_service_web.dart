@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 import '../models/picked_media.dart';
 
 /// Web stub for video services — video_compress and File are not available on web.
@@ -32,3 +33,6 @@ Future<PickedMedia?> compressVideoOrPass(
 
 /// On web, frame extraction is not available — chat video thumbnails are skipped.
 Future<Uint8List?> generateVideoThumbnailBytes(String? path) async => null;
+
+/// Web has no filesystem playback for picked bytes — previews are skipped.
+VideoPlayerController? previewLocalVideoController(String? path) => null;

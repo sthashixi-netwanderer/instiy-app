@@ -7,6 +7,11 @@ import 'package:record/record.dart';
 class RecordingHelper {
   static final _audioRecorder = AudioRecorder();
 
+  /// True once a recording session has been started on the shared recorder.
+  /// The record plugin throws when dispose() is called without a session,
+  /// so teardown must skip dispose when nothing was ever recorded.
+  static bool _sessionStarted = false;
+
   static Future<bool> hasPermission() => _audioRecorder.hasPermission();
 
   static Future<String> startRecording() async {
@@ -16,6 +21,7 @@ class RecordingHelper {
       const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000, sampleRate: 44100),
       path: path,
     );
+    _sessionStarted = true;
     return path;
   }
 
@@ -32,7 +38,16 @@ class RecordingHelper {
   /// Whether the current session is paused (false when idle/recording).
   static Future<bool> isPaused() => _audioRecorder.isPaused();
 
-  static void dispose() => _audioRecorder.dispose();
+  /// Releases the shared recorder. Safe to call when no recording ever
+  /// started, and idempotent across chat screens sharing the instance —
+  /// teardown must never throw (previously reported to Crashlytics).
+  static Future<void> dispose() async {
+    if (!_sessionStarted) return;
+    _sessionStarted = false;
+    try {
+      await _audioRecorder.dispose();
+    } catch (_) {}
+  }
 
   static Future<void> deleteFile(String path) async {
     final file = File(path);

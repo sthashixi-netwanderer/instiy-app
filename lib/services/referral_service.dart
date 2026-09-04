@@ -63,6 +63,22 @@ class ReferralService {
     );
   }
 
+  /// The signed-in user's own reward for having been referred, if any.
+  /// Null when nobody referred them.
+  static Future<ReferredReward?> getMyReferredReward() async {
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+
+    final row = await SupabaseService.client
+        .from('referrals')
+        .select('id, status, referee_points, referee_awarded_at, '
+            'qualified_at, referrer:referrer_id(full_name)')
+        .eq('referred_id', userId)
+        .maybeSingle();
+    if (row == null) return null;
+    return ReferredReward.fromJson(row);
+  }
+
   /// Newest-first referral history with the referred user's profile.
   static Future<List<ReferralRecord>> getHistory() async {
     final userId = SupabaseService.auth.currentUser?.id;

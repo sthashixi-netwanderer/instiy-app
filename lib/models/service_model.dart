@@ -236,6 +236,7 @@ class Service {
   final String? priceType;
   final int? deliveryDays;
   final List<String> imageUrls;
+  final List<String> videoUrls;
   final List<String> institutionCodes;
   final List<String> searchTags;
   final ServiceStatus status;
@@ -260,6 +261,7 @@ class Service {
     this.priceType,
     this.deliveryDays,
     this.imageUrls = const [],
+    this.videoUrls = const [],
     this.institutionCodes = const [],
     this.searchTags = const [],
     this.status = ServiceStatus.active,
@@ -365,6 +367,11 @@ class Service {
               ?.map((e) => e as String)
               .toList() ??
           [],
+      videoUrls:
+          (json['video_urls'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       institutionCodes:
           (json['institution_codes'] as List<dynamic>?)
               ?.map((e) => e as String)
@@ -402,6 +409,7 @@ class Service {
       'price_type': priceType ?? 'fixed',
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
+      'video_urls': videoUrls,
       'search_tags': searchTags,
       'status': status.name,
     };
@@ -418,6 +426,7 @@ class Service {
     String? priceType,
     int? deliveryDays,
     List<String>? imageUrls,
+    List<String>? videoUrls,
     List<String>? institutionCodes,
     List<String>? searchTags,
     ServiceStatus? status,
@@ -441,6 +450,7 @@ class Service {
       priceType: priceType ?? this.priceType,
       deliveryDays: deliveryDays ?? this.deliveryDays,
       imageUrls: imageUrls ?? this.imageUrls,
+      videoUrls: videoUrls ?? this.videoUrls,
       institutionCodes: institutionCodes ?? this.institutionCodes,
       searchTags: searchTags ?? this.searchTags,
       status: status ?? this.status,

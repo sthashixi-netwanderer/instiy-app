@@ -1,5 +1,6 @@
 import 'supabase_service.dart';
 import 'storage_service.dart';
+import 'video_service.dart';
 import '../models/service_model.dart';
 import '../models/category_model.dart';
 
@@ -242,6 +243,25 @@ class ServiceService {
     return urls;
   }
 
+  /// Compresses (trimming to the first 30 seconds) and uploads showcase
+  /// videos to R2 under the services folder.
+  static Future<List<String>> uploadServiceVideos(
+    List<dynamic> videos,
+  ) async {
+    final urls = <String>[];
+    for (var video in videos) {
+      video = await VideoService.compressVideo(video);
+      final url = await StorageService.uploadFile(
+        file: video,
+        folder: 'services/videos',
+        contentType: 'video/mp4',
+        extension: 'mp4',
+      );
+      urls.add(url);
+    }
+    return urls;
+  }
+
   static Future<Service> createService({
     required String title,
     required String description,
@@ -251,6 +271,7 @@ class ServiceService {
     String priceType = 'fixed',
     int? deliveryDays,
     List<String> imageUrls = const [],
+    List<String> videoUrls = const [],
     List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
@@ -273,6 +294,7 @@ class ServiceService {
       'price_type': priceType,
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
+      'video_urls': videoUrls,
       'institution_codes': institutionCodes,
       'search_tags': searchTags,
       'status': ServiceStatus.active.name,
@@ -292,6 +314,7 @@ class ServiceService {
           categoryName: categoryName,
           price: price,
           imageUrls: imageUrls,
+          videoUrls: videoUrls,
           searchTags: searchTags,
           createdAt: DateTime.now(),
           packages: packages
@@ -310,6 +333,7 @@ class ServiceService {
     String priceType = 'fixed',
     int? deliveryDays,
     List<String> imageUrls = const [],
+    List<String> videoUrls = const [],
     List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
@@ -328,6 +352,7 @@ class ServiceService {
       'price_type': priceType,
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
+      'video_urls': videoUrls,
       'institution_codes': institutionCodes,
       'search_tags': searchTags,
     }).eq('id', serviceId);

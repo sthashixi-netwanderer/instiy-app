@@ -78,3 +78,42 @@ class ReferralRecord {
     );
   }
 }
+
+/// The signed-in user's own reward for having been referred (the row
+/// where they are the referred user, if any).
+class ReferredReward {
+  final String id;
+  final String status; // 'registered' | 'qualified'
+  final int refereePoints;
+  final DateTime? awardedAt;
+  final DateTime? qualifiedAt;
+  final String? referrerName;
+
+  const ReferredReward({
+    required this.id,
+    required this.status,
+    required this.refereePoints,
+    this.awardedAt,
+    this.qualifiedAt,
+    this.referrerName,
+  });
+
+  bool get isAwarded => awardedAt != null;
+  bool get isQualified => status == 'qualified';
+
+  factory ReferredReward.fromJson(Map<String, dynamic> json) {
+    final referrer = json['referrer'] as Map<String, dynamic>?;
+    return ReferredReward(
+      id: json['id'] as String,
+      status: json['status'] as String? ?? 'registered',
+      refereePoints: (json['referee_points'] as num?)?.toInt() ?? 0,
+      awardedAt: json['referee_awarded_at'] != null
+          ? DateTime.tryParse(json['referee_awarded_at'] as String)
+          : null,
+      qualifiedAt: json['qualified_at'] != null
+          ? DateTime.tryParse(json['qualified_at'] as String)
+          : null,
+      referrerName: referrer?['full_name'] as String?,
+    );
+  }
+}

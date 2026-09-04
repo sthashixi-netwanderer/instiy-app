@@ -22,6 +22,7 @@ import { Transactions } from "./pages/Transactions";
 import { ReferralSettings } from "./pages/ReferralSettings";
 
 import { Routes, Route, Navigate, useLocation, Link } from "react-router-dom";
+import { OfflineBanner } from "./components/offline-banner";
 
 	import {
 		Shield,
@@ -458,6 +459,7 @@ export const App: React.FC = () => {
 
 			{/* Main Content */}
 			<main className="main-content" id="main-content-layout">
+				<OfflineBanner />
 				<Routes>
 					<Route path="/" element={<Navigate to="/dashboard" replace />} />
 					<Route path="/dashboard" element={<Dashboard />} />
