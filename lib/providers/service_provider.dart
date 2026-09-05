@@ -279,7 +279,11 @@ class ServiceProvider extends ChangeNotifier {
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
       if (generation != _browseGeneration) return;
-      _services = results;
+      // Shuffle the Discover feed so listings share exposure instead of
+      // always showing newest-first. Skipped while searching so text matches
+      // keep the server's relevance order. Shuffled once per load (not per
+      // build), so the grid stays stable while scrolling.
+      _services = _searchQuery.isEmpty ? (results..shuffle()) : results;
       _loadedOnce = true;
     } catch (e) {
       if (generation != _browseGeneration) return;
@@ -496,6 +500,8 @@ class ServiceProvider extends ChangeNotifier {
     int? deliveryDays,
     List<String> imageUrls = const [],
     List<String> videoUrls = const [],
+    bool showOnClips = false,
+    String? clipVideoUrl,
     List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
@@ -511,6 +517,8 @@ class ServiceProvider extends ChangeNotifier {
         deliveryDays: deliveryDays,
         imageUrls: imageUrls,
         videoUrls: videoUrls,
+        showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrl,
         institutionCodes: institutionCodes,
         searchTags: searchTags,
         packages: packages,
@@ -537,6 +545,8 @@ class ServiceProvider extends ChangeNotifier {
     int? deliveryDays,
     List<String> imageUrls = const [],
     List<String> videoUrls = const [],
+    bool showOnClips = false,
+    String? clipVideoUrl,
     List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
@@ -553,6 +563,8 @@ class ServiceProvider extends ChangeNotifier {
         deliveryDays: deliveryDays,
         imageUrls: imageUrls,
         videoUrls: videoUrls,
+        showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrl,
         institutionCodes: institutionCodes,
         searchTags: searchTags,
         packages: packages,

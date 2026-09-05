@@ -1,20 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/clip_item.dart';
 import '../models/product_model.dart';
+import '../models/service_model.dart';
 import '../services/media_cache_service.dart';
 import '../services/product_service.dart';
+import '../services/service_service.dart';
 import '../services/supabase_service.dart';
 import '../providers/block_provider.dart';
 
 class VideoProvider extends ChangeNotifier {
-  List<Product> _products = [];
+  List<ClipItem> _clips = [];
   bool _isLoading = false;
   String? _error;
   int _focusedIndex = 0;
   bool _initialized = false;
 
   RealtimeChannel? _productsChannel;
+  RealtimeChannel? _servicesChannel;
 
   VideoProvider() {
     _initAuthListener();
@@ -46,7 +50,7 @@ class VideoProvider extends ChangeNotifier {
   Future<void> ensureInitialized({bool force = false}) async {
     if (_initialized && !force) return;
     _initialized = true;
-    await loadVideos(silent: _products.isNotEmpty);
+    await loadVideos(silent: _clips.isNotEmpty);
   }
 
   void _subscribeToRealtime() {
@@ -86,6 +90,39 @@ class VideoProvider extends ChangeNotifier {
           },
         )
         .subscribe();
+
+    _servicesChannel = SupabaseService.client
+        .channel('services-changes-video')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'services',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['status'] != 'active') return;
+            if (row['show_on_clips'] != true) return;
+            final videoUrls = row['video_urls'];
+            if (videoUrls == null || (videoUrls as List).isEmpty) return;
+            loadVideos(silent: true);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'services',
+          callback: (payload) => _handleServiceUpdate(payload),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'services',
+          callback: (payload) {
+            final deletedId = payload.oldRecord['id'] as String?;
+            if (deletedId == null) return;
+            _removeClip(deletedId);
+          },
+        )
+        .subscribe();
   }
 
   /// Drops a clip whose product was updated so it no longer qualifies for the
@@ -94,7 +131,7 @@ class VideoProvider extends ChangeNotifier {
     final record = payload.newRecord;
     final productId = record['id'] as String?;
     if (productId == null) return;
-    if (!_products.any((p) => p.id == productId)) return;
+    if (!_clips.any((c) => c.id == productId)) return;
 
     final videoUrls = record['video_urls'];
     final stillQualifies = record['status'] == 'available' &&
@@ -109,27 +146,46 @@ class VideoProvider extends ChangeNotifier {
     }
   }
 
+  /// Drops a clip whose service was updated so it no longer qualifies for the
+  /// clips feed (paused/inactive, removed from clips, video removed).
+  void _handleServiceUpdate(PostgresChangePayload payload) {
+    final record = payload.newRecord;
+    final serviceId = record['id'] as String?;
+    if (serviceId == null) return;
+    if (!_clips.any((c) => c.id == serviceId)) return;
+
+    final videoUrls = record['video_urls'];
+    final stillQualifies = record['status'] == 'active' &&
+        record['show_on_clips'] == true &&
+        videoUrls != null &&
+        (videoUrls as List).isNotEmpty;
+
+    if (!stillQualifies) {
+      _removeClip(serviceId);
+    }
+  }
+
   /// Removes a clip from the feed, keeps the focused index pointing at the
   /// video the user is currently watching, and evicts the clip's cached video
-  /// files so a deleted product doesn't linger on disk or in the feed.
-  void _removeClip(String productId) {
-    final index = _products.indexWhere((p) => p.id == productId);
+  /// files so a deleted listing doesn't linger on disk or in the feed.
+  void _removeClip(String clipId) {
+    final index = _clips.indexWhere((c) => c.id == clipId);
     if (index == -1) return;
 
-    final removed = _products[index];
+    final removed = _clips[index];
     // A new list instance (not an in-place mutation) so `select` listeners
     // like the feed screen's prefetch subscription actually fire.
-    _products = List.of(_products)..removeAt(index);
+    _clips = List.of(_clips)..removeAt(index);
 
     if (index < _focusedIndex) {
       _focusedIndex--;
     }
-    if (_products.isNotEmpty && _focusedIndex >= _products.length) {
-      _focusedIndex = _products.length - 1;
+    if (_clips.isNotEmpty && _focusedIndex >= _clips.length) {
+      _focusedIndex = _clips.length - 1;
     }
 
-    for (final url in [removed.clipVideoUrl, ...removed.videoUrls]) {
-      if (url != null && url.isNotEmpty) {
+    for (final url in removed.allVideoUrls) {
+      if (url.isNotEmpty) {
         MediaCacheService.removeFile(url); // ignore: unawaited_futures
       }
     }
@@ -142,10 +198,14 @@ class VideoProvider extends ChangeNotifier {
       SupabaseService.client.removeChannel(_productsChannel!);
       _productsChannel = null;
     }
+    if (_servicesChannel != null) {
+      SupabaseService.client.removeChannel(_servicesChannel!);
+      _servicesChannel = null;
+    }
   }
 
   void clearSession() {
-    _products = [];
+    _clips = [];
     _focusedIndex = 0;
     _isLoading = false;
     _error = null;
@@ -153,7 +213,7 @@ class VideoProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Product> get products => _products;
+  List<ClipItem> get clips => _clips;
   bool get isLoading => _isLoading;
   String? get error => _error;
   int get focusedIndex => _focusedIndex;
@@ -173,9 +233,29 @@ class VideoProvider extends ChangeNotifier {
     }
 
     try {
-      final clips = await ProductService.getClipsProducts();
-      _products = BlockProvider.instance.filterProducts(clips);
-      if (_focusedIndex >= _products.length) {
+      final results = await Future.wait([
+        ProductService.getClipsProducts(),
+        ServiceService.getClipServices(),
+      ]);
+      final products = results[0] as List<Product>;
+      final services = results[1] as List<Service>;
+
+      final blocked = BlockProvider.instance;
+      final productClips = blocked
+          .filterProducts(products)
+          .map(ClipItem.product)
+          .toList();
+      final serviceClips = services
+          .where((s) => !blocked.isUserBlocked(s.providerId))
+          .map(ClipItem.service)
+          .toList();
+
+      // Newest first across both listing types, like the individual queries.
+      final merged = [...productClips, ...serviceClips]
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      _clips = merged;
+      if (_focusedIndex >= _clips.length) {
         _focusedIndex = 0;
       }
     } catch (e) {

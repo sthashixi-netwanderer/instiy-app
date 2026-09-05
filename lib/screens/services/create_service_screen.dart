@@ -172,6 +172,18 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
   /// Thumbnails extracted from freshly picked videos, keyed by the media.
   final Map<PickedMedia, Uint8List?> _videoThumbs = {};
 
+  // Show on Clips
+  bool _showOnClips = false;
+  bool get _hasVideo => _newVideos.isNotEmpty || _existingVideoUrls.isNotEmpty;
+
+  // Clip video selection: which video appears in the Clips feed. Only one
+  // video per service is allowed on the feed (mirrors product listings).
+  int _clipVideoExistingIndex = -1; // index into _existingVideoUrls
+  int _clipVideoNewIndex = -1; // index into _newVideos
+  bool get _needsClipVideoSelection => _showOnClips && _totalVideoCount >= 2;
+  bool get _hasClipVideoSelected =>
+      _clipVideoExistingIndex != -1 || _clipVideoNewIndex != -1;
+
   late final List<_PackageDraft> _packages = [
     _PackageDraft.basic(),
     _PackageDraft(ServiceTier.standard),
@@ -245,6 +257,11 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       _tagsCtrl.text = existing.searchTags.join(', ');
       _existingImageUrls = [...existing.imageUrls];
       _existingVideoUrls = [...existing.videoUrls];
+      _showOnClips = existing.showOnClips;
+      if (existing.clipVideoUrl != null) {
+        final clipIdx = _existingVideoUrls.indexOf(existing.clipVideoUrl!);
+        if (clipIdx != -1) _clipVideoExistingIndex = clipIdx;
+      }
       _selectedCategory = _categories
           .where((c) => c.id == existing.categoryId)
           .firstOrNull;
@@ -328,6 +345,9 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
         if (_totalVideoCount > _maxVideos) {
           return 'You can add at most $_maxVideos videos';
         }
+        if (_showOnClips && _totalVideoCount >= 2 && !_hasClipVideoSelected) {
+          return 'Choose which video to show in the Clips feed';
+        }
         return null;
       case 2:
         if (!_packagesEnabled) {
@@ -389,6 +409,24 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       );
       final videoUrls = [..._existingVideoUrls, ...uploadedVideos];
 
+      // Resolve the clip video URL. Single-video services auto-use their only
+      // video; multi-video services use the one picked in the selector
+      // (mirrors product listings).
+      String? clipVideoUrlVal;
+      if (_showOnClips) {
+        if (videoUrls.length <= 1) {
+          clipVideoUrlVal = videoUrls.isNotEmpty ? videoUrls.first : null;
+        } else if (_clipVideoExistingIndex != -1 &&
+            _clipVideoExistingIndex < _existingVideoUrls.length) {
+          clipVideoUrlVal = _existingVideoUrls[_clipVideoExistingIndex];
+        } else if (_clipVideoNewIndex != -1) {
+          final uploadedIdx = _existingVideoUrls.length + _clipVideoNewIndex;
+          if (uploadedIdx < videoUrls.length) {
+            clipVideoUrlVal = videoUrls[uploadedIdx];
+          }
+        }
+      }
+
       final enabled = _activePackages;
       final packageModels = enabled
           .map(
@@ -447,6 +485,8 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               deliveryDays: deliveryDays,
               imageUrls: imageUrls,
               videoUrls: videoUrls,
+              showOnClips: _showOnClips,
+              clipVideoUrl: clipVideoUrlVal,
               institutionCodes: institutionCodes,
               searchTags: _parsedTags,
               packages: packageModels,
@@ -461,6 +501,8 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
               deliveryDays: deliveryDays,
               imageUrls: imageUrls,
               videoUrls: videoUrls,
+              showOnClips: _showOnClips,
+              clipVideoUrl: clipVideoUrlVal,
               institutionCodes: institutionCodes,
               searchTags: _parsedTags,
               packages: packageModels,
@@ -554,13 +596,27 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
     if (index < 0 || index >= _newVideos.length) return;
     setState(() {
       _videoThumbs.remove(_newVideos[index]);
+      // Removing a video shifts the clip selection accordingly
+      if (_clipVideoNewIndex == index) {
+        _clipVideoNewIndex = -1;
+      } else if (_clipVideoNewIndex > index) {
+        _clipVideoNewIndex--;
+      }
       _newVideos.removeAt(index);
     });
   }
 
   void _removeExistingVideo(int index) {
     if (index < 0 || index >= _existingVideoUrls.length) return;
-    setState(() => _existingVideoUrls.removeAt(index));
+    setState(() {
+      // Removing a video shifts the clip selection accordingly
+      if (_clipVideoExistingIndex == index) {
+        _clipVideoExistingIndex = -1;
+      } else if (_clipVideoExistingIndex > index) {
+        _clipVideoExistingIndex--;
+      }
+      _existingVideoUrls.removeAt(index);
+    });
   }
 
   void _previewNewVideo(PickedMedia video) {
@@ -1115,6 +1171,185 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             },
           ),
         ],
+
+        SizedBox(height: context.rh(16)),
+        _buildClipsSection(context),
+      ],
+    );
+  }
+
+  // Show on Clips ----------------------------------------------------
+
+  Widget _buildClipsSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Opacity(
+          opacity: _hasVideo ? 1.0 : 0.5,
+          child: Row(
+            children: [
+              SizedBox(
+                height: context.ri(20),
+                width: context.ri(20),
+                child: Checkbox(
+                  value: _showOnClips,
+                  onChanged: _hasVideo
+                      ? (v) => setState(() => _showOnClips = v ?? false)
+                      : null,
+                  activeColor: AppTheme.accent,
+                ),
+              ),
+              SizedBox(width: context.rw(10)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Show on Clips',
+                      style: TextStyle(
+                        fontSize: context.rsp(14),
+                        fontWeight: FontWeight.w600,
+                        color: _hasVideo
+                            ? AppTheme.charcoalInk
+                            : AppTheme.mutedSteel,
+                      ),
+                    ),
+                    Text(
+                      _hasVideo
+                          ? 'Your service video will appear in the Clips feed'
+                          : 'Add a video to enable this option',
+                      style: TextStyle(
+                        fontSize: context.rsp(11),
+                        color: AppTheme.mutedSteel,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_needsClipVideoSelection) _buildClipVideoSelector(context),
+      ],
+    );
+  }
+
+  Widget _buildClipVideoSelector(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: context.rh(10)),
+        Row(
+          children: [
+            Icon(
+              LucideIcons.video,
+              size: context.ri(14),
+              color: AppTheme.accent,
+            ),
+            SizedBox(width: context.rw(6)),
+            RequiredLabel(
+              'Choose video for Clips',
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                fontWeight: FontWeight.w600,
+                color: AppTheme.charcoalInk,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: context.rh(4)),
+        Text(
+          'Tap a video to select it for the Clips feed',
+          style: TextStyle(
+            fontSize: context.rsp(11),
+            color: AppTheme.mutedSteel,
+          ),
+        ),
+        SizedBox(height: context.rh(8)),
+        SizedBox(
+          height: context.rh(88),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _totalVideoCount,
+            itemBuilder: (context, i) {
+              final isNew = i < _newVideos.length;
+              final localIdx = isNew ? i : i - _newVideos.length;
+              final isSelected = isNew
+                  ? _clipVideoNewIndex == localIdx
+                  : _clipVideoExistingIndex == localIdx;
+              final thumb = isNew ? _videoThumbs[_newVideos[localIdx]] : null;
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isNew) {
+                      _clipVideoNewIndex = localIdx;
+                      _clipVideoExistingIndex = -1;
+                    } else {
+                      _clipVideoExistingIndex = localIdx;
+                      _clipVideoNewIndex = -1;
+                    }
+                  });
+                },
+                child: Container(
+                  margin: EdgeInsets.only(right: context.rw(8)),
+                  width: context.rw(80),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(context.rr(10)),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.accent : Colors.transparent,
+                      width: 2.5,
+                    ),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        LucideIcons.play,
+                        color: Colors.white54,
+                        size: context.ri(22),
+                      ),
+                      if (thumb != null)
+                        Positioned.fill(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(context.rr(9)),
+                            child: Image.memory(thumb, fit: BoxFit.cover),
+                          ),
+                        ),
+                      if (isSelected)
+                        Positioned(
+                          top: context.rh(4),
+                          right: context.rw(4),
+                          child: Container(
+                            padding: context.rAll(2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              LucideIcons.check,
+                              size: context.ri(10),
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        bottom: context.rh(5),
+                        child: Text(
+                          'Vid ${i + 1}',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: context.rsp(9),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ],
     );
   }

@@ -219,6 +219,9 @@ class Service {
   final String? providerName;
   final String? providerAvatar;
 
+  /// Whether the provider carries the platform's verified badge (users.is_verified).
+  final bool providerIsVerified;
+
   /// Provider's marketplace bio, shown under their name on the detail
   /// screen. Set at opt-in, editable from the Services screen.
   final String? providerBio;
@@ -237,6 +240,12 @@ class Service {
   final int? deliveryDays;
   final List<String> imageUrls;
   final List<String> videoUrls;
+
+  /// Whether the service's video appears in the Clips feed. Only one video
+  /// per service can be shown — [clipVideoUrl] pins which one; when null the
+  /// first video is used (mirrors products.show_on_clips / clip_video_url).
+  final bool showOnClips;
+  final String? clipVideoUrl;
   final List<String> institutionCodes;
   final List<String> searchTags;
   final ServiceStatus status;
@@ -250,6 +259,7 @@ class Service {
     required this.providerId,
     this.providerName,
     this.providerAvatar,
+    this.providerIsVerified = false,
     this.providerBio,
     this.providerPublicEmail,
     required this.title,
@@ -262,6 +272,8 @@ class Service {
     this.deliveryDays,
     this.imageUrls = const [],
     this.videoUrls = const [],
+    this.showOnClips = false,
+    this.clipVideoUrl,
     this.institutionCodes = const [],
     this.searchTags = const [],
     this.status = ServiceStatus.active,
@@ -349,6 +361,7 @@ class Service {
       providerAvatar:
           provider?['avatar_url'] as String? ??
           json['provider_avatar'] as String?,
+      providerIsVerified: provider?['is_verified'] as bool? ?? false,
       providerBio: provider?['service_provider_bio'] as String?,
       providerPublicEmail:
           provider?['service_provider_email'] as String?,
@@ -372,6 +385,8 @@ class Service {
               ?.map((e) => e as String)
               .toList() ??
           [],
+      showOnClips: json['show_on_clips'] as bool? ?? false,
+      clipVideoUrl: json['clip_video_url'] as String?,
       institutionCodes:
           (json['institution_codes'] as List<dynamic>?)
               ?.map((e) => e as String)
@@ -410,6 +425,8 @@ class Service {
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
       'video_urls': videoUrls,
+      'show_on_clips': showOnClips,
+      'clip_video_url': clipVideoUrl,
       'search_tags': searchTags,
       'status': status.name,
     };
@@ -418,6 +435,7 @@ class Service {
   Service copyWith({
     String? providerBio,
     String? providerPublicEmail,
+    bool? providerIsVerified,
     String? title,
     String? description,
     String? categoryId,
@@ -427,6 +445,8 @@ class Service {
     int? deliveryDays,
     List<String>? imageUrls,
     List<String>? videoUrls,
+    bool? showOnClips,
+    String? clipVideoUrl,
     List<String>? institutionCodes,
     List<String>? searchTags,
     ServiceStatus? status,
@@ -439,6 +459,7 @@ class Service {
       providerId: providerId,
       providerName: providerName,
       providerAvatar: providerAvatar,
+      providerIsVerified: providerIsVerified ?? this.providerIsVerified,
       providerBio: providerBio ?? this.providerBio,
       providerPublicEmail: providerPublicEmail ?? this.providerPublicEmail,
       title: title ?? this.title,
@@ -451,6 +472,8 @@ class Service {
       deliveryDays: deliveryDays ?? this.deliveryDays,
       imageUrls: imageUrls ?? this.imageUrls,
       videoUrls: videoUrls ?? this.videoUrls,
+      showOnClips: showOnClips ?? this.showOnClips,
+      clipVideoUrl: clipVideoUrl ?? this.clipVideoUrl,
       institutionCodes: institutionCodes ?? this.institutionCodes,
       searchTags: searchTags ?? this.searchTags,
       status: status ?? this.status,

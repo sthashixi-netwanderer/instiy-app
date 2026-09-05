@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
+import '../../models/clip_item.dart';
 import '../../models/product_model.dart';
 import '../../providers/providers.dart';
 import '../../services/follow_service.dart';
@@ -25,6 +26,7 @@ import '../../widgets/video_watermark_overlay.dart';
 import '../../utils/bold_text.dart';
 import '../../utils/responsive.dart';
 import 'package:instiy/utils/formatters.dart';
+import 'service_video_feed_item.dart';
 
 class VideoFeedScreen extends ConsumerStatefulWidget {
   const VideoFeedScreen({super.key});
@@ -36,7 +38,7 @@ class VideoFeedScreen extends ConsumerStatefulWidget {
 class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsBindingObserver, RouteAware {
   late final PageController _pageController;
   final ValueNotifier<bool> _canPlay = ValueNotifier(true);
-  ProviderSubscription<List<Product>>? _productsSub;
+  ProviderSubscription<List<ClipItem>>? _clipsSub;
   ProviderSubscription<int>? _focusedIndexSub;
   ProviderSubscription<int>? _shellTabSub;
 
@@ -48,8 +50,8 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     _pageController = PageController(initialPage: initialPage);
     // Warm the cache for the next two clips whenever the feed reloads or the
     // user pages forward, so swiping to the next video starts instantly.
-    _productsSub = ref.listenManual(
-      videoProvider.select((v) => v.products),
+    _clipsSub = ref.listenManual(
+      videoProvider.select((v) => v.clips),
       (previous, next) {
         _syncPageAfterClipRemoval(previous, next);
         _prefetchUpcomingClips();
@@ -76,11 +78,10 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
   /// no-op on web (web streams directly from network).
   void _prefetchUpcomingClips() {
     final videoState = ref.read(videoProvider);
-    final products = videoState.products;
+    final clips = videoState.clips;
     final first = videoState.focusedIndex + 1;
-    for (var i = first; i < first + 2 && i < products.length; i++) {
-      final url = products[i].clipVideoUrl ??
-          (products[i].videoUrls.isNotEmpty ? products[i].videoUrls.first : null);
+    for (var i = first; i < first + 2 && i < clips.length; i++) {
+      final url = clips[i].videoUrl;
       if (url != null && url.isNotEmpty) {
         MediaCacheService.precache(url); // ignore: unawaited_futures
       }
@@ -90,7 +91,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
   /// When a clip is deleted in realtime, the provider removes it and shifts
   /// the focused index so it keeps pointing at the video the user is watching.
   /// The PageController still sits on the old page, so nudge it to match.
-  void _syncPageAfterClipRemoval(List<Product>? previous, List<Product> next) {
+  void _syncPageAfterClipRemoval(List<ClipItem>? previous, List<ClipItem> next) {
     if (next.length >= (previous?.length ?? next.length)) return;
     if (!_pageController.hasClients) return;
     final focused = ref.read(videoProvider).focusedIndex;
@@ -139,7 +140,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     NavigationService.routeObserver.unsubscribe(this);
     _canPlay.value = false;
     WidgetsBinding.instance.removeObserver(this);
-    _productsSub?.close();
+    _clipsSub?.close();
     _focusedIndexSub?.close();
     _shellTabSub?.close();
     _canPlay.dispose();
@@ -150,7 +151,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
   @override
   Widget build(BuildContext context) {
     final videoState = ref.watch(videoProvider);
-    final products = videoState.products;
+    final clips = videoState.clips;
     final isLoading = videoState.isLoading;
     final focusedIndex = videoState.focusedIndex;
 
@@ -163,7 +164,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
       ),
       body: isLoading
           ? const VideoFeedSkeleton()
-          : products.isEmpty
+          : clips.isEmpty
               ? _buildEmptyState()
               : NotificationListener<OverscrollNotification>(
                   onNotification: (notification) {
@@ -180,18 +181,25 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
                     // Pre-builds the adjacent pages so the next clip's UI is
                     // ready before the user swipes to it.
                     allowImplicitScrolling: true,
-                    itemCount: products.length,
+                    itemCount: clips.length,
                     onPageChanged: (index) {
                       ref.read(videoProvider).setFocusedIndex(index);
                     },
                     itemBuilder: (context, index) {
-                      final product = products[index];
-                      return VideoFeedItem(
-                        key: ValueKey(product.id),
-                        product: product,
-                        isActive: index == focusedIndex,
-                        canPlay: _canPlay,
-                      );
+                      final clip = clips[index];
+                      return clip.isService
+                          ? ServiceVideoFeedItem(
+                              key: ValueKey(clip.id),
+                              service: clip.service!,
+                              isActive: index == focusedIndex,
+                              canPlay: _canPlay,
+                            )
+                          : VideoFeedItem(
+                              key: ValueKey(clip.id),
+                              product: clip.product!,
+                              isActive: index == focusedIndex,
+                              canPlay: _canPlay,
+                            );
                     },
                   ),
                 ),

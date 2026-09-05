@@ -10,7 +10,7 @@ import '../models/category_model.dart';
 class ServiceService {
   static const _select = '''
     *,
-    provider:users!services_provider_id_fkey(full_name, avatar_url, is_service_provider, suspended),
+    provider:users!services_provider_id_fkey(full_name, avatar_url, is_service_provider, suspended, is_verified),
     category:categories(name, slug),
     packages:service_packages(*),
     reviews:service_reviews(rating)
@@ -89,6 +89,30 @@ class ServiceService {
               if (provider['is_service_provider'] == false) return false;
               if (provider['suspended'] == true) return false;
             }
+          }
+          return true;
+        })
+        .map<Service>((row) => Service.fromJson(row))
+        .toList();
+  }
+
+  /// Active services whose video is featured in the Clips feed (public read,
+  /// same shape as [getServices]). Suspended or de-opted provider accounts are
+  /// filtered out client-side like browse mode.
+  static Future<List<Service>> getClipServices() async {
+    final response = await SupabaseService.table('services')
+        .select(_select)
+        .eq('status', 'active')
+        .eq('show_on_clips', true)
+        .not('video_urls', 'eq', '{}')
+        .order('created_at', ascending: false);
+    final rawList = response as List<dynamic>;
+    return rawList
+        .where((row) {
+          final provider = row['provider'] as Map<String, dynamic>?;
+          if (provider != null) {
+            if (provider['is_service_provider'] == false) return false;
+            if (provider['suspended'] == true) return false;
           }
           return true;
         })
@@ -272,6 +296,8 @@ class ServiceService {
     int? deliveryDays,
     List<String> imageUrls = const [],
     List<String> videoUrls = const [],
+    bool showOnClips = false,
+    String? clipVideoUrl,
     List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
@@ -295,6 +321,8 @@ class ServiceService {
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
       'video_urls': videoUrls,
+      'show_on_clips': showOnClips,
+      'clip_video_url': clipVideoUrl,
       'institution_codes': institutionCodes,
       'search_tags': searchTags,
       'status': ServiceStatus.active.name,
@@ -334,6 +362,8 @@ class ServiceService {
     int? deliveryDays,
     List<String> imageUrls = const [],
     List<String> videoUrls = const [],
+    bool showOnClips = false,
+    String? clipVideoUrl,
     List<String> institutionCodes = const [],
     List<String> searchTags = const [],
     List<ServicePackage> packages = const [],
@@ -353,6 +383,10 @@ class ServiceService {
       'delivery_days': deliveryDays,
       'image_urls': imageUrls,
       'video_urls': videoUrls,
+      // Always written (even when null) so turning Clips off clears a
+      // previously pinned clip video.
+      'show_on_clips': showOnClips,
+      'clip_video_url': clipVideoUrl,
       'institution_codes': institutionCodes,
       'search_tags': searchTags,
     }).eq('id', serviceId);
