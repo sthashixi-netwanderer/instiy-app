@@ -837,6 +837,9 @@ class _QrCodeSheet extends StatelessWidget {
               QrImageView(
                 data: item.deliveryCode!,
                 version: QrVersions.auto,
+                // Level H (~30% damage tolerance) so the centered logo badge
+                // stays decodable. Default level L (~7%) made these unscannable.
+                errorCorrectionLevel: QrErrorCorrectLevel.H,
                 size: context.rw(200),
                 backgroundColor: Colors.white,
                 eyeStyle: const QrEyeStyle(
@@ -1037,6 +1040,9 @@ class _GeneralQrSheet extends StatelessWidget {
               QrImageView(
                 data: payload,
                 version: QrVersions.auto,
+                // Level H (~30% damage tolerance) so the centered logo badge
+                // stays decodable. Default level L (~7%) made these unscannable.
+                errorCorrectionLevel: QrErrorCorrectLevel.H,
                 size: context.rw(200),
                 backgroundColor: Colors.white,
                 eyeStyle: const QrEyeStyle(

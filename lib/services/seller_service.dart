@@ -1,5 +1,6 @@
 import 'dart:isolate';
 import 'supabase_service.dart';
+import 'storage_service.dart';
 import '../models/seller_review_model.dart';
 import '../models/order_model.dart';
 
@@ -204,32 +205,77 @@ class SellerService {
           *,
           reviewer:users!reviewer_id(full_name, avatar_url),
           product:products!product_id(title, image_urls),
-          replies:product_review_replies(*)
+          replies:product_review_replies(*, seller:users!seller_id(full_name, avatar_url))
         ''')
         .inFilter('product_id', productIds)
+        .filter('parent_id', 'is', null)
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
 
     return Isolate.run(() => _parseReviewList(response as List));
   }
 
+  static const _maxReplyMedia = 3;
+
+  static Future<List<String>> _uploadReplyMedia(List<dynamic> files) async {
+    final urls = <String>[];
+    for (final file in files.take(_maxReplyMedia)) {
+      final path = (file as dynamic).path as String;
+      final ext = path.split('.').last.toLowerCase();
+      final isVideo = ['mp4', 'mov', 'avi', 'webm'].contains(ext);
+      urls.add(
+        await StorageService.uploadFile(
+          file: file,
+          folder: 'reviews',
+          contentType: isVideo ? 'video/$ext' : 'image/$ext',
+          extension: ext,
+        ),
+      );
+    }
+    return urls;
+  }
+
   static Future<void> replyToReview({
     required String reviewId,
     required String sellerId,
     required String reply,
+    List<dynamic> mediaFiles = const [],
   }) async {
+    final mediaUrls = mediaFiles.isNotEmpty
+        ? await _uploadReplyMedia(mediaFiles)
+        : <String>[];
     await SupabaseService.table(
       'product_review_replies',
-    ).insert({'review_id': reviewId, 'seller_id': sellerId, 'reply': reply});
+    ).insert({
+      'review_id': reviewId,
+      'seller_id': sellerId,
+      'reply': reply,
+      'media_urls': mediaUrls,
+    });
   }
 
   static Future<void> updateReply({
     required String reviewId,
     required String reply,
+    List<String>? keepMediaUrls,
+    List<dynamic>? newMediaFiles,
   }) async {
+    final update = <String, dynamic>{'reply': reply};
+    if (keepMediaUrls != null || newMediaFiles != null) {
+      final mediaUrls = <String>[...(keepMediaUrls ?? const [])];
+      if (newMediaFiles != null && newMediaFiles.isNotEmpty) {
+        final remaining = _maxReplyMedia - mediaUrls.length;
+        mediaUrls.addAll(
+          await _uploadReplyMedia(
+            newMediaFiles.take(remaining.clamp(0, _maxReplyMedia)).toList(),
+          ),
+        );
+      }
+      update['media_urls'] = mediaUrls.take(_maxReplyMedia).toList();
+    }
     await SupabaseService.table(
       'product_review_replies',
-    ).update({'reply': reply}).eq('review_id', reviewId);
+    ).update(update).eq('review_id', reviewId);
   }
 
   static Future<Map<String, dynamic>> getAnalytics(String userId) async {

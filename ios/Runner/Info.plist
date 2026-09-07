@@ -127,5 +127,11 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>mailto</string>
+			<string>tel</string>
+			<string>whatsapp</string>
+		</array>
 	</dict>
 </plist>

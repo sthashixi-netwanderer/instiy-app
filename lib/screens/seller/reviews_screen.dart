@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,6 +10,7 @@ import '../../models/seller_review_model.dart';
 import '../../services/review_service.dart';
 import '../../services/seller_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/media_viewer.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/review_section.dart';
 
@@ -493,16 +496,39 @@ class _SellerReplyThread extends ConsumerStatefulWidget {
 }
 
 class _SellerReplyThreadState extends ConsumerState<_SellerReplyThread> {
+  static const _maxMedia = 3;
   bool _showReplyField = false;
   final _replyController = TextEditingController();
   bool _isReplying = false;
+  final List<String> _keepMediaUrls = [];
+  final List<File> _newMediaFiles = [];
+
+  ProductReview? get _sellerReply =>
+      widget.review.replies.isNotEmpty ? widget.review.replies.first : null;
+
+  int get _totalMedia => _keepMediaUrls.length + _newMediaFiles.length;
 
   @override
   void initState() {
     super.initState();
-    if (widget.review.reply != null) {
-      _replyController.text = widget.review.reply!;
+    _syncFromReview();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SellerReplyThread oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.review.id != widget.review.id ||
+        oldWidget.review.reply != widget.review.reply) {
+      _syncFromReview();
     }
+  }
+
+  void _syncFromReview() {
+    _replyController.text = widget.review.reply ?? '';
+    _keepMediaUrls
+      ..clear()
+      ..addAll(_sellerReply?.mediaUrls ?? const []);
+    _newMediaFiles.clear();
   }
 
   @override
@@ -511,19 +537,52 @@ class _SellerReplyThreadState extends ConsumerState<_SellerReplyThread> {
     super.dispose();
   }
 
+  bool _isVideoPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.avi') ||
+        lower.endsWith('.webm');
+  }
+
+  Future<void> _pickMedia() async {
+    final remaining = _maxMedia - _totalMedia;
+    if (remaining <= 0) return;
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage(
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 80,
+    );
+    if (images.isNotEmpty && mounted) {
+      setState(() {
+        _newMediaFiles.addAll(
+          images.take(remaining).map((x) => File(x.path)),
+        );
+      });
+    }
+  }
+
   Future<void> _submitReply() async {
     if (_replyController.text.trim().isEmpty) return;
     setState(() => _isReplying = true);
 
     try {
       final userId = ref.read(authProvider).user!.id;
+      final text = _replyController.text.trim();
       if (widget.review.replies.isNotEmpty) {
-        await SellerService.updateReply(reviewId: widget.review.id, reply: _replyController.text.trim());
+        await SellerService.updateReply(
+          reviewId: widget.review.id,
+          reply: text,
+          keepMediaUrls: List<String>.from(_keepMediaUrls),
+          newMediaFiles: List<File>.from(_newMediaFiles),
+        );
       } else {
         await SellerService.replyToReview(
           reviewId: widget.review.id,
           sellerId: userId,
-          reply: _replyController.text.trim(),
+          reply: text,
+          mediaFiles: List<File>.from(_newMediaFiles),
         );
       }
       setState(() => _showReplyField = false);
@@ -582,6 +641,52 @@ class _SellerReplyThreadState extends ConsumerState<_SellerReplyThread> {
                             widget.review.reply!,
                             style: TextStyle(color: AppTheme.charcoalInk, fontSize: context.rsp(13)),
                           ),
+                          if ((_sellerReply?.mediaUrls.isNotEmpty ?? false)) ...[
+                            SizedBox(height: context.rh(8)),
+                            SizedBox(
+                              height: context.rh(64),
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _sellerReply!.mediaUrls.length,
+                                separatorBuilder: (_, _) =>
+                                    SizedBox(width: context.rw(8)),
+                                itemBuilder: (context, i) {
+                                  final url = _sellerReply!.mediaUrls[i];
+                                  final isVideo = _isVideoPath(url);
+                                  return GestureDetector(
+                                    onTap: () => MediaViewer.open(
+                                      context,
+                                      _sellerReply!.mediaUrls,
+                                      initialIndex: i,
+                                    ),
+                                    child: Container(
+                                      width: context.rw(64),
+                                      height: context.rh(64),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(
+                                          context.rr(8),
+                                        ),
+                                        color: AppTheme.whisperBorder,
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: isVideo
+                                          ? const Center(
+                                              child: Icon(
+                                                LucideIcons.video,
+                                                color: AppTheme.mutedSteel,
+                                              ),
+                                            )
+                                          : CachedNetworkImage(
+                                              imageUrl: url,
+                                              fit: BoxFit.cover,
+                                              memCacheWidth: 128,
+                                            ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -620,13 +725,153 @@ class _SellerReplyThreadState extends ConsumerState<_SellerReplyThread> {
                   maxLines: 3,
                 ),
                 SizedBox(height: context.rh(8)),
+                if (_totalMedia < _maxMedia)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.ghost(
+                      onPressed: _pickMedia,
+                      leading: Icon(
+                        LucideIcons.image,
+                        size: context.ri(16),
+                      ),
+                      child: Text('Add photos ($_totalMedia/$_maxMedia)'),
+                    ),
+                  )
+                else
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Maximum $_maxMedia photos attached',
+                      style: TextStyle(
+                        fontSize: context.rsp(12),
+                        color: AppTheme.mutedSteel,
+                      ),
+                    ),
+                  ),
+                if (_totalMedia > 0) ...[
+                  SizedBox(height: context.rh(8)),
+                  SizedBox(
+                    height: context.rh(64),
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        ..._keepMediaUrls.map(
+                          (url) => Stack(
+                            children: [
+                              Container(
+                                width: context.rw(64),
+                                height: context.rh(64),
+                                margin: EdgeInsets.only(
+                                  right: context.rw(8),
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                    context.rr(8),
+                                  ),
+                                  color: AppTheme.warmMist,
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: _isVideoPath(url)
+                                    ? const Center(
+                                        child: Icon(
+                                          LucideIcons.video,
+                                          color: AppTheme.mutedSteel,
+                                        ),
+                                      )
+                                    : CachedNetworkImage(
+                                        imageUrl: url,
+                                        fit: BoxFit.cover,
+                                        memCacheWidth: 128,
+                                      ),
+                              ),
+                              Positioned(
+                                top: 2,
+                                right: 10,
+                                child: GestureDetector(
+                                  onTap: () => setState(
+                                    () => _keepMediaUrls.remove(url),
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black54,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      LucideIcons.x,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ..._newMediaFiles.asMap().entries.map(
+                              (e) => Stack(
+                                children: [
+                                  Container(
+                                    width: context.rw(64),
+                                    height: context.rh(64),
+                                    margin: EdgeInsets.only(
+                                      right: context.rw(8),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(
+                                        context.rr(8),
+                                      ),
+                                      color: AppTheme.warmMist,
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: _isVideoPath(e.value.path)
+                                        ? const Center(
+                                            child: Icon(
+                                              LucideIcons.video,
+                                              color: AppTheme.mutedSteel,
+                                            ),
+                                          )
+                                        : Image.file(
+                                            e.value,
+                                            fit: BoxFit.cover,
+                                          ),
+                                  ),
+                                  Positioned(
+                                    top: 2,
+                                    right: 10,
+                                    child: GestureDetector(
+                                      onTap: () => setState(
+                                        () => _newMediaFiles.removeAt(e.key),
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          LucideIcons.x,
+                                          size: 12,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                ],
+                SizedBox(height: context.rh(8)),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     ShadButton.ghost(
                       onPressed: () => setState(() {
                         _showReplyField = false;
-                        _replyController.text = widget.review.reply ?? '';
+                        _syncFromReview();
                       }),
                       child: const Text('Cancel'),
                     ),

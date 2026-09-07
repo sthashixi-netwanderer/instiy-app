@@ -5,7 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/service_model.dart';
 import '../models/category_model.dart';
 import '../models/institution_model.dart';
+import '../models/service_draft_model.dart';
 import '../services/service_service.dart';
+import '../services/service_draft_service.dart';
 import '../services/institution_service.dart';
 import '../services/supabase_service.dart';
 import '../services/report_service.dart';
@@ -49,6 +51,12 @@ class ServiceProvider extends ChangeNotifier {
   String? _error;
   Map<String, dynamic>? _latestAppeal;
   bool _appealSubmitting = false;
+
+  /// Publishing draft for the fire-and-forget service create (reactive for
+  /// the My Services tab). Null when nothing is in flight or a publish
+  /// finished/cleared.
+  ServiceDraftListing? _publishingServiceDraft;
+  double _publishProgress = 0;
 
   RealtimeChannel? _servicesChannel;
 
@@ -237,6 +245,8 @@ class ServiceProvider extends ChangeNotifier {
   Map<String, dynamic>? get latestAppeal => _latestAppeal;
   bool get appealSubmitting => _appealSubmitting;
   String? get error => _error;
+  ServiceDraftListing? get publishingServiceDraft => _publishingServiceDraft;
+  double get publishProgress => _publishProgress;
 
   Category? selectedCategory() {
     final id = _selectedCategoryId;
@@ -334,6 +344,23 @@ class ServiceProvider extends ChangeNotifier {
       _myServicesLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Loads the on-device publishing draft into reactive state (called on
+  /// screen load, so a publish interrupted by an app kill shows as failed).
+  Future<void> loadPublishingServiceDraft() async {
+    final draft = await ServiceDraftService.loadDraft();
+    _publishingServiceDraft = draft;
+    _publishProgress = draft?.progress ?? 0;
+    notifyListeners();
+  }
+
+  /// Update publishing draft state (called from the background publish).
+  void updatePublishingServiceDraft(ServiceDraftListing? draft,
+      {double? progress}) {
+    _publishingServiceDraft = draft;
+    if (progress != null) _publishProgress = progress;
+    notifyListeners();
   }
 
   Future<void> checkServiceProviderStatus() async {

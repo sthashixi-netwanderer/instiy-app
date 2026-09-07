@@ -496,6 +496,7 @@ class ServiceReview {
   final String? reviewerAvatar;
   final int rating;
   final String? comment;
+  final List<String> mediaUrls;
   final int helpfulCount;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -508,6 +509,7 @@ class ServiceReview {
     this.reviewerAvatar,
     required this.rating,
     this.comment,
+    this.mediaUrls = const [],
     this.helpfulCount = 0,
     required this.createdAt,
     this.updatedAt,
@@ -527,6 +529,10 @@ class ServiceReview {
           json['reviewer_avatar'] as String?,
       rating: (json['rating'] as num?)?.toInt() ?? 0,
       comment: json['comment'] as String?,
+      mediaUrls: (json['media_urls'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
       helpfulCount: (json['helpful_count'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] != null

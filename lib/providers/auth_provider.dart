@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/chat_media_cache_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/navigation_service.dart';
 import '../services/secrets_service.dart';
@@ -323,6 +324,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     _unsubscribeFromVerification();
     _isSuspended = false;
+    // Drop session-cached chat images so the next login re-fetches them
+    // from R2 on demand instead of serving another account's copies.
+    unawaited(ChatMediaCacheManager().emptyCache());
     await AuthService.signOut();
     _user = null;
     _syncAccountStatus();

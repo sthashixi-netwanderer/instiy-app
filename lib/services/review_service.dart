@@ -40,7 +40,58 @@ class ReviewService {
       }
     }
 
+    await _attachSellerReplies(topLevelReviews);
+
     return topLevelReviews.reversed.toList();
+  }
+
+  /// Seller replies live in product_review_replies so buyers see them on the
+  /// product page alongside threaded product_reviews replies.
+  static Future<void> _attachSellerReplies(
+    List<ProductReview> topLevelReviews,
+  ) async {
+    if (topLevelReviews.isEmpty) return;
+    try {
+      final ids = topLevelReviews.map((r) => r.id).toList();
+      final response = await SupabaseService.table('product_review_replies')
+          .select('*, seller:users!seller_id(full_name, avatar_url)')
+          .inFilter('review_id', ids);
+      for (final raw in (response as List)) {
+        final map = Map<String, dynamic>.from(raw as Map);
+        final reviewId = map['review_id'] as String?;
+        if (reviewId == null) continue;
+        final parent = topLevelReviews.firstWhere(
+          (r) => r.id == reviewId,
+          orElse: () => topLevelReviews.first,
+        );
+        if (parent.id != reviewId) continue;
+        final seller = map['seller'] as Map<String, dynamic>?;
+        final createdRaw = map['created_at'] as String?;
+        final updatedRaw = map['updated_at'] as String? ?? createdRaw;
+        if (createdRaw == null) continue;
+        // Skip when a seller reply is already present from another source.
+        if (parent.replies.any((r) => r.id == map['id'])) continue;
+        parent.replies.add(
+          ProductReview(
+            id: map['id'] as String,
+            productId: parent.productId,
+            reviewerId: (map['seller_id'] as String?) ?? '',
+            rating: 0,
+            comment: map['reply'] as String?,
+            mediaUrls: (map['media_urls'] as List<dynamic>?)
+                    ?.map((e) => e as String)
+                    .toList() ??
+                const [],
+            helpfulCount: 0,
+            createdAt: DateTime.parse(createdRaw),
+            updatedAt: DateTime.parse(updatedRaw!),
+            reviewerName: seller?['full_name'] as String? ?? 'Seller',
+            reviewerAvatar: seller?['avatar_url'] as String?,
+            parentId: reviewId,
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   static Future<ProductReview?> getUserReview(String productId, String userId) async {

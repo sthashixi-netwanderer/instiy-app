@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -20,11 +21,17 @@ class MediaViewer extends StatefulWidget {
   final int initialIndex;
   final List<String?>? thumbnailUrls;
 
+  /// Image cache the full-screen pages read through. Defaults to the shared
+  /// default cache; callers with session-scoped media (e.g. chat) pass their
+  /// own manager so opened images land in the session store.
+  final BaseCacheManager? cacheManager;
+
   const MediaViewer({
     super.key,
     required this.mediaUrls,
     this.initialIndex = 0,
     this.thumbnailUrls,
+    this.cacheManager,
   });
 
   static void open(
@@ -32,6 +39,7 @@ class MediaViewer extends StatefulWidget {
     List<String> mediaUrls, {
     int initialIndex = 0,
     List<String?>? thumbnailUrls,
+    BaseCacheManager? cacheManager,
   }) {
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -41,6 +49,7 @@ class MediaViewer extends StatefulWidget {
           mediaUrls: mediaUrls,
           initialIndex: initialIndex,
           thumbnailUrls: thumbnailUrls,
+          cacheManager: cacheManager,
         ),
         transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -361,7 +370,10 @@ class _MediaViewerState extends State<MediaViewer>
 
   Widget _buildImagePage(String url, int index) {
     return PhotoView(
-      imageProvider: CachedNetworkImageProvider(url),
+      imageProvider: CachedNetworkImageProvider(
+        url,
+        cacheManager: widget.cacheManager ?? DefaultCacheManager(),
+      ),
       minScale: PhotoViewComputedScale.contained,
       maxScale: PhotoViewComputedScale.covered * 3,
       initialScale: PhotoViewComputedScale.contained,

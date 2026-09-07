@@ -352,6 +352,244 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 label: 'Pending',
                 value: formatGhs(provider.pendingBalance),
                 color: Colors.amberAccent,
+                onTap: () => _showPendingBreakdown(context, provider),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPendingBreakdown(BuildContext context, WalletProvider provider) {
+    final withdrawals = provider.pendingWithdrawals;
+    final earnings = provider.pendingOrderEarnings;
+    showShadSheet(
+      context: context,
+      builder: (ctx) => ShadSheet(
+        title: const Text('Pending Balance'),
+        description: Text(
+          '${formatGhs(provider.pendingBalance)} not yet available — withdrawal holds and order earnings awaiting delivery.',
+        ),
+        child: withdrawals.isEmpty && earnings.isEmpty
+            ? Padding(
+                padding: EdgeInsets.symmetric(vertical: context.rh(24)),
+                child: Center(
+                  child: Text(
+                    'No pending activities.\nYour full balance is available.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.mutedSteel,
+                      fontSize: context.rsp(13),
+                    ),
+                  ),
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // The sheet's child scrolls as a whole, so no inner
+                  // viewport here — a ListView would get unbounded height.
+                  if (earnings.isNotEmpty) ...[
+                    _buildSectionHeader(
+                      'Order earnings awaiting delivery (${earnings.length})',
+                    ),
+                    ...earnings.map(_buildPendingEarningCard),
+                    SizedBox(height: context.rh(16)),
+                  ],
+                  if (withdrawals.isNotEmpty) ...[
+                    _buildSectionHeader(
+                      'Withdrawals in progress (${withdrawals.length})',
+                    ),
+                    ...withdrawals.map(_buildPendingWithdrawalCard),
+                    SizedBox(height: context.rh(12)),
+                  ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Total pending',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: context.rsp(14),
+                          color: AppTheme.charcoalInk,
+                        ),
+                      ),
+                      Text(
+                        formatGhs(provider.pendingBalance),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: context.rsp(15),
+                          color: AppTheme.warningAmber,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: context.rh(8)),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: context.rsp(12),
+          color: AppTheme.mutedSteel,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPendingEarningCard(PendingOrderEarning e) {
+    return Container(
+      margin: EdgeInsets.only(bottom: context.rh(8)),
+      padding: context.rAll(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warmMist,
+        borderRadius: BorderRadius.circular(context.rr(12)),
+        border: Border.all(color: AppTheme.whisperBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: context.rAll(8),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(context.rr(10)),
+            ),
+            child: Icon(
+              LucideIcons.package,
+              color: AppTheme.accent,
+              size: context.ri(18),
+            ),
+          ),
+          SizedBox(width: context.rw(12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  e.productTitle,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: context.rsp(13),
+                    color: AppTheme.charcoalInk,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: context.rh(2)),
+                Text(
+                  'Credited after delivery is verified • '
+                  '${DateFormat('MMM d, yyyy').format(e.createdAt)}',
+                  style: TextStyle(
+                    fontSize: context.rsp(11),
+                    color: AppTheme.mutedSteel,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            formatGhs(e.amount),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: context.rsp(13),
+              color: AppTheme.charcoalInk,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingWithdrawalCard(WithdrawalRequest w) {
+    final isProcessing = w.status == 'processing';
+    return Container(
+      margin: EdgeInsets.only(bottom: context.rh(8)),
+      padding: context.rAll(12),
+      decoration: BoxDecoration(
+        color: AppTheme.warmMist,
+        borderRadius: BorderRadius.circular(context.rr(12)),
+        border: Border.all(color: AppTheme.whisperBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: context.rAll(8),
+            decoration: BoxDecoration(
+              color: AppTheme.warningAmber.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(context.rr(10)),
+            ),
+            child: Icon(
+              LucideIcons.arrowUp,
+              color: AppTheme.warningAmber,
+              size: context.ri(18),
+            ),
+          ),
+          SizedBox(width: context.rw(12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Withdrawal • ${w.methodType}${w.providerType != null && w.providerType!.isNotEmpty ? ' • ${w.providerType}' : ''}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: context.rsp(13),
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+                SizedBox(height: context.rh(2)),
+                Text(
+                  DateFormat('MMM d, yyyy • h:mm a').format(w.createdAt),
+                  style: TextStyle(
+                    fontSize: context.rsp(11),
+                    color: AppTheme.mutedSteel,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                formatGhs(w.amountRequested),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: context.rsp(13),
+                  color: AppTheme.charcoalInk,
+                ),
+              ),
+              SizedBox(height: context.rh(4)),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.rw(8),
+                  vertical: context.rh(2),
+                ),
+                decoration: BoxDecoration(
+                  color: isProcessing
+                      ? AppTheme.accent.withValues(alpha: 0.12)
+                      : AppTheme.warningAmber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(context.rr(20)),
+                ),
+                child: Text(
+                  isProcessing ? 'Processing' : 'Pending',
+                  style: TextStyle(
+                    fontSize: context.rsp(10),
+                    fontWeight: FontWeight.w600,
+                    color: isProcessing
+                        ? AppTheme.accent
+                        : AppTheme.warningAmber,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1100,11 +1338,13 @@ class _BalanceStat extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
+  final VoidCallback? onTap;
 
   const _BalanceStat({
     required this.label,
     required this.value,
     this.color,
+    this.onTap,
   });
 
   double _valueFontSize() {
@@ -1117,10 +1357,19 @@ class _BalanceStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: Colors.white60, fontSize: context.rsp(12))),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(color: Colors.white60, fontSize: context.rsp(12))),
+            if (onTap != null) ...[
+              SizedBox(width: context.rw(4)),
+              Icon(LucideIcons.info, size: context.ri(12), color: Colors.white60),
+            ],
+          ],
+        ),
         SizedBox(height: context.rh(4)),
         Text(
           value,
@@ -1128,10 +1377,14 @@ class _BalanceStat extends StatelessWidget {
             color: color ?? Colors.white,
             fontWeight: FontWeight.w600,
             fontSize: context.rsp(_valueFontSize()),
+            decoration: onTap != null ? TextDecoration.underline : null,
+            decorationColor: Colors.white70,
           ),
         ),
       ],
     );
+    if (onTap == null) return content;
+    return GestureDetector(onTap: onTap, child: content);
   }
 }
 

@@ -1,19 +1,25 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:uuid/uuid.dart';
 import 'package:video_player/video_player.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
 import '../../models/service_model.dart';
+import '../../models/service_draft_model.dart';
 import '../../models/category_model.dart';
 import '../../models/picked_media.dart';
 import '../../services/service_service.dart';
+import '../../services/service_draft_service.dart';
+import '../../services/sound_service.dart';
 import '../../services/video_service.dart';
 import '../../widgets/media_viewer.dart';
 import '../../providers/providers.dart';
+import '../../providers/service_provider.dart';
 import '../../widgets/image_picker_sheet.dart';
 import '../../widgets/multi_institution_picker.dart';
 import '../../widgets/ai_enhance_button.dart';
@@ -399,60 +405,23 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
 
     setState(() => _isPublishing = true);
     try {
-      // Upload newly picked images first.
-      final uploaded = await ServiceService.uploadServiceImages(_newImages);
-      final imageUrls = [..._existingImageUrls, ...uploaded];
-
-      // Compress (trimming to the first 30 seconds) and upload new videos.
-      final uploadedVideos = await ServiceService.uploadServiceVideos(
-        _newVideos,
-      );
-      final videoUrls = [..._existingVideoUrls, ...uploadedVideos];
-
-      // Resolve the clip video URL. Single-video services auto-use their only
-      // video; multi-video services use the one picked in the selector
-      // (mirrors product listings).
-      String? clipVideoUrlVal;
-      if (_showOnClips) {
-        if (videoUrls.length <= 1) {
-          clipVideoUrlVal = videoUrls.isNotEmpty ? videoUrls.first : null;
-        } else if (_clipVideoExistingIndex != -1 &&
-            _clipVideoExistingIndex < _existingVideoUrls.length) {
-          clipVideoUrlVal = _existingVideoUrls[_clipVideoExistingIndex];
-        } else if (_clipVideoNewIndex != -1) {
-          final uploadedIdx = _existingVideoUrls.length + _clipVideoNewIndex;
-          if (uploadedIdx < videoUrls.length) {
-            clipVideoUrlVal = videoUrls[uploadedIdx];
-          }
-        }
-      }
-
-      final enabled = _activePackages;
-      final packageModels = enabled
-          .map(
-            (p) {
-              final duration = int.parse(p.deliveryDuration.text.trim());
-              final unit = p.deliveryUnit;
-              final days = unit == 'minutes' || unit == 'hours'
-                  ? 0
-                  : (unit == 'months'
-                      ? duration * 30
-                      : (unit == 'years' ? duration * 365 : duration));
-              return ServicePackage(
-                tier: p.tier,
-                name: p.displayName,
-                description: p.description.text.trim(),
-                price: double.parse(p.price.text.trim()),
-                deliveryDays: days,
-                deliveryDuration: duration,
-                deliveryUnit: unit,
-                revisions: int.parse(p.revisions.text.trim()),
-                isPopular: p.isPopular,
-                features: p.features,
-              );
-            },
-          )
-          .toList();
+      // Capture ALL values from the controllers and state lists up front —
+      // the fire-and-forget publish must not depend on this widget or its
+      // controllers being alive after the wizard pops.
+      final titleVal = _titleCtrl.text.trim();
+      final descriptionVal = _descCtrl.text.trim();
+      final categoryIdVal = _selectedCategory!.id;
+      final categoryNameVal = _selectedCategory!.name;
+      final newImagesCopy = List<PickedMedia>.from(_newImages);
+      final newVideosCopy = List<PickedMedia>.from(_newVideos);
+      final showOnClipsVal = _showOnClips;
+      final clipVideoNewIdx = _clipVideoNewIndex;
+      final tagsVal = _parsedTags;
+      // "All institutions" persists as an empty list (matches products).
+      final institutionCodes = _allInstitutions
+          ? <String>[]
+          : List<String>.from(_selectedInstitutions);
+      final packageModels = _buildPackageModels();
       // Without packages the service sells at a single base price; keep the
       // previous delivery estimate when editing.
       final double startingPrice;
@@ -468,64 +437,278 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
             .map((p) => p.deliveryDays)
             .reduce((a, b) => a < b ? a : b);
       }
-      // "All institutions" persists as an empty list (matches products).
-      final institutionCodes = _allInstitutions
-          ? <String>[]
-          : List<String>.from(_selectedInstitutions);
 
+      if (_isEditing) {
+        await _publishEdit(
+          title: titleVal,
+          description: descriptionVal,
+          categoryId: categoryIdVal,
+          categoryName: categoryNameVal,
+          startingPrice: startingPrice,
+          deliveryDays: deliveryDays,
+          institutionCodes: institutionCodes,
+          searchTags: tagsVal,
+          packages: packageModels,
+        );
+        return;
+      }
+
+      // New service — fire-and-forget, mirroring product listings: persist
+      // the draft as publishing, pop the wizard, upload in the background.
+      final draft = ServiceDraftListing(
+        id: const Uuid().v4(),
+        title: titleVal,
+        description: descriptionVal,
+        categoryId: categoryIdVal,
+        categoryName: categoryNameVal,
+        imagePaths: newImagesCopy.map((m) => m.name).toList(),
+        videoPaths: newVideosCopy.map((m) => m.name).toList(),
+        packagesEnabled: _packagesEnabled,
+        packages: packageModels.map((p) => p.toJson()).toList(),
+        basePrice: startingPrice,
+        deliveryDays: deliveryDays,
+        institutionCodes: institutionCodes,
+        searchTags: tagsVal,
+        showOnClips: showOnClipsVal,
+        clipVideoIndex: clipVideoNewIdx,
+        status: ServiceDraftStatus.publishing,
+        savedAt: DateTime.now(),
+      );
+      await ServiceDraftService.saveDraft(draft);
       final provider = ref.read(serviceProvider);
-      final existing = widget.existingService;
-      final result = existing == null
-          ? await provider.createService(
-              title: _titleCtrl.text.trim(),
-              description: _descCtrl.text.trim(),
-              categoryId: _selectedCategory!.id,
-              categoryName: _selectedCategory!.name,
-              price: startingPrice,
-              deliveryDays: deliveryDays,
-              imageUrls: imageUrls,
-              videoUrls: videoUrls,
-              showOnClips: _showOnClips,
-              clipVideoUrl: clipVideoUrlVal,
-              institutionCodes: institutionCodes,
-              searchTags: _parsedTags,
-              packages: packageModels,
-            )
-          : await provider.updateService(
-              existing.id,
-              title: _titleCtrl.text.trim(),
-              description: _descCtrl.text.trim(),
-              categoryId: _selectedCategory!.id,
-              categoryName: _selectedCategory!.name,
-              price: startingPrice,
-              deliveryDays: deliveryDays,
-              imageUrls: imageUrls,
-              videoUrls: videoUrls,
-              showOnClips: _showOnClips,
-              clipVideoUrl: clipVideoUrlVal,
-              institutionCodes: institutionCodes,
-              searchTags: _parsedTags,
-              packages: packageModels,
-            );
+      provider.updatePublishingServiceDraft(draft, progress: 0);
 
       if (!mounted) return;
-      if (result == true) {
-        ShadToaster.of(context).show(
-          ShadToast(
-            title: Text(
-              _isEditing ? 'Service updated' : 'Service published!',
-            ),
-          ),
-        );
-        Navigator.of(context).pop(true);
-      } else {
-        setState(() => _isPublishing = false);
-        _toast('Couldn\'t save the service: $result');
-      }
+      ShadToaster.of(context).show(
+        const ShadToast(title: Text('Your service is being published...')),
+      );
+      Navigator.of(context).pop();
+
+      // Background publish — no widget dependency.
+      unawaited(_publishInBackground(
+        provider: provider,
+        draft: draft,
+        title: titleVal,
+        description: descriptionVal,
+        categoryId: categoryIdVal,
+        categoryName: categoryNameVal,
+        startingPrice: startingPrice,
+        deliveryDays: deliveryDays,
+        newImages: newImagesCopy,
+        newVideos: newVideosCopy,
+        showOnClips: showOnClipsVal,
+        clipVideoNewIndex: clipVideoNewIdx,
+        institutionCodes: institutionCodes,
+        searchTags: tagsVal,
+        packages: packageModels,
+      ));
     } catch (e) {
       if (!mounted) return;
       setState(() => _isPublishing = false);
       _toast('Couldn\'t save the service: $e');
+    }
+  }
+
+  /// Blocking save for edits — the provider stays on the wizard until it
+  /// lands, so failures can be corrected in place.
+  Future<void> _publishEdit({
+    required String title,
+    required String description,
+    required String categoryId,
+    required String categoryName,
+    required double startingPrice,
+    required int? deliveryDays,
+    required List<String> institutionCodes,
+    required List<String> searchTags,
+    required List<ServicePackage> packages,
+  }) async {
+    // Upload newly picked images first.
+    final uploaded = await ServiceService.uploadServiceImages(_newImages);
+    final imageUrls = [..._existingImageUrls, ...uploaded];
+
+    // Compress (trimming to the first 30 seconds) and upload new videos.
+    final uploadedVideos = await ServiceService.uploadServiceVideos(
+      _newVideos,
+    );
+    final videoUrls = [..._existingVideoUrls, ...uploadedVideos];
+
+    final clipVideoUrlVal = _resolveClipVideoUrl(
+      existingVideoUrls: _existingVideoUrls,
+      uploadedVideoUrls: uploadedVideos,
+      showOnClips: _showOnClips,
+      clipVideoExistingIndex: _clipVideoExistingIndex,
+      clipVideoNewIndex: _clipVideoNewIndex,
+    );
+
+    final provider = ref.read(serviceProvider);
+    final result = await provider.updateService(
+      widget.existingService!.id,
+      title: title,
+      description: description,
+      categoryId: categoryId,
+      categoryName: categoryName,
+      price: startingPrice,
+      deliveryDays: deliveryDays,
+      imageUrls: imageUrls,
+      videoUrls: videoUrls,
+      showOnClips: _showOnClips,
+      clipVideoUrl: clipVideoUrlVal,
+      institutionCodes: institutionCodes,
+      searchTags: searchTags,
+      packages: packages,
+    );
+
+    if (!mounted) return;
+    if (result == true) {
+      ShadToaster.of(context).show(
+        const ShadToast(title: Text('Service updated')),
+      );
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _isPublishing = false);
+      _toast('Couldn\'t save the service: $result');
+    }
+  }
+
+  /// Package models that will be saved — empty when the packages toggle is
+  /// off (the service then sells at a single base price).
+  List<ServicePackage> _buildPackageModels() {
+    return _activePackages.map((p) {
+      final duration = int.parse(p.deliveryDuration.text.trim());
+      final unit = p.deliveryUnit;
+      final days = unit == 'minutes' || unit == 'hours'
+          ? 0
+          : (unit == 'months'
+              ? duration * 30
+              : (unit == 'years' ? duration * 365 : duration));
+      return ServicePackage(
+        tier: p.tier,
+        name: p.displayName,
+        description: p.description.text.trim(),
+        price: double.parse(p.price.text.trim()),
+        deliveryDays: days,
+        deliveryDuration: duration,
+        deliveryUnit: unit,
+        revisions: int.parse(p.revisions.text.trim()),
+        isPopular: p.isPopular,
+        features: p.features,
+      );
+    }).toList();
+  }
+
+  /// Resolves which uploaded video URL feeds the Clips feed. Single-video
+  /// services auto-use their only video; multi-video services use the one
+  /// picked in the selector (mirrors product listings).
+  static String? _resolveClipVideoUrl({
+    required List<String> existingVideoUrls,
+    required List<String> uploadedVideoUrls,
+    required bool showOnClips,
+    required int clipVideoExistingIndex,
+    required int clipVideoNewIndex,
+  }) {
+    if (!showOnClips) return null;
+    final videoUrls = [...existingVideoUrls, ...uploadedVideoUrls];
+    if (videoUrls.length <= 1) {
+      return videoUrls.isNotEmpty ? videoUrls.first : null;
+    }
+    if (clipVideoExistingIndex != -1 &&
+        clipVideoExistingIndex < existingVideoUrls.length) {
+      return existingVideoUrls[clipVideoExistingIndex];
+    }
+    if (clipVideoNewIndex != -1) {
+      final uploadedIdx = existingVideoUrls.length + clipVideoNewIndex;
+      if (uploadedIdx < videoUrls.length) {
+        return videoUrls[uploadedIdx];
+      }
+    }
+    return null;
+  }
+
+  /// Background publish — runs with no widget dependency after the wizard
+  /// pops. Uploads one file at a time so the persisted draft's progress
+  /// stays meaningful, then creates the service; any failure is recorded on
+  /// the draft and surfaced by the My Services tab.
+  static Future<void> _publishInBackground({
+    required ServiceProvider provider,
+    required ServiceDraftListing draft,
+    required String title,
+    required String description,
+    required String categoryId,
+    required String categoryName,
+    required double startingPrice,
+    required int? deliveryDays,
+    required List<PickedMedia> newImages,
+    required List<PickedMedia> newVideos,
+    required bool showOnClips,
+    required int clipVideoNewIndex,
+    required List<String> institutionCodes,
+    required List<String> searchTags,
+    required List<ServicePackage> packages,
+  }) async {
+    try {
+      final totalFiles = newImages.length + newVideos.length;
+      var uploadedCount = 0;
+
+      Future<void> saveProgress() async {
+        final progress = totalFiles > 0 ? uploadedCount / totalFiles : 1.0;
+        final updated = draft.copyWith(progress: progress);
+        await ServiceDraftService.saveDraft(updated);
+        provider.updatePublishingServiceDraft(updated, progress: progress);
+      }
+
+      final imageUrls = <String>[];
+      for (final image in newImages) {
+        imageUrls.addAll(await ServiceService.uploadServiceImages([image]));
+        uploadedCount++;
+        await saveProgress();
+      }
+
+      final videoUrls = <String>[];
+      for (final video in newVideos) {
+        videoUrls.addAll(await ServiceService.uploadServiceVideos([video]));
+        uploadedCount++;
+        await saveProgress();
+      }
+
+      final clipVideoUrlVal = _resolveClipVideoUrl(
+        existingVideoUrls: const [],
+        uploadedVideoUrls: videoUrls,
+        showOnClips: showOnClips,
+        clipVideoExistingIndex: -1,
+        clipVideoNewIndex: clipVideoNewIndex,
+      );
+
+      final result = await provider.createService(
+        title: title,
+        description: description,
+        categoryId: categoryId,
+        categoryName: categoryName,
+        price: startingPrice,
+        deliveryDays: deliveryDays,
+        imageUrls: imageUrls,
+        videoUrls: videoUrls,
+        showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrlVal,
+        institutionCodes: institutionCodes,
+        searchTags: searchTags,
+        packages: packages,
+      );
+      if (result != true) {
+        throw Exception(result.toString());
+      }
+
+      // Success — clear the draft so the status card disappears.
+      await ServiceDraftService.clearDraft();
+      provider.updatePublishingServiceDraft(null, progress: 1);
+      unawaited(SoundService.playProductListedSound());
+    } catch (e) {
+      debugPrint('Background service publish error: $e');
+      final failedDraft = draft.copyWith(
+        status: ServiceDraftStatus.failed,
+        errorMessage: e.toString(),
+      );
+      await ServiceDraftService.saveDraft(failedDraft);
+      provider.updatePublishingServiceDraft(failedDraft);
     }
   }
 
@@ -581,7 +764,7 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
     if (video == null) return;
     if (!mounted) return;
     setState(() => _newVideos.add(video));
-    _loadVideoThumb(video);
+    unawaited(_loadVideoThumb(video));
   }
 
   Future<void> _loadVideoThumb(PickedMedia video) async {

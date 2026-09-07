@@ -13,7 +13,6 @@ import '../../services/sms_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/required_label.dart';
 import '../../widgets/searchable_institution_picker.dart';
-import 'accept_policy_screen.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/app_button.dart';
 
@@ -1001,12 +1000,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: _isLoading
                           ? null
                           : () async {
-                              final accepted = await Navigator.of(context).push<bool>(
-                                MaterialPageRoute(
-                                  builder: (_) => const AcceptPolicyScreen(),
-                                ),
-                              );
-                              if (accepted != true || !mounted) return;
+                              // Terms acceptance is captured by the inline
+                              // checkbox above — no separate policy screen.
+                              if (!_acceptedTerms) {
+                                ShadToaster.of(context).show(
+                                  const ShadToast(
+                                    title: Text(
+                                      'Please tick the checkbox to accept the Terms & Conditions and Privacy Policy first.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
 
                               setState(() => _isLoading = true);
                               await auth.signInWithGoogle();

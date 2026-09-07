@@ -128,6 +128,32 @@ class WalletService {
     return ((response as num?)?.toDouble() ?? 0);
   }
 
+  /// Itemized order earnings held in escrow until delivery verification.
+  /// Kept separate from [getPendingBalance] on purpose: escrowed earnings
+  /// are NOT yet part of the wallet balance, so affordability checks must
+  /// not subtract them — they're combined only for the wallet's pending
+  /// display and breakdown.
+  static Future<List<PendingOrderEarning>> getPendingOrderEarnings() async {
+    final uid = SupabaseService.instance.currentUser?.id;
+    if (uid == null) return [];
+
+    final response = await SupabaseService.client.rpc(
+      'get_pending_order_earnings',
+      params: {'p_user_id': uid},
+    );
+
+    return Isolate.run(() {
+      final rows = response as List? ?? const [];
+      return rows
+          .map(
+            (row) => PendingOrderEarning.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList();
+    });
+  }
+
   static Future<List<WithdrawalRequest>> getWithdrawalRequests() async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser?.id;

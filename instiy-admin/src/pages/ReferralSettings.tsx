@@ -3,16 +3,23 @@ import { supabase } from '../supabaseClient';
 import {
   Gift,
   Save,
+  Settings,
   Loader,
   Check,
   RotateCcw,
   Users,
   PackageCheck,
   Star,
-  BadgeCheck,
 } from 'lucide-react';
 import { formatGhs } from '../utils/format';
-import { useAlert, useConfirm } from '../components/use-alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../components/dialog';
+import { useAlert } from '../components/use-alert';
 
 interface ReferralRow {
   id: string;
@@ -41,10 +48,8 @@ export const ReferralSettings: React.FC = () => {
   const [qualifiedReferrals, setQualifiedReferrals] = useState(0);
   const [pointsAwarded, setPointsAwarded] = useState(0);
   const [recent, setRecent] = useState<ReferralRow[]>([]);
-  const [pendingReferee, setPendingReferee] = useState<ReferralRow[]>([]);
-  const [awardingId, setAwardingId] = useState<string | null>(null);
-  const { alert, AlertComponent } = useAlert();
-  const { confirm, ConfirmComponent } = useConfirm();
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const { AlertComponent } = useAlert();
 
   useEffect(() => {
     fetchAll();
@@ -53,12 +58,7 @@ export const ReferralSettings: React.FC = () => {
   const fetchAll = async () => {
     try {
       setLoading(true);
-      await Promise.all([
-        fetchConfig(),
-        fetchStats(),
-        fetchRecent(),
-        fetchPendingReferee(),
-      ]);
+      await Promise.all([fetchConfig(), fetchStats(), fetchRecent()]);
     } catch (err) {
       console.error('Error loading referral data:', err);
       setErrorMsg('Failed to load referral data.');
@@ -118,67 +118,6 @@ export const ReferralSettings: React.FC = () => {
       .limit(10);
     if (error) throw error;
     setRecent((data ?? []) as unknown as ReferralRow[]);
-  };
-
-  const fetchPendingReferee = async () => {
-    const { data, error } = await supabase
-      .from('referrals')
-      .select(
-        `id, status, points_awarded, referee_points, referee_awarded_at,
-         created_at, qualified_at, code_used,
-         referrer:referrer_id ( full_name, email ),
-         referred:referred_id ( full_name, email )`
-      )
-      .eq('status', 'qualified')
-      .is('referee_awarded_at', null)
-      .gt('referee_points', 0)
-      .order('qualified_at', { ascending: true });
-    if (error) throw error;
-    setPendingReferee((data ?? []) as unknown as ReferralRow[]);
-  };
-
-  const handleAwardReferee = (row: ReferralRow) => {
-    const name = displayName(row.referred);
-    confirm(
-      `Award ${row.referee_points.toLocaleString()} pts to ${name}?`,
-      async () => {
-        setAwardingId(row.id);
-        try {
-          const { data, error } = await supabase.rpc(
-            'award_referee_points',
-            { p_referral_id: row.id }
-          );
-          if (error) throw error;
-          const awarded = Number(data ?? 0);
-          if (awarded > 0) {
-            alert('Points awarded', {
-              description: `${awarded.toLocaleString()} pts credited to ${name}.`,
-              variant: 'success',
-            });
-          } else {
-            alert('Nothing to award', {
-              description: 'This reward was already released.',
-              variant: 'info',
-            });
-          }
-          await Promise.all([fetchPendingReferee(), fetchRecent(), fetchStats()]);
-        } catch (err) {
-          console.error('Error awarding referee points:', err);
-          alert('Award failed', {
-            description: (err as Error)?.message ?? 'Check your connection and try again.',
-            variant: 'danger',
-          });
-        } finally {
-          setAwardingId(null);
-        }
-      },
-      {
-        description:
-          'The referred user earned half of the referrer reward once their ' +
-          'order was delivered. This credits their balance immediately.',
-        confirmLabel: 'Award points',
-      }
-    );
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -254,13 +193,6 @@ export const ReferralSettings: React.FC = () => {
       iconBg: 'hsl(142 60% 35% / 0.15)',
     },
     {
-      label: 'Referee Rewards Pending',
-      value: String(pendingReferee.length),
-      detail: 'Qualified — awaiting admin approval',
-      icon: <BadgeCheck size={20} />,
-      iconBg: 'hsl(200 80% 50% / 0.15)',
-    },
-    {
       label: 'Points Awarded',
       value: pointsAwarded.toLocaleString(),
       detail: `${formatGhs(minPurchase)}+ delivered order = ${pointsPerReferral} pts`,
@@ -278,6 +210,14 @@ export const ReferralSettings: React.FC = () => {
             Configure the referral program and monitor referral activity
           </p>
         </div>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => setShowRulesModal(true)}
+        >
+          <Settings size={16} />
+          Program Rules
+        </button>
       </div>
 
       <div className="dashboard-grid">
@@ -315,11 +255,24 @@ export const ReferralSettings: React.FC = () => {
         ))}
       </div>
 
-      <form onSubmit={handleSave} className="settings-card" style={{ marginTop: '1.25rem' }}>
-        <div className="settings-card-header">
-          <Gift size={20} />
-          <h2>Program Rules</h2>
-        </div>
+      <Dialog open={showRulesModal} onOpenChange={setShowRulesModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <Gift size={18} style={{ color: 'hsl(var(--accent))' }} />
+              Program Rules
+            </DialogTitle>
+            <DialogDescription>
+              Control how referrers and referred users earn points.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSave}>
 
         <div className="form-group">
           <label>Program Status</label>
@@ -382,7 +335,7 @@ export const ReferralSettings: React.FC = () => {
           <p className="form-hint">
             Points awarded to the referrer once the referred user's order is
             delivered and meets the minimum. The referred user earns half of
-            this amount, released by an admin from the approval queue below.
+            this amount automatically at the same time.
             Points are reversed if the order is fully refunded.
           </p>
         </div>
@@ -412,96 +365,9 @@ export const ReferralSettings: React.FC = () => {
             </button>
           </div>
         </div>
-      </form>
-
-      <div className="card" style={{ marginTop: '1.25rem' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '0.75rem',
-          }}
-        >
-          <div>
-            <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>
-              Referee Rewards — Awaiting Approval{' '}
-              <span className="badge badge-warning">
-                {pendingReferee.length} pending
-              </span>
-            </h2>
-            <p
-              style={{
-                fontSize: '0.8rem',
-                color: 'hsl(var(--text-tertiary))',
-                marginTop: '0.25rem',
-              }}
-            >
-              Referred users earn half of the referrer reward once their
-              order is delivered. Release each reward with the Award button.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={fetchAll}
-          >
-            <RotateCcw size={14} /> Refresh
-          </button>
-        </div>
-        {pendingReferee.length === 0 ? (
-          <p
-            style={{
-              fontSize: '0.85rem',
-              color: 'hsl(var(--text-tertiary))',
-              padding: '1rem 0',
-            }}
-          >
-            All caught up — no referee rewards waiting for approval.
-          </p>
-        ) : (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Referred User</th>
-                  <th>Referrer</th>
-                  <th>Reward</th>
-                  <th>Qualified</th>
-                  <th style={{ textAlign: 'right' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingReferee.map((r) => (
-                  <tr key={r.id}>
-                    <td>{displayName(r.referred)}</td>
-                    <td>{displayName(r.referrer)}</td>
-                    <td>{r.referee_points.toLocaleString()} pts</td>
-                    <td>{fmtDate(r.qualified_at)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        disabled={awardingId === r.id}
-                        onClick={() => handleAwardReferee(r)}
-                      >
-                        {awardingId === r.id ? (
-                          <Loader size={14} className="spin" />
-                        ) : (
-                          <BadgeCheck size={14} />
-                        )}
-                        {awardingId === r.id
-                          ? 'Awarding...'
-                          : `Award ${r.referee_points.toLocaleString()} pts`}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div className="card" style={{ marginTop: '1.25rem' }}>
         <div
@@ -578,8 +444,6 @@ export const ReferralSettings: React.FC = () => {
                         <span className="badge badge-success">
                           {r.referee_points.toLocaleString()} awarded
                         </span>
-                      ) : r.status === 'qualified' && r.referee_points > 0 ? (
-                        <span className="badge badge-warning">Pending</span>
                       ) : (
                         '—'
                       )}
@@ -595,7 +459,6 @@ export const ReferralSettings: React.FC = () => {
       </div>
 
       {AlertComponent}
-      {ConfirmComponent}
     </div>
   );
 };

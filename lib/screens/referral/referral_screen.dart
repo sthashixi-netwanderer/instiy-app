@@ -392,11 +392,9 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
                 ),
                 SizedBox(height: context.rh(2)),
                 Text(
-                  awarded
+                  qualified
                       ? '+${_fmtPoints(reward.refereePoints)} added to your balance'
-                      : qualified
-                          ? '${_fmtPoints(reward.refereePoints)} awaiting admin approval'
-                          : 'Shop your first order of '
+                      : 'Shop your first order of '
                               '${formatGhs(_config.minPurchaseAmountGhs)}+ to unlock '
                               '${_fmtPoints((_config.pointsPerReferral / 2).floor())}',
                   style: TextStyle(
@@ -453,9 +451,9 @@ class _ReferralScreenState extends ConsumerState<ReferralScreen> {
           _step(
             LucideIcons.gift,
             'They earn half too',
-            'Your friend gets '
-            '${_fmtPoints((_config.pointsPerReferral / 2).floor())} once an '
-            'admin approves their reward.',
+            'Your friend automatically gets '
+            '${_fmtPoints((_config.pointsPerReferral / 2).floor())} once '
+            'their first qualifying order is delivered.',
             isLast: true,
           ),
         ],

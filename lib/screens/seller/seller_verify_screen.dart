@@ -142,21 +142,24 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
   }
 
   Future<void> _handleScannedCode(String raw) async {
+    // Decoders occasionally inject stray whitespace/newlines — strip it all
+    // since neither buyer UUIDs nor delivery codes contain whitespace.
+    final normalized = raw.replaceAll(RegExp(r'\s+'), '');
     const gqrPrefix = 'instiy-gqr:';
-    if (raw.startsWith(gqrPrefix)) {
-      final buyerId = raw.substring(gqrPrefix.length).trim();
+    if (normalized.toLowerCase().startsWith(gqrPrefix)) {
+      final buyerId = normalized.substring(gqrPrefix.length);
       await _openBuyerItems(buyerId);
       return;
     }
 
     // Clean any prefixes that might be part of an item QR
-    String cleanCode = raw;
+    String cleanCode = normalized;
     if (cleanCode.toLowerCase().startsWith('instiy-code:')) {
-      cleanCode = cleanCode.substring('instiy-code:'.length).trim();
+      cleanCode = cleanCode.substring('instiy-code:'.length);
     } else if (cleanCode.toLowerCase().startsWith('instiy-item:')) {
-      cleanCode = cleanCode.substring('instiy-item:'.length).trim();
+      cleanCode = cleanCode.substring('instiy-item:'.length);
     } else if (cleanCode.toLowerCase().startsWith('code:')) {
-      cleanCode = cleanCode.substring('code:'.length).trim();
+      cleanCode = cleanCode.substring('code:'.length);
     }
 
     final sellerProv = ref.read(sellerProvider);

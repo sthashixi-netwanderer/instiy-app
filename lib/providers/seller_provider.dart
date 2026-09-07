@@ -282,6 +282,7 @@ class SellerProvider extends ChangeNotifier {
     required String reviewId,
     required String sellerId,
     required String reply,
+    List<dynamic> mediaFiles = const [],
   }) async {
     try {
       // Get review info before replying
@@ -295,6 +296,7 @@ class SellerProvider extends ChangeNotifier {
         reviewId: reviewId,
         sellerId: sellerId,
         reply: reply,
+        mediaFiles: mediaFiles,
       );
 
       // Send email to reviewer

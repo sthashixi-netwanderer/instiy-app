@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../services/chat_media_cache_service.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -3020,6 +3021,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                       )
                     : CachedNetworkImage(
                         imageUrl: msg.replyToMediaUrl!,
+                        cacheManager: ChatMediaCacheManager(),
                         width: 36,
                         height: 36,
                         fit: BoxFit.cover,
@@ -3093,11 +3095,12 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                   ),
                 ),
               ),
-            // Selection checkmark
+            // Selection checkmark — sits inside the 28px margin the bubble
+            // reserves on its outer edge. (A negative offset here would render
+            // outside the Stack, which clips it via Clip.hardEdge.)
             if (widget.isSelectionMode && widget.isMe)
               Positioned(
-                right: widget.isMe ? null : -8,
-                left: widget.isMe ? -8 : null,
+                right: 3,
                 top: 0,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -3296,6 +3299,7 @@ class _MediaBubbleContent extends StatelessWidget {
         MediaViewer.open(
           context,
           gallery,
+          cacheManager: ChatMediaCacheManager(),
           initialIndex: index,
           thumbnailUrls: thumbnails,
         );
@@ -3314,6 +3318,7 @@ class _MediaBubbleContent extends StatelessWidget {
               if (thumbnail != null)
                 CachedNetworkImage(
                   imageUrl: thumbnail,
+                  cacheManager: ChatMediaCacheManager(),
                   width: double.infinity,
                   height: 200,
                   fit: BoxFit.cover,
@@ -3345,6 +3350,7 @@ class _MediaBubbleContent extends StatelessWidget {
             else
               CachedNetworkImage(
                 imageUrl: url,
+                cacheManager: ChatMediaCacheManager(),
                 width: double.infinity,
                 height: 200,
                 fit: BoxFit.cover,

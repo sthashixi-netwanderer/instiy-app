@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../models/picked_media.dart';
+import '../../services/background_submission.dart';
 import '../../services/report_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/supabase_service.dart';
@@ -32,7 +33,6 @@ class _ServiceReportScreenState extends ConsumerState<ServiceReportScreen> {
   String? _selectedCategory;
   final _descriptionCtrl = TextEditingController();
   final List<PickedMedia> _evidence = [];
-  bool _isSubmitting = false;
 
   static const _maxEvidence = 3;
 
@@ -66,56 +66,57 @@ class _ServiceReportScreenState extends ConsumerState<ServiceReportScreen> {
       return;
     }
 
-    setState(() => _isSubmitting = true);
-    try {
-      // Upload evidence images first.
-      final urls = <String>[];
-      for (final media in _evidence) {
-        final url = await StorageService.uploadImage(
-          file: media,
-          folder: 'reports',
-        );
-        urls.add(url);
-      }
+    // Capture ALL values before popping — the background submit must not
+    // depend on this widget being alive.
+    final serviceId = widget.serviceId;
+    final reportedUserId = widget.providerId;
+    final category = _selectedCategory!;
+    final descriptionVal = _descriptionCtrl.text.trim().isEmpty
+        ? null
+        : _descriptionCtrl.text.trim();
+    final serviceTitle = widget.serviceTitle;
+    final evidence = List<PickedMedia>.from(_evidence);
+    final reporterId = auth.id;
 
-      // Reporter details for the confirmation email.
-      final profile = await SupabaseService.table('users')
-          .select('full_name, email')
-          .eq('id', auth.id)
-          .single();
+    ShadToaster.of(context).show(
+      const ShadToast(title: Text('Sending report...')),
+    );
+    Navigator.of(context).pop();
 
-      await ReportService.submitServiceReport(
-        serviceId: widget.serviceId,
-        reportedUserId: widget.providerId,
-        category: _selectedCategory!,
-        description: _descriptionCtrl.text.trim().isEmpty
-            ? null
-            : _descriptionCtrl.text.trim(),
-        evidenceUrls: urls,
-        serviceTitle: widget.serviceTitle,
-        reporterEmail: profile['email'] as String,
-        reporterName: profile['full_name'] as String? ?? 'Instiy user',
-      );
+    // Background submit — no widget dependency.
+    BackgroundSubmission.run(
+      task: () async {
+        // Upload evidence images first.
+        final urls = <String>[];
+        for (final media in evidence) {
+          final url = await StorageService.uploadImage(
+            file: media,
+            folder: 'reports',
+          );
+          urls.add(url);
+        }
 
-      if (mounted) {
-        ShadToaster.of(context).show(
-          const ShadToast(
-            title: Text('Report submitted'),
-            description: Text(
-              'Thank you — our team will review this service.',
-            ),
-          ),
+        // Reporter details for the confirmation email.
+        final profile = await SupabaseService.table('users')
+            .select('full_name, email')
+            .eq('id', reporterId)
+            .single();
+
+        await ReportService.submitServiceReport(
+          serviceId: serviceId,
+          reportedUserId: reportedUserId,
+          category: category,
+          description: descriptionVal,
+          evidenceUrls: urls,
+          serviceTitle: serviceTitle,
+          reporterEmail: profile['email'] as String,
+          reporterName: profile['full_name'] as String? ?? 'Instiy user',
         );
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        ShadToaster.of(context).show(
-          ShadToast.destructive(title: Text('Failed to submit: $e')),
-        );
-        setState(() => _isSubmitting = false);
-      }
-    }
+      },
+      successTitle: 'Report submitted',
+      successDescription: 'Thank you — our team will review this service.',
+      failureTitle: 'Failed to submit report',
+    );
   }
 
   @override
@@ -301,17 +302,11 @@ class _ServiceReportScreenState extends ConsumerState<ServiceReportScreen> {
             SizedBox(
               width: double.infinity,
               child: ShadButton(
-                onPressed: _canSubmit && !_isSubmitting ? _submit : null,
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text(
-                        'Submit Report',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
+                onPressed: _canSubmit ? _submit : null,
+                child: const Text(
+                  'Submit Report',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ],

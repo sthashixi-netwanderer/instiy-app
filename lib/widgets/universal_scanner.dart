@@ -145,9 +145,17 @@ class _UniversalScannerState extends State<UniversalScanner>
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_hasDetected || !mounted) return;
-    final barcode = capture.barcodes.firstOrNull;
-    final value = barcode?.rawValue;
-    if (value == null || value.isEmpty) return;
+    // MLKit sometimes leaves rawValue null while displayValue is set, and a
+    // frame can carry several barcodes — take the first non-empty value.
+    String? value;
+    for (final barcode in capture.barcodes) {
+      final candidate = (barcode.rawValue ?? barcode.displayValue)?.trim();
+      if (candidate != null && candidate.isNotEmpty) {
+        value = candidate;
+        break;
+      }
+    }
+    if (value == null) return;
 
     _inactivityTimer?.cancel();
 

@@ -468,14 +468,38 @@ class ServiceService {
 
   /// Creates (or replaces) the current user's review. The UNIQUE
   /// (service_id, reviewer_id) constraint + upsert keeps one per user.
+  static Future<List<String>> uploadServiceReviewImages(
+    List<dynamic> files,
+  ) async {
+    final urls = <String>[];
+    for (final file in files.take(5)) {
+      final path = (file as dynamic).path as String;
+      final ext = path.split('.').last.toLowerCase();
+      urls.add(
+        await StorageService.uploadFile(
+          file: file,
+          folder: 'reviews',
+          contentType: 'image/$ext',
+          extension: ext,
+        ),
+      );
+    }
+    return urls;
+  }
+
   static Future<void> submitServiceReview({
     required String serviceId,
     required String providerId,
     required int rating,
     required String comment,
+    List<dynamic> imageFiles = const [],
   }) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
+
+    final mediaUrls = imageFiles.isNotEmpty
+        ? await uploadServiceReviewImages(imageFiles)
+        : <String>[];
 
     await SupabaseService.table('service_reviews').upsert(
       {
@@ -483,6 +507,7 @@ class ServiceService {
         'reviewer_id': userId,
         'rating': rating,
         'comment': comment,
+        'media_urls': mediaUrls,
       },
       onConflict: 'service_id,reviewer_id',
     );
@@ -504,11 +529,26 @@ class ServiceService {
     String reviewId, {
     required int rating,
     required String comment,
+    List<String>? keepMediaUrls,
+    List<dynamic>? newImageFiles,
   }) async {
-    await SupabaseService.table('service_reviews').update({
+    final update = <String, dynamic>{
       'rating': rating,
       'comment': comment,
-    }).eq('id', reviewId);
+    };
+    if (keepMediaUrls != null || newImageFiles != null) {
+      final mediaUrls = <String>[...(keepMediaUrls ?? const [])];
+      if (newImageFiles != null && newImageFiles.isNotEmpty) {
+        final remaining = 5 - mediaUrls.length;
+        mediaUrls.addAll(
+          await uploadServiceReviewImages(
+            newImageFiles.take(remaining.clamp(0, 5)).toList(),
+          ),
+        );
+      }
+      update['media_urls'] = mediaUrls.take(5).toList();
+    }
+    await SupabaseService.table('service_reviews').update(update).eq('id', reviewId);
   }
 
   static Future<void> deleteServiceReview(String reviewId) async {

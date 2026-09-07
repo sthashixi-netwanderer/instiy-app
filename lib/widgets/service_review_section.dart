@@ -1,5 +1,8 @@
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../config/app_theme.dart';
 import '../utils/responsive.dart';
@@ -71,19 +74,22 @@ class _ServiceReviewSectionState extends ConsumerState<ServiceReviewSection> {
         title: Text(existing == null ? 'Write a Review' : 'Edit Your Review'),
         child: _ServiceReviewForm(
           existing: existing,
-          onSubmit: (rating, comment) async {
+          onSubmit: (rating, comment, keepUrls, newFiles) async {
             if (existing == null) {
               await ServiceService.submitServiceReview(
                 serviceId: widget.serviceId,
                 providerId: widget.providerId,
                 rating: rating,
                 comment: comment,
+                imageFiles: newFiles,
               );
             } else {
               await ServiceService.updateServiceReview(
                 existing.id,
                 rating: rating,
                 comment: comment,
+                keepMediaUrls: keepUrls,
+                newImageFiles: newFiles,
               );
             }
           },
@@ -329,10 +335,75 @@ class _ServiceReviewCard extends StatelessWidget {
               ),
             ),
           ],
+          if (review.mediaUrls.isNotEmpty) ...[
+            SizedBox(height: context.rh(10)),
+            SizedBox(
+              height: context.rh(72),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: review.mediaUrls.length,
+                separatorBuilder: (_, _) => SizedBox(width: context.rw(8)),
+                itemBuilder: (context, i) {
+                  final url = review.mediaUrls[i];
+                  return GestureDetector(
+                    onTap: () => _showReviewImage(context, url),
+                    child: Container(
+                      width: context.rw(72),
+                      height: context.rh(72),
+                      decoration: BoxDecoration(
+                        borderRadius:
+                            BorderRadius.circular(context.rr(8)),
+                        color: AppTheme.warmMist,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: CachedNetworkImage(
+                        imageUrl: url,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 160,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+void _showReviewImage(BuildContext context, String url) {
+  showDialog(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: GestureDetector(
+              onTap: () => Navigator.of(ctx).pop(),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(LucideIcons.x, size: 16, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 String _timeAgo(DateTime date) {
@@ -356,7 +427,12 @@ String _monthName(int month) {
 /// Bottom-sheet form: 5-tap star input + comment. Pops with true on success.
 class _ServiceReviewForm extends StatefulWidget {
   final ServiceReview? existing;
-  final Future<void> Function(int rating, String comment) onSubmit;
+  final Future<void> Function(
+    int rating,
+    String comment,
+    List<String> keepMediaUrls,
+    List<File> newImageFiles,
+  ) onSubmit;
 
   const _ServiceReviewForm({this.existing, required this.onSubmit});
 
@@ -365,16 +441,89 @@ class _ServiceReviewForm extends StatefulWidget {
 }
 
 class _ServiceReviewFormState extends State<_ServiceReviewForm> {
+  static const _maxImages = 5;
   late int _rating = widget.existing?.rating ?? 0;
   late final TextEditingController _commentCtrl = TextEditingController(
     text: widget.existing?.comment ?? '',
   );
+  late final List<String> _keepMediaUrls = [
+    ...?widget.existing?.mediaUrls,
+  ];
+  final List<File> _newImageFiles = [];
   bool _isSubmitting = false;
+
+  int get _totalImages => _keepMediaUrls.length + _newImageFiles.length;
 
   @override
   void dispose() {
     _commentCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    final remaining = _maxImages - _totalImages;
+    if (remaining <= 0) return;
+    final source = await showShadSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => ShadSheet(
+        title: const Text('Add Photos'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Material(
+              color: Colors.transparent,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(
+                      LucideIcons.camera,
+                      color: AppTheme.accent,
+                    ),
+                    title: const Text('Camera'),
+                    onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      LucideIcons.image,
+                      color: AppTheme.successMoss,
+                    ),
+                    title: const Text('Gallery'),
+                    onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final picker = ImagePicker();
+    if (source == ImageSource.camera) {
+      final picked = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      if (picked != null && mounted) {
+        setState(() => _newImageFiles.add(File(picked.path)));
+      }
+    } else {
+      final images = await picker.pickMultiImage(
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      if (images.isNotEmpty && mounted) {
+        setState(() {
+          _newImageFiles.addAll(
+            images.take(remaining).map((x) => File(x.path)),
+          );
+        });
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -386,7 +535,12 @@ class _ServiceReviewFormState extends State<_ServiceReviewForm> {
     }
     setState(() => _isSubmitting = true);
     try {
-      await widget.onSubmit(_rating, _commentCtrl.text.trim());
+      await widget.onSubmit(
+        _rating,
+        _commentCtrl.text.trim(),
+        _keepMediaUrls,
+        _newImageFiles,
+      );
       if (mounted) {
         ShadToaster.of(context).show(
           const ShadToast(title: Text('Thank you for your review!')),
@@ -435,6 +589,51 @@ class _ServiceReviewFormState extends State<_ServiceReviewForm> {
             maxLines: 4,
             keyboardType: TextInputType.multiline,
           ),
+          SizedBox(height: context.rh(12)),
+          if (_totalImages < _maxImages)
+            ShadButton.ghost(
+              onPressed: _pickImages,
+              leading: Icon(LucideIcons.image, size: context.ri(18)),
+              child: Text('Add Photos ($_totalImages/$_maxImages)'),
+            )
+          else
+            Text(
+              'Maximum $_maxImages photos attached',
+              style: TextStyle(
+                fontSize: context.rsp(12),
+                color: AppTheme.mutedSteel,
+              ),
+            ),
+          if (_totalImages > 0) ...[
+            SizedBox(height: context.rh(8)),
+            SizedBox(
+              height: context.rh(72),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  ..._keepMediaUrls.map(
+                    (url) => _ReviewImageThumbnail(
+                      child: CachedNetworkImage(
+                        imageUrl: url,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 160,
+                      ),
+                      onRemove: () =>
+                          setState(() => _keepMediaUrls.remove(url)),
+                    ),
+                  ),
+                  ..._newImageFiles.asMap().entries.map(
+                        (e) => _ReviewImageThumbnail(
+                          child: Image.file(e.value, fit: BoxFit.cover),
+                          onRemove: () => setState(
+                            () => _newImageFiles.removeAt(e.key),
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: context.rh(16)),
           SizedBox(
             width: double.infinity,
@@ -454,6 +653,51 @@ class _ServiceReviewFormState extends State<_ServiceReviewForm> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ReviewImageThumbnail extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onRemove;
+
+  const _ReviewImageThumbnail({required this.child, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          width: context.rw(72),
+          height: context.rh(72),
+          margin: EdgeInsets.only(right: context.rw(8)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(context.rr(8)),
+            color: AppTheme.warmMist,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        ),
+        Positioned(
+          top: context.rh(2),
+          right: context.rw(10),
+          child: GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              padding: context.rAll(2),
+              decoration: const BoxDecoration(
+                color: AppTheme.destructive,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                LucideIcons.x,
+                size: context.ri(14),
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

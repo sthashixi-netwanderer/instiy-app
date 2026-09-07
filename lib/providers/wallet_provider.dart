@@ -13,6 +13,11 @@ class WalletProvider extends ChangeNotifier {
   List<WalletTransaction> _transactions = [];
   List<WithdrawalRequest> _withdrawalRequests = [];
   double _pendingBalance = 0;
+
+  /// Escrowed earnings from paid orders awaiting delivery verification —
+  /// not yet in the wallet balance, but owed to the user (see
+  /// [pendingBalance] for the combined display total).
+  List<PendingOrderEarning> _pendingEarnings = [];
   WithdrawalFees _withdrawalFees = const WithdrawalFees(mobileMoneyRate: 0.02, bankRate: 0.01);
   bool _isLoading = false;
   bool _isLoadingMore = false;
@@ -25,6 +30,7 @@ class WalletProvider extends ChangeNotifier {
   RealtimeChannel? _walletChannel;
   RealtimeChannel? _transactionsChannel;
   RealtimeChannel? _withdrawalsChannel;
+  RealtimeChannel? _orderItemsChannel;
 
   String? _currentUserId;
 
@@ -96,15 +102,37 @@ class WalletProvider extends ChangeNotifier {
           callback: (_) => _silentReload(),
         );
     _withdrawalsChannel!.subscribe();
+
+    // Deliveries release escrowed earnings — keep pending orders fresh.
+    _orderItemsChannel = SupabaseService.client
+        .channel('wallet-order-items:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'order_items',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'seller_id',
+            value: userId,
+          ),
+          callback: (_) => _silentReload(),
+        );
+    _orderItemsChannel!.subscribe();
   }
 
   void _unsubscribeFromRealtime() {
-    for (final ch in [_walletChannel, _transactionsChannel, _withdrawalsChannel]) {
+    for (final ch in [
+      _walletChannel,
+      _transactionsChannel,
+      _withdrawalsChannel,
+      _orderItemsChannel,
+    ]) {
       if (ch != null) SupabaseService.client.removeChannel(ch);
     }
     _walletChannel = null;
     _transactionsChannel = null;
     _withdrawalsChannel = null;
+    _orderItemsChannel = null;
   }
 
   Future<void> _silentReload() async {
@@ -112,6 +140,7 @@ class WalletProvider extends ChangeNotifier {
       _wallet = await WalletService.getWallet();
       _transactions = await WalletService.getTransactions(type: _filterType, search: _searchQuery);
       _pendingBalance = await WalletService.getPendingBalance();
+      _pendingEarnings = await WalletService.getPendingOrderEarnings();
       _withdrawalRequests = await WalletService.getWithdrawalRequests();
       notifyListeners();
     } catch (_) {}
@@ -121,6 +150,7 @@ class WalletProvider extends ChangeNotifier {
     _wallet = null;
     _transactions = [];
     _withdrawalRequests = [];
+    _pendingEarnings = [];
     _pendingBalance = 0;
     _error = null;
     _searchQuery = '';
@@ -131,7 +161,21 @@ class WalletProvider extends ChangeNotifier {
   Wallet? get wallet => _wallet;
   List<WalletTransaction> get transactions => _transactions;
   List<WithdrawalRequest> get withdrawalRequests => _withdrawalRequests;
-  double get pendingBalance => _pendingBalance;
+  List<WithdrawalRequest> get pendingWithdrawals => _withdrawalRequests
+      .where((w) => w.status == 'pending' || w.status == 'processing')
+      .toList();
+
+  /// Paid order items awaiting delivery verification — escrowed until the
+  /// seller's wallet is credited on verified delivery.
+  List<PendingOrderEarning> get pendingOrderEarnings => _pendingEarnings;
+
+  double get pendingEarningsTotal =>
+      _pendingEarnings.fold(0, (sum, e) => sum + e.amount);
+
+  /// Pending display total: withdrawal holds (already in the balance) plus
+  /// escrowed order earnings (not yet in the balance). Affordability checks
+  /// only ever subtract the withdrawal holds.
+  double get pendingBalance => _pendingBalance + pendingEarningsTotal;
   WithdrawalFees get withdrawalFees => _withdrawalFees;
   double get availableBalance =>
       (_wallet?.balance ?? 0) - _pendingBalance;
@@ -165,6 +209,7 @@ class WalletProvider extends ChangeNotifier {
       _transactions = await WalletService.getTransactions(offset: 0, type: _filterType, search: _searchQuery);
       _hasMore = _transactions.length >= 20;
       _pendingBalance = await WalletService.getPendingBalance();
+      _pendingEarnings = await WalletService.getPendingOrderEarnings();
       _withdrawalRequests = await WalletService.getWithdrawalRequests();
       _withdrawalFees = await WalletService.getWithdrawalFees();
     } catch (e) {
@@ -182,6 +227,7 @@ class WalletProvider extends ChangeNotifier {
       _transactions = await WalletService.getTransactions(offset: 0, type: _filterType, search: _searchQuery);
       _hasMore = _transactions.length >= 20;
       _pendingBalance = await WalletService.getPendingBalance();
+      _pendingEarnings = await WalletService.getPendingOrderEarnings();
       _withdrawalRequests = await WalletService.getWithdrawalRequests();
       _withdrawalFees = await WalletService.getWithdrawalFees();
       _transactionPage = 0;

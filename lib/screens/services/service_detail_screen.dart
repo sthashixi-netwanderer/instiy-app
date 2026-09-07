@@ -12,6 +12,7 @@ import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../widgets/service_review_section.dart';
 import '../../widgets/media_viewer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../messages/messages_screen.dart';
 import 'service_report_screen.dart';
 
@@ -702,28 +703,43 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                 if (service.providerPublicEmail != null &&
                     service.providerPublicEmail!.isNotEmpty) ...[
                   SizedBox(height: context.rh(6)),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.mail,
-                        size: context.ri(13),
-                        color: AppTheme.accent,
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _launchEmail(
+                        service.providerPublicEmail!,
+                        serviceTitle: service.title,
                       ),
-                      SizedBox(width: context.rw(6)),
-                      Flexible(
-                        child: Text(
-                          service.providerPublicEmail!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: context.rsp(12),
-                            color: AppTheme.accent,
-                            fontWeight: FontWeight.w500,
-                          ),
+                      borderRadius: BorderRadius.circular(context.rr(4)),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: context.rh(3)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.mail,
+                              size: context.ri(13),
+                              color: AppTheme.accent,
+                            ),
+                            SizedBox(width: context.rw(6)),
+                            Flexible(
+                              child: Text(
+                                service.providerPublicEmail!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: context.rsp(12),
+                                  color: AppTheme.accent,
+                                  fontWeight: FontWeight.w500,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppTheme.accent,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ],
                 Align(
@@ -754,6 +770,72 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _launchEmail(String email, {String? serviceTitle}) async {
+    final trimmed = email.trim();
+    if (trimmed.isEmpty) return;
+
+    String? query;
+    if (serviceTitle != null && serviceTitle.trim().isNotEmpty) {
+      query = 'subject=${Uri.encodeComponent('Inquiry regarding ${serviceTitle.trim()}')}';
+    }
+
+    final emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: trimmed,
+      query: query,
+    );
+
+    try {
+      bool launched = false;
+      try {
+        launched = await launchUrl(
+          emailLaunchUri,
+          mode: LaunchMode.externalApplication,
+        );
+      } catch (_) {}
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(emailLaunchUri);
+        } catch (_) {}
+      }
+
+      if (!launched && query != null) {
+        final simpleUri = Uri(scheme: 'mailto', path: trimmed);
+        try {
+          launched = await launchUrl(
+            simpleUri,
+            mode: LaunchMode.externalApplication,
+          );
+          if (!launched) {
+            launched = await launchUrl(simpleUri);
+          }
+        } catch (_) {}
+      }
+
+      if (!launched && mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast.destructive(
+            title: Text('Could not open email app'),
+            description:
+                Text('Please check if an email app is configured on your device.'),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Could not launch email app: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast.destructive(
+            title: Text('Could not open email app'),
+            description:
+                Text('Please check if an email app is configured on your device.'),
+          ),
+        );
+      }
+    }
   }
 
   /// Full provider bio in a full-height modal sheet — opens covering the
@@ -838,25 +920,41 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             ),
             if (hasEmail) ...[
               SizedBox(height: ctx.rh(16)),
-              Row(
-                children: [
-                  Icon(
-                    LucideIcons.mail,
-                    size: ctx.ri(14),
-                    color: AppTheme.accent,
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _launchEmail(
+                    email,
+                    serviceTitle: service.title,
                   ),
-                  SizedBox(width: ctx.rw(6)),
-                  Flexible(
-                    child: Text(
-                      email,
-                      style: TextStyle(
-                        fontSize: ctx.rsp(13),
-                        color: AppTheme.accent,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  borderRadius: BorderRadius.circular(ctx.rr(4)),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: ctx.rh(4)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          LucideIcons.mail,
+                          size: ctx.ri(14),
+                          color: AppTheme.accent,
+                        ),
+                        SizedBox(width: ctx.rw(6)),
+                        Flexible(
+                          child: Text(
+                            email,
+                            style: TextStyle(
+                              fontSize: ctx.rsp(13),
+                              color: AppTheme.accent,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppTheme.accent,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ],
           ],

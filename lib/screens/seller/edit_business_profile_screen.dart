@@ -13,6 +13,7 @@ import '../../models/business_profile_model.dart';
 import '../../models/picked_media.dart';
 import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
+import '../../services/background_submission.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/sms_service.dart';
@@ -44,7 +45,6 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
   List<StorePhoneNumber> _phoneNumbers = [];
   bool _qrCodePublic = false;
   bool _isPreview = false;
-  bool _isSaving = false;
   bool _isLoading = true;
 
   bool _isLookingUpAddress = false;
@@ -583,60 +583,62 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
     final user = ref.read(authProvider).user;
     if (user == null) return;
 
-    setState(() => _isSaving = true);
+    // Capture ALL values from controllers and state before popping — the
+    // background save must not depend on this widget being alive.
+    final sellerId = user.id;
+    final bannerFile = _bannerFile;
+    final existingBannerUrl = _existingBannerUrl;
+    final businessName = _businessNameController.text.trim();
+    final description = _descriptionController.text.trim().isEmpty
+        ? null
+        : _descriptionController.text.trim();
+    final locationUrl = _locationUrlController.text.trim().isEmpty
+        ? null
+        : _locationUrlController.text.trim();
+    final digitalAddress = _digitalAddressController.text.trim().isEmpty
+        ? null
+        : _digitalAddressController.text.trim();
+    final qrCodePublic = _qrCodePublic;
+    final phoneNumbers = List<StorePhoneNumber>.from(_phoneNumbers);
 
-    try {
-      String? bannerUrl = _existingBannerUrl;
+    ShadToaster.of(context).show(
+      const ShadToast(title: Text('Saving business profile...')),
+    );
+    Navigator.of(context).pop(true);
 
-      // Upload new banner if picked
-      if (_bannerFile != null) {
-        // Delete old banner if exists
-        if (_existingBannerUrl != null) {
-          try {
-            await StorageService.deleteImage(_existingBannerUrl!);
-          } catch (_) {}
+    // Background save — no widget dependency.
+    BackgroundSubmission.run(
+      task: () async {
+        String? bannerUrl = existingBannerUrl;
+
+        // Upload new banner if picked
+        if (bannerFile != null) {
+          // Delete old banner if exists
+          if (existingBannerUrl != null) {
+            try {
+              await StorageService.deleteImage(existingBannerUrl);
+            } catch (_) {}
+          }
+          bannerUrl = await StorageService.uploadImage(
+            file: bannerFile,
+            folder: 'banners',
+          );
         }
-        bannerUrl = await StorageService.uploadImage(
-          file: _bannerFile!,
-          folder: 'banners',
-        );
-      }
 
-      await BusinessProfileService.upsertProfile(
-        sellerId: user.id,
-        bannerUrl: bannerUrl,
-        businessName: _businessNameController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty
-            ? null
-            : _descriptionController.text.trim(),
-        locationUrl: _locationUrlController.text.trim().isEmpty
-            ? null
-            : _locationUrlController.text.trim(),
-        digitalAddress: _digitalAddressController.text.trim().isEmpty
-            ? null
-            : _digitalAddressController.text.trim(),
-        qrCodePublic: _qrCodePublic,
-        phoneNumbers: _phoneNumbers,
-      );
-
-      if (mounted) {
-        ShadToaster.of(context).show(
-          const ShadToast(title: Text('Business profile saved!')),
+        await BusinessProfileService.upsertProfile(
+          sellerId: sellerId,
+          bannerUrl: bannerUrl,
+          businessName: businessName,
+          description: description,
+          locationUrl: locationUrl,
+          digitalAddress: digitalAddress,
+          qrCodePublic: qrCodePublic,
+          phoneNumbers: phoneNumbers,
         );
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
-      if (mounted) {
-        ShadToaster.of(context).show(
-          ShadToast(
-            backgroundColor: AppTheme.destructive,
-            title: Text('Error: $e'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
+      },
+      successTitle: 'Business profile saved!',
+      failureTitle: 'Error saving business profile',
+    );
   }
 
   @override
@@ -665,15 +667,9 @@ class _EditBusinessProfileScreenState extends ConsumerState<EditBusinessProfileS
             padding: const EdgeInsets.only(right: 8),
             child: ShadButton(
               enabled: _isFormValid,
-              onPressed: (_isSaving || !_isFormValid) ? null : _save,
+              onPressed: _isFormValid ? _save : null,
               size: ShadButtonSize.sm,
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Save'),
+              child: const Text('Save'),
             ),
           ),
         ],

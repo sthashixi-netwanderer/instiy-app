@@ -13,8 +13,10 @@ import '../../widgets/ai_enhance_button.dart';
 import '../../widgets/required_label.dart';
 import '../../widgets/user_avatar_menu.dart';
 import '../../models/service_model.dart';
+import '../../models/service_draft_model.dart';
 import '../../models/notification_model.dart';
 import '../../services/ai_service.dart';
+import '../../services/service_draft_service.dart';
 import '../../providers/providers.dart';
 import '../../providers/service_provider.dart';
 
@@ -46,6 +48,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       if (ref.read(authProvider).isAuthenticated) {
         prov.checkServiceProviderStatus();
         prov.loadMyServices();
+        prov.loadPublishingServiceDraft();
       }
     });
   }
@@ -85,6 +88,22 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     Navigator.of(context).pushNamed('/service-detail', arguments: service.id);
   }
 
+  /// Opens the create wizard unless a fire-and-forget publish is still in
+  /// flight — the single draft slot can't track a second concurrent publish.
+  void _openCreateService() {
+    final draft = ref.read(serviceProvider).publishingServiceDraft;
+    if (draft != null && draft.status == ServiceDraftStatus.publishing) {
+      ShadToaster.of(context).show(
+        const ShadToast(
+          title:
+              Text('Please wait for the current service to finish publishing'),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pushNamed('/create-service');
+  }
+
   @override
   Widget build(BuildContext context) {
     final serviceProv = ref.watch(serviceProvider);
@@ -101,9 +120,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
               padding: EdgeInsets.only(right: context.rw(4)),
               child: ShadButton(
                 size: ShadButtonSize.sm,
-                onPressed: () => Navigator.of(context).pushNamed(
-                  '/create-service',
-                ),
+                onPressed: _openCreateService,
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -378,6 +395,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     }
 
     final myServices = serviceProv.myServices;
+    final publishDraft = serviceProv.publishingServiceDraft;
     return serviceProv.myServicesLoading && myServices.isEmpty
         ? Padding(
             padding: EdgeInsets.symmetric(horizontal: context.rw(16)),
@@ -387,6 +405,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
             ? ListView(
                 padding: EdgeInsets.all(context.rw(16)),
                 children: [
+                  if (publishDraft != null) ...[
+                    _buildServicePublishStatusCard(
+                      publishDraft,
+                      serviceProv.publishProgress,
+                    ),
+                    SizedBox(height: context.rh(12)),
+                  ],
                   _buildProviderBioCard(serviceProv),
                   SizedBox(height: context.rh(12)),
                   _buildProviderPublicEmailCard(serviceProv),
@@ -412,6 +437,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (publishDraft != null) ...[
+                            _buildServicePublishStatusCard(
+                              publishDraft,
+                              serviceProv.publishProgress,
+                            ),
+                            SizedBox(height: context.rh(12)),
+                          ],
                           _buildProviderBioCard(serviceProv),
                           SizedBox(height: context.rh(12)),
                           _buildProviderPublicEmailCard(serviceProv),
@@ -432,6 +464,138 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                   },
                 ),
               );
+  }
+
+  /// Live status of the fire-and-forget service publish — progress while
+  /// uploading, error + retry when it failed (mirrors the profile screen's
+  /// product publish card).
+  Widget _buildServicePublishStatusCard(
+    ServiceDraftListing draft,
+    double progress,
+  ) {
+    final isPublishing = draft.status == ServiceDraftStatus.publishing;
+
+    if (isPublishing) {
+      return Container(
+        padding: EdgeInsets.all(context.rw(16)),
+        decoration: BoxDecoration(
+          color: AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rw(16)),
+          border: Border.all(color: AppTheme.whisperBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(AppTheme.charcoalInk),
+                  ),
+                ),
+                SizedBox(width: context.rw(12)),
+                Expanded(
+                  child: Text(
+                    'Publishing "${draft.title}"...',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: AppTheme.charcoalInk,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: context.rh(12)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress > 0 ? progress : null,
+                backgroundColor: AppTheme.whisperBorder,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppTheme.charcoalInk),
+                minHeight: 6,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.all(context.rw(16)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF5F5),
+        borderRadius: BorderRadius.circular(context.rw(16)),
+        border: Border.all(color: const Color(0xFFFEB2B2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                LucideIcons.alertTriangle,
+                color: Color(0xFFC53030),
+                size: 20,
+              ),
+              SizedBox(width: context.rw(12)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Failed to publish "${draft.title}"',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: Color(0xFF9B2C2C),
+                      ),
+                    ),
+                    SizedBox(height: context.rh(4)),
+                    Text(
+                      draft.errorMessage ??
+                          'An unknown error occurred during publication.',
+                      style: const TextStyle(
+                        color: Color(0xFFC53030),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: context.rh(12)),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: context.rw(8),
+            children: [
+              ShadButton.outline(
+                size: ShadButtonSize.sm,
+                onPressed: () async {
+                  await ServiceDraftService.clearDraft();
+                  ref.read(serviceProvider).updatePublishingServiceDraft(null);
+                },
+                child: const Text('Dismiss'),
+              ),
+              ShadButton(
+                size: ShadButtonSize.sm,
+                onPressed: _openCreateService,
+                child: const Text('Try again'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _showInstitutionFilterSheet() {
@@ -1559,8 +1723,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
             ),
             SizedBox(height: context.rh(16)),
             ShadButton(
-              onPressed: () =>
-                  Navigator.of(context).pushNamed('/create-service'),
+              onPressed: _openCreateService,
               child: const Text('Create a service'),
             ),
           ],

@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/auth_service.dart';
+import '../../services/background_submission.dart';
 import '../../services/sms_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/supabase_service.dart';
@@ -371,60 +372,80 @@ AppTheme.showGlassDialog(
     try {
       if (isPasswordChanged) {
         final email = auth.user?.email;
-        if (email != null) {
-          try {
-            await SupabaseService.auth.signInWithPassword(
-              email: email,
-              password: _oldPasswordController.text,
-            );
-          } catch (e) {
-            throw Exception('Incorrect current password. Please try again.');
-          }
-        } else {
+        if (email == null) {
           throw Exception('User email not found. Cannot verify password.');
+        }
+        try {
+          await SupabaseService.auth.signInWithPassword(
+            email: email,
+            password: _oldPasswordController.text,
+          );
+        } catch (e) {
+          throw Exception('Incorrect current password. Please try again.');
         }
       }
 
-      String? avatarUrl = auth.user?.avatarUrl;
-      if (_avatarFile != null) {
-        avatarUrl = await StorageService.uploadImage(
-          file: _avatarFile!,
-          folder: 'avatars',
-        );
-      }
+      // Capture profile values up front so the update can run without this
+      // widget (the fire-and-forget path pops the screen first).
+      final avatarFile = _avatarFile;
+      final currentAvatarUrl = auth.user?.avatarUrl;
+      final nameVal = _nameController.text.trim();
+      final bioVal = _bioController.text.trim().isNotEmpty
+          ? _bioController.text.trim()
+          : null;
 
-      Future<void> performProfileUpdate(String? phoneToSave) async {
+      Future<void> applyProfile() async {
+        String? avatarUrl = currentAvatarUrl;
+        if (avatarFile != null) {
+          avatarUrl = await StorageService.uploadImage(
+            file: avatarFile,
+            folder: 'avatars',
+          );
+        }
         await auth.updateProfile(
-          fullName: _nameController.text.trim(),
+          fullName: nameVal,
           avatarUrl: avatarUrl,
-          bio: _bioController.text.trim().isNotEmpty
-              ? _bioController.text.trim()
-              : null,
-          phoneNumber: phoneToSave != null && phoneToSave.isNotEmpty ? phoneToSave : null,
+          bio: bioVal,
+          phoneNumber: newPhone.isNotEmpty ? newPhone : null,
         );
-
         if (isPasswordChanged) {
           await SupabaseService.auth.updateUser(
             UserAttributes(password: _newPasswordController.text),
           );
         }
-
-        _oldPasswordController.clear();
-        _newPasswordController.clear();
-        _confirmPasswordController.clear();
-        if (phoneToSave != null) {
-          _initialPhoneNumber = phoneToSave;
-        }
-
-        if (mounted) {
-          ShadToaster.of(context).show(
-            const ShadToast(title: Text('Profile updated!')),
-          );
-          navigator.pop();
-        }
       }
 
-      await performProfileUpdate(newPhone);
+      if (!isPasswordChanged) {
+        // Profile-only change — fire-and-forget. Password changes stay
+        // blocking because the old-password check can fail and needs
+        // in-form correction.
+        if (!mounted) return;
+        ShadToaster.of(context).show(
+          const ShadToast(title: Text('Saving profile...')),
+        );
+        navigator.pop();
+
+        BackgroundSubmission.run(
+          task: applyProfile,
+          successTitle: 'Profile updated!',
+          failureTitle: 'Error saving profile',
+        );
+        return;
+      }
+
+      await applyProfile();
+
+      _oldPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+      _initialPhoneNumber = newPhone;
+
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(title: Text('Profile updated!')),
+        );
+        navigator.pop();
+      }
     } catch (e) {
       if (mounted) {
         ShadToaster.of(context).show(

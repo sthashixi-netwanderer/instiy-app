@@ -111,3 +111,34 @@ class WithdrawalRequest {
     );
   }
 }
+
+/// A paid order item awaiting delivery verification — its payout
+/// (price * quantity + any delivery fee) is escrowed until delivery is
+/// verified, then credited to the seller's wallet.
+class PendingOrderEarning {
+  final String orderItemId;
+  final String orderId;
+  final String productTitle;
+  final double amount;
+  final DateTime createdAt;
+
+  PendingOrderEarning({
+    required this.orderItemId,
+    required this.orderId,
+    required this.productTitle,
+    required this.amount,
+    required this.createdAt,
+  });
+
+  factory PendingOrderEarning.fromJson(Map<String, dynamic> json) {
+    return PendingOrderEarning(
+      orderItemId: json['order_item_id'] as String,
+      orderId: json['order_id'] as String,
+      productTitle: json['product_title'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.now(),
+    );
+  }
+}

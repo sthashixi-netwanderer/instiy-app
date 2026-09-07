@@ -827,7 +827,12 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         ShadToaster.of(context).show(
           const ShadToast(title: Text('Your listing is being published...')),
         );
-        Navigator.of(context).pop();
+        // Fire-and-forget: this runs while the review screen is on top, so
+        // pop both the review screen and this form to drop the user back
+        // where they started while the publish continues in the background.
+        final navigator = Navigator.of(context);
+        navigator.pop(); // ListingReviewScreen
+        navigator.pop(); // CreateListingScreen
       }
 
       // Background publish — no widget dependency
