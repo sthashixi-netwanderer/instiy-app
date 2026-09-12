@@ -34,7 +34,11 @@ class ServicesScreen extends ConsumerStatefulWidget {
 class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   final _searchCtrl = TextEditingController();
   final _appealCtrl = TextEditingController();
-  int _selectedTab = 0;
+
+  /// False shows the Discover marketplace; true shows the provider's
+  /// My Services dashboard. The switch lives in the top navbar — there are
+  /// no longer tabs in the screen body.
+  bool _showingMyServices = false;
   Timer? _searchDebounce;
 
   @override
@@ -113,9 +117,18 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       extendBodyBehindAppBar: true,
       appBar: AppTheme.glassAppBar(
         context: context,
-        title: const Text('Services'),
+        title: Text(_showingMyServices ? 'My Services' : 'Services'),
+        leading: _showingMyServices
+            ? ShadIconButton.ghost(
+                padding: EdgeInsets.zero,
+                icon: const Icon(LucideIcons.arrowLeft, size: 20),
+                onPressed: () =>
+                    setState(() => _showingMyServices = false),
+              )
+            : null,
         actions: [
-          if (_selectedTab == 1 && serviceProv.isServiceProvider == true)
+          if (_showingMyServices &&
+              serviceProv.isServiceProvider == true)
             Padding(
               padding: EdgeInsets.only(right: context.rw(4)),
               child: ShadButton(
@@ -129,6 +142,38 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     Text('Create'),
                   ],
                 ),
+              ),
+            ),
+          if (!_showingMyServices &&
+              (serviceProv.isServiceProvider == true ||
+                  serviceProv.isProviderDisabled))
+            Padding(
+              padding: EdgeInsets.only(right: context.rw(4)),
+              child: ShadButton(
+                size: ShadButtonSize.sm,
+                onPressed: () =>
+                    setState(() => _showingMyServices = true),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.briefcaseBusiness, size: 16),
+                    SizedBox(width: 6),
+                    Text('My Services'),
+                  ],
+                ),
+              ),
+            ),
+          if (!_showingMyServices &&
+              ref.watch(authProvider).isAuthenticated &&
+              serviceProv.isServiceProvider == false &&
+              !serviceProv.isProviderDisabled)
+            Padding(
+              padding: EdgeInsets.only(right: context.rw(4)),
+              child: ShadButton.ghost(
+                size: ShadButtonSize.sm,
+                onPressed: () =>
+                    setState(() => _showingMyServices = true),
+                child: const Text('Offer services'),
               ),
             ),
           Builder(
@@ -167,31 +212,10 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                 kToolbarHeight +
                 context.rh(16),
           ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: context.rw(16)),
-            child: Row(
-              children: [
-                _TabPill(
-                  label: 'Discover',
-                  icon: LucideIcons.compass,
-                  selected: _selectedTab == 0,
-                  onTap: () => setState(() => _selectedTab = 0),
-                ),
-                SizedBox(width: context.rw(8)),
-                _TabPill(
-                  label: 'My Services',
-                  icon: LucideIcons.briefcaseBusiness,
-                  selected: _selectedTab == 1,
-                  onTap: () => setState(() => _selectedTab = 1),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: context.rh(12)),
           Expanded(
-            child: _selectedTab == 0
-                ? _buildDiscoverTab(serviceProv)
-                : _buildMyServicesTab(serviceProv),
+            child: _showingMyServices
+                ? _buildMyServicesTab(serviceProv)
+                : _buildDiscoverTab(serviceProv),
           ),
         ],
       ),
@@ -1800,67 +1824,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
 // ============================================================
 // Widgets
 // ============================================================
-
-class _TabPill extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _TabPill({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(
-          horizontal: context.rw(12),
-          vertical: context.rh(9),
-        ),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.accent.withValues(alpha: 0.12)
-              : AppTheme.pureSurface,
-          borderRadius: BorderRadius.circular(context.rr(12)),
-          border: Border.all(
-            color: selected
-                ? AppTheme.accent.withValues(alpha: 0.4)
-                : AppTheme.whisperBorder,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: context.ri(16),
-              color: selected ? AppTheme.accent : AppTheme.mutedSteel,
-            ),
-            SizedBox(width: context.rw(6)),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: context.rsp(13),
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? AppTheme.accent : AppTheme.mutedSteel,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _CategoryPill extends StatelessWidget {
   final String label;

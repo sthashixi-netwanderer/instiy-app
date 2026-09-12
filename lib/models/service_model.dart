@@ -342,13 +342,21 @@ class Service {
     double? avgRating;
     int? count;
     if (reviewsList != null && reviewsList.isNotEmpty) {
-      count = reviewsList.length;
-      final total = reviewsList.fold<double>(
-        0.0,
-        (sum, r) => sum + ((r['rating'] as num?)?.toDouble() ?? 0.0),
-      );
-      avgRating = total / count;
-    } else if (json['average_rating'] != null) {
+      // Replies carry a null rating — exclude them so they never move the
+      // service's average or review count.
+      final rated = reviewsList
+          .where((r) => (r as Map)['rating'] != null)
+          .toList();
+      if (rated.isNotEmpty) {
+        count = rated.length;
+        final total = rated.fold<double>(
+          0.0,
+          (sum, r) => sum + (((r as Map)['rating'] as num?)?.toDouble() ?? 0.0),
+        );
+        avgRating = total / count;
+      }
+    }
+    if (count == null && json['average_rating'] != null) {
       avgRating = (json['average_rating'] as num?)?.toDouble();
       count = (json['review_count'] as num?)?.toInt();
     }
@@ -501,6 +509,13 @@ class ServiceReview {
   final DateTime createdAt;
   final DateTime? updatedAt;
 
+  /// Set on replies; null on top-level reviews (mirrors ProductReview).
+  final String? parentId;
+
+  /// Replies nested under this review, populated client-side by
+  /// [ServiceService.getServiceReviews].
+  List<ServiceReview> replies;
+
   ServiceReview({
     required this.id,
     required this.serviceId,
@@ -513,6 +528,8 @@ class ServiceReview {
     this.helpfulCount = 0,
     required this.createdAt,
     this.updatedAt,
+    this.parentId,
+    this.replies = const [],
   });
 
   factory ServiceReview.fromJson(Map<String, dynamic> json) {
@@ -538,6 +555,7 @@ class ServiceReview {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
+      parentId: json['parent_id'] as String?,
     );
   }
 }

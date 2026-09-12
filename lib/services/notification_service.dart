@@ -22,6 +22,7 @@ class NotificationService {
     final titleLower = (title ?? '').toLowerCase();
     if (titleLower.contains('service provider') ||
         titleLower.contains('service listing') ||
+        titleLower.contains('service review') ||
         titleLower.contains('your service')) {
       return true;
     }

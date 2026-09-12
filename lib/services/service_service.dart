@@ -1,6 +1,7 @@
 import 'supabase_service.dart';
 import 'storage_service.dart';
 import 'video_service.dart';
+import 'email_service.dart';
 import '../models/service_model.dart';
 import '../models/category_model.dart';
 
@@ -446,12 +447,33 @@ class ServiceService {
     final response = await SupabaseService.table('service_reviews')
         .select(_reviewSelect)
         .eq('service_id', serviceId)
-        .order('created_at', ascending: false);
-    return response
+        .order('created_at', ascending: true);
+    final flatList = (response as List<dynamic>)
         .map<ServiceReview>(
-          (row) => ServiceReview.fromJson(row),
+          (row) => ServiceReview.fromJson(row as Map<String, dynamic>),
         )
         .toList();
+
+    // Nest replies under their top-level review (mirrors product reviews).
+    final Map<String, ServiceReview> reviewMap = {
+      for (final r in flatList) r.id: r,
+    };
+    final topLevel = <ServiceReview>[];
+    for (final review in flatList) {
+      final parentId = review.parentId;
+      if (parentId == null) {
+        topLevel.add(review);
+      } else {
+        final parent = reviewMap[parentId];
+        if (parent != null) {
+          if (parent.replies.isEmpty) parent.replies = [];
+          parent.replies.add(review);
+        } else {
+          topLevel.add(review);
+        }
+      }
+    }
+    return topLevel.reversed.toList();
   }
 
   static Future<ServiceReview?> getUserServiceReview(
@@ -462,12 +484,14 @@ class ServiceService {
         .select(_reviewSelect)
         .eq('service_id', serviceId)
         .eq('reviewer_id', userId)
+        .filter('parent_id', 'is', null)
         .maybeSingle();
     return response == null ? null : ServiceReview.fromJson(response);
   }
 
-  /// Creates (or replaces) the current user's review. The UNIQUE
-  /// (service_id, reviewer_id) constraint + upsert keeps one per user.
+  /// Creates (or replaces) the current user's top-level review. One per
+  /// user per service, enforced by the partial unique index; replies live
+  /// in the same table with a parent_id and are unaffected.
   static Future<List<String>> uploadServiceReviewImages(
     List<dynamic> files,
   ) async {
@@ -501,26 +525,72 @@ class ServiceService {
         ? await uploadServiceReviewImages(imageFiles)
         : <String>[];
 
-    await SupabaseService.table('service_reviews').upsert(
-      {
+    // No upsert here: the one-review-per-user rule is a partial unique
+    // index (top-level reviews only, so replies stay unlimited), which
+    // Postgres rejects as an ON CONFLICT target. Check explicitly instead.
+    final existing = await getUserServiceReview(serviceId, userId);
+    if (existing != null) {
+      await SupabaseService.table('service_reviews').update({
+        'rating': rating,
+        'comment': comment,
+        'media_urls': mediaUrls,
+      }).eq('id', existing.id);
+    } else {
+      await SupabaseService.table('service_reviews').insert({
         'service_id': serviceId,
         'reviewer_id': userId,
         'rating': rating,
         'comment': comment,
         'media_urls': mediaUrls,
-      },
-      onConflict: 'service_id,reviewer_id',
-    );
+      });
+    }
 
-    // Notify the provider (best-effort, mirrors product reviews).
+    // Notify the provider in-app and by email (mirrors product reviews).
     if (providerId != userId) {
       try {
-        await SupabaseService.table('notifications').insert({
-          'user_id': providerId,
-          'title': 'New service review',
-          'body': 'Someone left a $rating-star review on your service.',
-          'type': 'review',
+        final service = await SupabaseService.table('services')
+            .select('title')
+            .eq('id', serviceId)
+            .maybeSingle();
+        final reviewer = await SupabaseService.table('users')
+            .select('full_name')
+            .eq('id', userId)
+            .maybeSingle();
+        final provider = await SupabaseService.table('users')
+            .select('full_name, email')
+            .eq('id', providerId)
+            .maybeSingle();
+
+        final serviceTitle =
+            service?['title'] as String? ?? 'your service';
+        final reviewerName =
+            reviewer?['full_name'] as String? ?? 'Someone';
+
+        await SupabaseService.client.rpc('create_notification', params: {
+          'p_user_id': providerId,
+          'p_title': 'New review on your service',
+          'p_body': '$reviewerName reviewed "$serviceTitle" — '
+              '${'★' * rating}${'☆' * (5 - rating)}',
+          'p_type': 'service_review',
+          'p_data': {
+            'service_id': serviceId,
+            'reviewer_id': userId,
+            'type': 'service_review',
+          },
         });
+
+        final providerEmail = provider?['email'] as String?;
+        if (providerEmail != null) {
+          await EmailService.sendNewServiceReview(
+            providerEmail: providerEmail,
+            providerName:
+                provider?['full_name'] as String? ?? 'Provider',
+            reviewerName: reviewerName,
+            serviceTitle: serviceTitle,
+            rating: rating,
+            comment: comment,
+          );
+        }
       } catch (_) {}
     }
   }
@@ -553,5 +623,30 @@ class ServiceService {
 
   static Future<void> deleteServiceReview(String reviewId) async {
     await SupabaseService.table('service_reviews').delete().eq('id', reviewId);
+  }
+
+  /// Posts a threaded reply under a top-level review (mirrors product
+  /// review replies — replies carry no star rating).
+  static Future<void> submitServiceReply({
+    required String serviceId,
+    required String comment,
+    required String parentId,
+  }) async {
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    await SupabaseService.table('service_reviews').insert({
+      'service_id': serviceId,
+      'reviewer_id': userId,
+      'rating': null,
+      'comment': comment,
+      'media_urls': <String>[],
+      'parent_id': parentId,
+    });
+  }
+
+  static Future<void> updateServiceReply(String replyId, String reply) async {
+    await SupabaseService.table('service_reviews')
+        .update({'comment': reply})
+        .eq('id', replyId);
   }
 }

@@ -616,7 +616,12 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     _messageProvider = ref.read(messageProvider);
     _productReference = _messageProvider.pendingProductReference;
     if (_productReference != null) {
-      _messageProvider.consumePendingProductReference();
+      // Deferred past the first frame: consuming notifies the provider,
+      // which Riverpod forbids synchronously inside initState while the
+      // widget tree is still building.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _messageProvider.consumePendingProductReference();
+      });
     }
     _messageCtrl.addListener(() {
       if (mounted) setState(() {});

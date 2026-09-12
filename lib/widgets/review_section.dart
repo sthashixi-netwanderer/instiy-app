@@ -37,7 +37,12 @@ class _ReviewSectionState extends ConsumerState<ReviewSection> {
     final filtered = BlockProvider.instance.filterReviews(reviews);
     if (!mounted) return;
     setState(() {
-      _reviews = filtered;
+      // The viewer's own review always sits at the top so it is visible
+      // on every visit; everything else keeps its newest-first order.
+      _reviews = [
+        ...filtered.where((r) => r.reviewerId == userId),
+        ...filtered.where((r) => r.reviewerId != userId),
+      ];
       _myReview = userId != null
           ? reviews.where((r) => r.reviewerId == userId).firstOrNull
           : null;

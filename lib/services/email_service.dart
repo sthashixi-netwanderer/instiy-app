@@ -635,6 +635,56 @@ class EmailService {
     );
   }
 
+  static Future<void> sendNewServiceReview({
+    required String providerEmail,
+    required String providerName,
+    required String reviewerName,
+    required String serviceTitle,
+    required int rating,
+    required String? comment,
+  }) async {
+    final stars = '\u2B50' * rating;
+    final subject = 'New review on your service "$serviceTitle"';
+    await _sendEmail(
+      to: providerEmail,
+      subject: subject,
+      htmlBody: '''
+<!DOCTYPE html>
+<html>
+<head>
+  <title>$subject</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f4; margin: 0; padding: 20px; }
+    .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #D97706, #F59E0B); padding: 32px 24px; text-align: center; }
+    .header h1 { color: white; margin: 0; font-size: 20px; }
+    .body { padding: 24px; }
+    .stars { font-size: 24px; text-align: center; margin: 16px 0; }
+    .comment { background: #f5f5f4; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-style: italic; color: #78716c; }
+    .footer { padding: 16px 24px; background: #f5f5f4; text-align: center; color: #78716c; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://media.instiy.com/logo.png" alt="Instiy Logo" style="height: 40px; margin-bottom: 12px; display: inline-block;" />
+      <h1>New Service Review</h1>
+    </div>
+    <div class="body">
+      <p>Hi $providerName,</p>
+      <p><strong>$reviewerName</strong> left a review on your service <strong>$serviceTitle</strong>.</p>
+      <div class="stars">$stars</div>
+      ${comment != null ? '<div class="comment">"$comment"</div>' : ''}
+    </div>
+    <div class="footer">
+      <p>Instiy — Student Marketplace</p>
+    </div>
+  </div>
+</body>
+</html>''',
+    );
+  }
+
   static Future<void> sendReviewReply({
     required String reviewerEmail,
     required String reviewerName,

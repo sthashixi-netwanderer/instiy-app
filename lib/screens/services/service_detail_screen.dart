@@ -34,12 +34,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   bool _isLoading = true;
   String? _error;
 
-  /// Index into the sorted packages list, or null while the customer
-  /// hasn't picked a plan yet — contacting the provider requires an
-  /// explicit selection so the quoted price matches what they chose.
-  int? _selectedPackageIndex;
+  /// Index into the sorted packages list driving the plan tabs — the
+  /// active tab is the plan quoted when contacting the provider.
+  int _activePlanIndex = 0;
   int _galleryPage = 0;
-  final GlobalKey _packagesKey = GlobalKey();
   final ScrollController _scrollCtrl = ScrollController();
 
   @override
@@ -160,6 +158,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the session so ownership gates re-evaluate if auth changes
+    // while this screen is open — a stale read must never leak the
+    // contact button to the listing owner.
+    ref.watch(authProvider);
     ref.listen(serviceProvider, (previous, next) {
       if (mounted) _loadService(silent: true);
     });
@@ -247,9 +249,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
   Widget _buildContent(BuildContext context, Service service) {
     final packages = service.sortedPackages;
-    if (_selectedPackageIndex != null && _selectedPackageIndex! >= packages.length) {
-      _selectedPackageIndex = null;
-    }
+    final activeIndex = packages.isEmpty
+        ? 0
+        : _activePlanIndex.clamp(0, packages.length - 1);
     return ListView(
       controller: _scrollCtrl,
       padding: EdgeInsets.fromLTRB(
@@ -325,66 +327,11 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         _buildAvailability(context, service),
         if (packages.isNotEmpty) ...[
           SizedBox(height: context.rh(24)),
-          Row(
-            key: _packagesKey,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _buildSectionTitle('Plans & Packages'),
-              if (packages.length > 1)
-                Padding(
-                  padding: EdgeInsets.only(bottom: context.rh(2)),
-                  child: Text(
-                    'Swipe to view all →',
-                    style: TextStyle(
-                      fontSize: context.rsp(12),
-                      color: AppTheme.mutedSteel,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: context.rh(4)),
-          Text(
-            _selectedPackageIndex == null
-                ? 'Select a plan to contact the provider.'
-                : 'Selected: ${_planLabel(packages[_selectedPackageIndex!])}',
-            style: TextStyle(
-              fontSize: context.rsp(12),
-              color: _selectedPackageIndex == null
-                  ? AppTheme.mutedSteel
-                  : AppTheme.accent,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          _buildSectionTitle('Plans & Packages'),
           SizedBox(height: context.rh(12)),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            clipBehavior: Clip.none,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < packages.length; i++) ...[
-                  _PlanCard(
-                    package: packages[i],
-                    isSelected: _selectedPackageIndex == i,
-                    isOwnService: _isOwnService,
-                    onSelect: () => setState(() => _selectedPackageIndex = i),
-                    // "Get started" doubles as the selection: tapping it on a
-                    // card means the customer wants that specific package.
-                    onAction: () {
-                      setState(() => _selectedPackageIndex = i);
-                      _contactProvider(context, ref, service);
-                    },
-                  ),
-                  if (i < packages.length - 1)
-                    SizedBox(width: context.rw(14)),
-                ],
-              ],
-            ),
-          ),
+          _buildPlanTabs(packages, activeIndex),
+          SizedBox(height: context.rh(12)),
+          _PlanDetailPanel(package: packages[activeIndex]),
         ],
         SizedBox(height: context.rh(24)),
         if (service.providerName != null) _buildProviderCard(service),
@@ -392,12 +339,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         if (!_isOwnService)
           ShadButton(
             onPressed: () => _contactProvider(context, ref, service),
-            child: Text(
-              packages.isNotEmpty && _selectedPackageIndex == null
-                  ? 'Select a Package to Continue'
-                  : 'Contact Provider',
+            child: const Text(
+              'Contact Provider',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         SizedBox(height: context.rh(32)),
@@ -643,6 +588,42 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     );
   }
 
+  /// Plan tabs built from the package names, centered on screen —
+  /// tapping a tab switches the detail panel below it. No swiping; the
+  /// active tab is always the plan quoted when contacting the provider.
+  /// Tabs scroll horizontally if there are too many to fit at once.
+  Widget _buildPlanTabs(List<ServicePackage> packages, int activeIndex) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < packages.length; i++) ...[
+                  _PlanTab(
+                    label: packages[i].name.isNotEmpty
+                        ? packages[i].name
+                        : packages[i].tier.displayName,
+                    selected: i == activeIndex,
+                    onTap: () => setState(() => _activePlanIndex = i),
+                    isPopular: packages[i].isPopular,
+                    tier: packages[i].tier,
+                  ),
+                  if (i < packages.length - 1)
+                    SizedBox(width: context.rw(8)),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildProviderCard(Service service) {
     return Material(
       color: Colors.transparent,
@@ -681,23 +662,12 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            service.providerName ?? 'Service Provider',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: context.rsp(14),
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          LucideIcons.chevronRight,
-                          size: context.ri(16),
-                          color: AppTheme.mutedSteel,
-                        ),
-                      ],
+                    Text(
+                      service.providerName ?? 'Service Provider',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: context.rsp(14),
+                      ),
                     ),
                 Text(
                   'Service Provider',
@@ -720,7 +690,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     ),
                   ),
                 ],
-                if (service.providerPublicEmail != null &&
+                // The public contact email is a customer affordance — the
+                // listing owner has no one to contact on their own page.
+                if (!_isOwnService &&
+                    service.providerPublicEmail != null &&
                     service.providerPublicEmail!.isNotEmpty) ...[
                   SizedBox(height: context.rh(6)),
                   Material(
@@ -768,19 +741,12 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     size: ShadButtonSize.sm,
                     foregroundColor: AppTheme.accent,
                     onPressed: () => _showProviderBioSheet(service),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          (service.providerBio != null &&
-                                  service.providerBio!.isNotEmpty)
-                              ? 'Read full bio'
-                              : 'About provider',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(LucideIcons.chevronRight, size: 14),
-                      ],
+                    child: Text(
+                      (service.providerBio != null &&
+                              service.providerBio!.isNotEmpty)
+                          ? 'Read full bio'
+                          : 'About provider',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -940,7 +906,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                 height: 1.6,
               ),
             ),
-            if (hasEmail) ...[
+            // Customers only — hidden for the listing owner like the card.
+            if (hasEmail && !_isOwnService) ...[
               SizedBox(height: ctx.rh(16)),
               Material(
                 color: Colors.transparent,
@@ -985,26 +952,6 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     );
   }
 
-  String _planLabel(ServicePackage package) {
-    final name = package.name.isNotEmpty
-        ? package.name
-        : package.tier.displayName;
-    return '$name — ${formatGhs(package.price)}';
-  }
-
-  /// Brings the Plans & Packages row into view so the customer sees the
-  /// options they need to pick from.
-  void _scrollToPackages() {
-    final ctx = _packagesKey.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(
-      ctx,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOut,
-      alignment: 0.1,
-    );
-  }
-
   Future<void> _contactProvider(
     BuildContext context,
     WidgetRef ref,
@@ -1026,26 +973,14 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
       return;
     }
 
-    // A package must be chosen explicitly so the chat quotes the exact
-    // plan the customer wants. Services without any packages fall back to
-    // the service-level starting price.
+    // The active plan tab is quoted so the chat references the exact
+    // plan the customer is viewing. Services without any packages fall
+    // back to the service-level starting price.
     final packages = service.sortedPackages;
     ServicePackage? selectedPackage;
     if (packages.isNotEmpty) {
-      final index = _selectedPackageIndex;
-      if (index == null || index >= packages.length) {
-        _scrollToPackages();
-        ShadToaster.of(context).show(
-          const ShadToast.destructive(
-            title: Text('Select a package first'),
-            description: Text(
-              'Tap the plan you want, then contact the provider.',
-            ),
-          ),
-        );
-        return;
-      }
-      selectedPackage = packages[index];
+      selectedPackage =
+          packages[_activePlanIndex.clamp(0, packages.length - 1)];
     }
 
     unawaited(showDialog(
@@ -1102,286 +1037,235 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 }
 
-class _PlanCard extends StatelessWidget {
-  final ServicePackage package;
-  final bool isSelected;
-  final bool isOwnService;
-  final VoidCallback onSelect;
-  final VoidCallback onAction;
+/// A plan tab showing the package (or tier) name. Tapping it switches the
+/// detail panel below — the active tab is the plan quoted on contact.
+/// Popular packages get a star and standard-tier packages a STANDARD chip
+/// so the marking is visible right on the tab.
+class _PlanTab extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool isPopular;
+  final ServiceTier tier;
 
-  const _PlanCard({
-    required this.package,
-    required this.isSelected,
-    required this.isOwnService,
-    required this.onSelect,
-    required this.onAction,
+  const _PlanTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.isPopular,
+    required this.tier,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isPopular = package.isPopular;
-
     return GestureDetector(
-      onTap: onSelect,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: context.rw(290),
-        padding: context.rAll(20),
-        decoration: BoxDecoration(
-          color: AppTheme.pureSurface,
-          borderRadius: BorderRadius.circular(context.rr(18)),
-          border: Border.all(
-            color: isPopular
-                ? AppTheme.accent
-                : (isSelected
-                    ? AppTheme.accent.withValues(alpha: 0.8)
-                    : AppTheme.whisperBorder),
-            width: isPopular ? 2.0 : (isSelected ? 1.6 : 1.0),
-          ),
-          boxShadow: isPopular
-              ? [
-                  BoxShadow(
-                    color: AppTheme.accent.withValues(alpha: 0.12),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : (isSelected
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.accent.withValues(alpha: 0.06),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null),
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.rw(16),
+          vertical: context.rh(10),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.accent : AppTheme.pureSurface,
+          borderRadius: BorderRadius.circular(context.rr(20)),
+          border: Border.all(
+            color: selected ? AppTheme.accent : AppTheme.whisperBorder,
+          ),
+        ),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Top Badge / Header (RECOMMENDED / POPULAR)
-            if (isPopular) ...[
-              Text(
-                'RECOMMENDED',
-                style: TextStyle(
-                  fontSize: context.rsp(11),
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.accent,
-                  letterSpacing: 0.6,
+            if (isPopular)
+              Padding(
+                padding: EdgeInsets.only(right: context.rw(5)),
+                child: Icon(
+                  LucideIcons.star,
+                  size: context.ri(14),
+                  color: selected
+                      ? Colors.amber.shade200
+                      : Colors.amber.shade700,
                 ),
               ),
-              SizedBox(height: context.rh(6)),
-            ],
-
-            // Plan Title / Custom Package Name
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    package.name.isNotEmpty
-                        ? package.name
-                        : package.tier.displayName,
-                    style: TextStyle(
-                      fontSize: context.rsp(19),
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.charcoalInk,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: context.rw(8),
-                    vertical: context.rh(3),
-                  ),
-                  decoration: BoxDecoration(
-                    color: isPopular
-                        ? AppTheme.accent.withValues(alpha: 0.12)
-                        : AppTheme.warmMist,
-                    borderRadius: BorderRadius.circular(context.rr(8)),
-                  ),
-                  child: Text(
-                    package.tier.displayName,
-                    style: TextStyle(
-                      fontSize: context.rsp(10),
-                      fontWeight: FontWeight.w600,
-                      color: isPopular ? AppTheme.accent : AppTheme.mutedSteel,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: context.rh(8)),
-
-            // Delivery time pill (e.g. ⏱ 30 minutes, ⏱ 2 hours, ⏱ 3 days)
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: context.rw(10),
-                vertical: context.rh(4),
-              ),
-              decoration: BoxDecoration(
-                color: AppTheme.warmMist,
-                borderRadius: BorderRadius.circular(context.rr(10)),
-                border: Border.all(
-                  color: AppTheme.whisperBorder.withValues(alpha: 0.5),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    LucideIcons.clock,
-                    size: context.ri(13),
-                    color: AppTheme.mutedSteel,
-                  ),
-                  SizedBox(width: context.rw(5)),
-                  Text(
-                    package.deliveryTimeFormatted,
-                    style: TextStyle(
-                      fontSize: context.rsp(12),
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.charcoalInk,
-                    ),
-                  ),
-                ],
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? Colors.white : AppTheme.mutedSteel,
               ),
             ),
-            SizedBox(height: context.rh(14)),
-
-            // Pricing & Revisions
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  formatGhs(package.price),
+            if (!isPopular && tier == ServiceTier.standard)
+              Container(
+                margin: EdgeInsets.only(left: context.rw(6)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.rw(6),
+                  vertical: context.rh(2),
+                ),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : AppTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(context.rr(6)),
+                ),
+                child: Text(
+                  'STANDARD',
                   style: TextStyle(
-                    fontSize: context.rsp(22),
+                    fontSize: context.rsp(9),
                     fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                    color: selected ? Colors.white : AppTheme.accent,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Full detail of the active plan — delivery, revisions, description and
+/// features are all shown in full, never shortened or truncated.
+class _PlanDetailPanel extends StatelessWidget {
+  final ServicePackage package;
+
+  const _PlanDetailPanel({required this.package});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = package.name.isNotEmpty
+        ? package.name
+        : package.tier.displayName;
+    final revisionsLabel = package.revisions >= 99
+        ? 'Unlimited revisions'
+        : '${package.revisions} revision${package.revisions == 1 ? '' : 's'}';
+    return Container(
+      width: double.infinity,
+      padding: context.rAll(20),
+      decoration: BoxDecoration(
+        color: AppTheme.pureSurface,
+        borderRadius: BorderRadius.circular(context.rr(18)),
+        border: Border.all(
+          color: package.isPopular ? AppTheme.accent : AppTheme.whisperBorder,
+          width: package.isPopular ? 2.0 : 1.0,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (package.isPopular) ...[
+            Text(
+              'RECOMMENDED',
+              style: TextStyle(
+                fontSize: context.rsp(11),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.accent,
+                letterSpacing: 0.6,
+              ),
+            ),
+            SizedBox(height: context.rh(6)),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: context.rsp(19),
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.charcoalInk,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.rw(8),
+                  vertical: context.rh(3),
+                ),
+                decoration: BoxDecoration(
+                  color: package.isPopular
+                      ? AppTheme.accent.withValues(alpha: 0.12)
+                      : AppTheme.warmMist,
+                  borderRadius: BorderRadius.circular(context.rr(8)),
+                ),
+                child: Text(
+                  package.tier.displayName,
+                  style: TextStyle(
+                    fontSize: context.rsp(10),
+                    fontWeight: FontWeight.w600,
+                    color: package.isPopular
+                        ? AppTheme.accent
+                        : AppTheme.mutedSteel,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: context.rh(8)),
+          Text(
+            formatGhs(package.price),
+            style: TextStyle(
+              fontSize: context.rsp(22),
+              fontWeight: FontWeight.w800,
+              color: AppTheme.charcoalInk,
+            ),
+          ),
+          SizedBox(height: context.rh(12)),
+          _PlanDetailRow(
+            icon: LucideIcons.clock,
+            label: 'Delivery',
+            value: package.deliveryTimeFormatted,
+          ),
+          SizedBox(height: context.rh(8)),
+          _PlanDetailRow(
+            icon: LucideIcons.refreshCw,
+            label: 'Revisions',
+            value: revisionsLabel,
+          ),
+          if (package.description.isNotEmpty) ...[
+            SizedBox(height: context.rh(12)),
+            Text(
+              package.description,
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                color: AppTheme.charcoalInk,
+                height: 1.5,
+              ),
+            ),
+          ],
+          SizedBox(height: context.rh(14)),
+          const Divider(color: AppTheme.whisperBorder, height: 1),
+          SizedBox(height: context.rh(14)),
+          Row(
+            children: [
+              Icon(
+                LucideIcons.sparkles,
+                size: context.ri(14),
+                color: package.isPopular
+                    ? AppTheme.accent
+                    : AppTheme.mutedSteel,
+              ),
+              SizedBox(width: context.rw(6)),
+              Expanded(
+                child: Text(
+                  '$name includes:',
+                  style: TextStyle(
+                    fontSize: context.rsp(12),
+                    fontWeight: FontWeight.w600,
                     color: AppTheme.charcoalInk,
                   ),
                 ),
-                SizedBox(width: context.rw(6)),
-                Text(
-                  package.revisions >= 99
-                      ? '• Unlimited revs'
-                      : '• ${package.revisions} rev${package.revisions == 1 ? '' : 's'}',
-                  style: TextStyle(
-                    fontSize: context.rsp(11),
-                    color: AppTheme.mutedSteel,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            if (package.description.isNotEmpty) ...[
-              SizedBox(height: context.rh(4)),
-              Text(
-                package.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: context.rsp(11),
-                  color: AppTheme.mutedSteel,
-                  height: 1.4,
-                ),
               ),
             ],
-            SizedBox(height: context.rh(14)),
-
-            // Call to Action Button
-            SizedBox(
-              width: double.infinity,
-              height: context.rh(40),
-              child: isPopular
-                  ? ShadButton(
-                      onPressed: isOwnService ? onSelect : onAction,
-                      child: Text(
-                        isOwnService ? 'Select Plan' : 'Get started',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    )
-                  : ShadButton.outline(
-                      onPressed: isOwnService ? onSelect : onAction,
-                      child: Text(
-                        isOwnService ? 'Select Plan' : 'Get started',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: isSelected
-                              ? AppTheme.accent
-                              : AppTheme.charcoalInk,
-                        ),
-                      ),
-                    ),
-            ),
-            SizedBox(height: context.rh(16)),
-
-            // Divider
-            const Divider(color: AppTheme.whisperBorder, height: 1),
-            SizedBox(height: context.rh(14)),
-
-            // Features header
-            Row(
-              children: [
-                Icon(
-                  LucideIcons.sparkles,
-                  size: context.ri(14),
-                  color: isPopular ? AppTheme.accent : AppTheme.mutedSteel,
-                ),
-                SizedBox(width: context.rw(6)),
-                Expanded(
-                  child: Text(
-                    '${package.name.isNotEmpty ? package.name : package.tier.displayName} includes:',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: context.rsp(12),
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.charcoalInk,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: context.rh(10)),
-
-            // Features list (vertically arranged)
-            if (package.features.isNotEmpty) ...[
-              for (final feature in package.features)
-                Padding(
-                  padding: EdgeInsets.only(bottom: context.rh(10)),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: EdgeInsets.only(top: context.rh(2)),
-                        child: Icon(
-                          LucideIcons.check,
-                          size: context.ri(15),
-                          color: isPopular
-                              ? AppTheme.accent
-                              : AppTheme.charcoalInk,
-                        ),
-                      ),
-                      SizedBox(width: context.rw(8)),
-                      Expanded(
-                        child: Text(
-                          feature,
-                          style: TextStyle(
-                            fontSize: context.rsp(12),
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.charcoalInk,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ] else ...[
+          ),
+          SizedBox(height: context.rh(10)),
+          if (package.features.isNotEmpty) ...[
+            for (final feature in package.features)
               Padding(
-                padding: EdgeInsets.only(bottom: context.rh(6)),
+                padding: EdgeInsets.only(bottom: context.rh(10)),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1390,13 +1274,15 @@ class _PlanCard extends StatelessWidget {
                       child: Icon(
                         LucideIcons.check,
                         size: context.ri(15),
-                        color: AppTheme.charcoalInk,
+                        color: package.isPopular
+                            ? AppTheme.accent
+                            : AppTheme.charcoalInk,
                       ),
                     ),
                     SizedBox(width: context.rw(8)),
                     Expanded(
                       child: Text(
-                        'Full delivery within ${package.deliveryTimeFormatted}',
+                        feature,
                         style: TextStyle(
                           fontSize: context.rsp(12),
                           fontWeight: FontWeight.w500,
@@ -1408,37 +1294,77 @@ class _PlanCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(top: context.rh(2)),
-                    child: Icon(
-                      LucideIcons.check,
-                      size: context.ri(15),
+          ] else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: context.rh(2)),
+                  child: Icon(
+                    LucideIcons.check,
+                    size: context.ri(15),
+                    color: AppTheme.charcoalInk,
+                  ),
+                ),
+                SizedBox(width: context.rw(8)),
+                Expanded(
+                  child: Text(
+                    'Full delivery within ${package.deliveryTimeFormatted}',
+                    style: TextStyle(
+                      fontSize: context.rsp(12),
+                      fontWeight: FontWeight.w500,
                       color: AppTheme.charcoalInk,
+                      height: 1.4,
                     ),
                   ),
-                  SizedBox(width: context.rw(8)),
-                  Expanded(
-                    child: Text(
-                      package.revisions >= 99
-                          ? 'Unlimited revisions included'
-                          : '${package.revisions} revision${package.revisions == 1 ? '' : 's'} included',
-                      style: TextStyle(
-                        fontSize: context.rsp(12),
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.charcoalInk,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+/// One labeled package fact (delivery, revisions), always shown in full.
+class _PlanDetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _PlanDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: context.ri(15), color: AppTheme.mutedSteel),
+        SizedBox(width: context.rw(8)),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              text: '$label: ',
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                fontWeight: FontWeight.w600,
+                color: AppTheme.charcoalInk,
+              ),
+              children: [
+                TextSpan(
+                  text: value,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
