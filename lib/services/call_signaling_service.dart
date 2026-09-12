@@ -32,8 +32,18 @@ class CallSignalingService {
   static String ringTopic(String userId) => '$_ringPrefix$userId';
   static String callTopic(String callId) => '$_callPrefix$callId';
 
-  static Map<String, dynamic> _unwrap(Map<String, dynamic> raw) {
-    // Supabase Realtime versions differ: some deliver {payload:{...}} envelope,
+  /// Yields to the event queue before touching the realtime client's
+  /// channel list. Incoming socket messages are dispatched by iterating
+  /// that list (`channels.where(...).forEach(trigger)`), so creating a
+  /// channel synchronously inside a message callback — e.g. answering a
+  /// second invite while busy — corrupts the in-flight iteration and
+  /// crashes with "Concurrent modification during iteration" (Dart
+  /// forbids mutating a collection while it is being iterated). Awaiting
+  /// this lets the dispatch finish first; all other callers only pay one
+  /// microtask.
+  static Future<void> _leaveRealtimeDispatch() => Future.microtask(() {});
+
+  static Map<String, dynamic> _unwrap(Map<String, dynamic> raw) {    // Supabase Realtime versions differ: some deliver {payload:{...}} envelope,
     // some deliver the payload directly. Handle both so invite/offer/answer are not lost.
     if (raw.containsKey('payload') && raw['payload'] is Map) {
       final hasDirectKeys = raw.containsKey('call_id') ||
@@ -77,6 +87,7 @@ class CallSignalingService {
 
       _ringUserId = userId;
       _ringHealthy = false;
+      await _leaveRealtimeDispatch();
       _ringChannel = _client.channel(
         ringTopic(userId),
         opts: const RealtimeChannelConfig(private: true),
@@ -184,6 +195,7 @@ class CallSignalingService {
       await leaveCallChannel(callId);
     }
 
+    await _leaveRealtimeDispatch();
     final newChannel = _client.channel(
       callTopic(callId),
       opts: const RealtimeChannelConfig(private: true),
@@ -259,6 +271,7 @@ class CallSignalingService {
     String event,
     Map<String, dynamic> payload,
   ) async {
+    await _leaveRealtimeDispatch();
     final channel = _client.channel(topic, opts: const RealtimeChannelConfig(private: true));
     try {
       final joined = Completer<bool>();

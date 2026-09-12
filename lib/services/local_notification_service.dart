@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:io' show Platform, File;
-import 'dart:ui' show Color;
+import 'dart:ui' show Color, DartPluginRegistrant;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'sound_service.dart';
 import 'supabase_service.dart';
+import 'system_call_ui_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +19,18 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final notification = message.notification;
   final type = data['type'] as String? ?? '';
   if (type == 'call' || data.containsKey('call_id')) {
+    // Background isolate: make sure plugin registrants (call UI) are
+    // available before touching them.
+    try {
+      DartPluginRegistrant.ensureInitialized();
+    } catch (_) {}
+    // WhatsApp-style system UI with the phone ringtone first; the local
+    // notification below is the fallback (bad id, plugin error, web).
+    final shown = await SystemCallUiService.showFromPush(
+      Map<String, dynamic>.from(data),
+      fallbackTitle: notification?.title,
+    );
+    if (shown) return;
     final callId = data['call_id'] as String? ?? 'incoming_call';
     final callerName = data['caller_name'] as String? ?? notification?.title ?? 'Instiy User';
     final callType = data['call_type'] as String? ?? 'voice';
@@ -562,6 +575,13 @@ class LocalNotificationService {
       final type = data['type'] as String? ?? '';
 
       if (type == 'call' || data.containsKey('call_id')) {
+        // Prefer the system call UI (phone ringtone + native screen);
+        // it no-ops when already showing this call (Realtime path won).
+        final shown = await SystemCallUiService.showFromPush(
+          Map<String, dynamic>.from(data),
+          fallbackTitle: notification?.title,
+        );
+        if (shown) return;
         final callId = data['call_id'] as String? ?? 'incoming_call';
         final callerName = data['caller_name'] as String? ?? notification?.title ?? 'Instiy User';
         final callType = data['call_type'] as String? ?? 'voice';

@@ -45,6 +45,8 @@ This file provides AI agents with a comprehensive reference of all packages used
 | firebase_messaging | ^16.2.2 | https://pub.dev/packages/firebase_messaging | Push notifications |
 | firebase_crashlytics | ^5.2.7 | https://pub.dev/packages/firebase_crashlytics | Crash reporting |
 | flutter_webrtc | ^1.6.0 | https://pub.dev/packages/flutter_webrtc | P2P voice/video calls (WebRTC). Signaling via Supabase Realtime private channels (`calls:<userId>` ring + `call:<callId>` media); RLS on `realtime.messages` required. TURN creds served through get-secrets (TURN_URL/USERNAME/CREDENTIAL env vars) |
+| flutter_callkit_incoming | ^3.1.5 | https://pub.dev/packages/flutter_callkit_incoming | WhatsApp-style incoming-call UI (native full-screen on Android, CallKit on iOS) ringing the phone's own ringtone (`system_ringtone_default`). Our signaling call id (UUID v4) is reused as the system call id; events (accept/decline/timeout/callback) are wired in `CallController`. iOS terminated-state needs PushKit + VoIP cert + server VoIP pushes (not wired yet). Release builds need the `com.hiennv.flutter_callkit_incoming` proguard keep rule (already in `android/app/proguard-rules.pro`) |
+| flutter_ringtone_player | ^4.0.0+4 | https://pub.dev/packages/flutter_ringtone_player | Fallback ringer: Android system ringtone when the system call UI can't be shown. iOS has no user-ringtone API — CallKit (above) is the only phone-ringtone path there |
 
 ### Image & Media
 | Package | Version | Docs URL | Notes |

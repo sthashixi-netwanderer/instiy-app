@@ -4,6 +4,9 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_callkit_incoming/entities/call_event.dart';
+import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,6 +17,7 @@ import '../services/local_notification_service.dart';
 import '../services/message_service.dart';
 import '../services/secrets_service.dart';
 import '../services/supabase_service.dart';
+import '../services/system_call_ui_service.dart';
 import '../services/webrtc_call_service.dart';
 
 class CallController extends ChangeNotifier {
@@ -25,6 +29,11 @@ class CallController extends ChangeNotifier {
   final FlutterRingtonePlayer _deviceRinger = FlutterRingtonePlayer();
   final Uuid _uuid = const Uuid();
   bool _deviceRingerActive = false;
+
+  /// Last missed incoming call, so the system missed-call "Call back"
+  /// action (which carries only the call id) can redial the caller.
+  Map<String, dynamic>? _lastMissedCall;
+  StreamSubscription<CallEvent?>? _systemUiSub;
 
   CallSession? _session;
   DateTime? _connectedAt;
@@ -73,6 +82,8 @@ class CallController extends ChangeNotifier {
       await _startRingListener(userId);
     }
 
+    unawaited(_initSystemCallUi());
+
     _authSub = SupabaseService.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       final newUserId = data.session?.user.id;
@@ -96,6 +107,127 @@ class CallController extends ChangeNotifier {
       userId,
       onInvite: (payload) => unawaited(_handleIncomingInvite(payload)),
       onCancel: (payload) => _handleIncomingCancelled(payload),
+    );
+  }
+
+  /// Subscribes to the OS call-UI events (accept/decline/timeout from the
+  /// native incoming screen) and drops orphaned system UI left by a
+  /// previous run — sessions never survive a restart.
+  Future<void> _initSystemCallUi() async {
+    if (!SystemCallUiService.isSupported) return;
+    await SystemCallUiService.clearAll();
+    await _systemUiSub?.cancel();
+    _systemUiSub = FlutterCallkitIncoming.onEvent.listen(
+      (event) {
+        final e = event;
+        if (e == null) return;
+        unawaited(_handleSystemCallEvent(e));
+      },
+      // The event channel throws here when the native side isn't
+      // registered (e.g. hot-restarted after adding the plugin instead
+      // of a full reinstall). Swallow it — event-driven accept/decline
+      // just won't arrive — instead of crashing the services library.
+      onError: (Object e) {
+        debugPrint('CallController: system call events unavailable: $e');
+      },
+    );
+  }
+
+  Future<void> _handleSystemCallEvent(CallEvent event) async {
+    switch (event) {
+      case CallEventActionCallAccept(:final callKitParams):
+        await _onSystemAccept(callKitParams);
+      case CallEventActionCallDecline(:final callKitParams):
+        await _onSystemDecline(callKitParams);
+      case CallEventActionCallTimeout(:final id):
+        _onSystemTimeout(id);
+      case CallEventActionCallEnded(:final callKitParams):
+        _onSystemEnded(callKitParams);
+      case CallEventActionCallCallback(:final id):
+        await _onSystemCallback(id);
+      default:
+        break;
+    }
+  }
+
+  Future<void> _onSystemAccept(CallKitParams params) async {
+    final session = _session;
+    if (session != null && session.id == params.id) {
+      if (session.isIncoming && session.isActiveOrRinging) {
+        await acceptCall();
+      }
+      return;
+    }
+    // Accepted from system UI for a call this isolate never saw (shown
+    // from the FCM background handler): rebuild like the open path.
+    if (hasActiveCall) return;
+    final extra = params.extra;
+    final callerId = extra?['caller_id'] as String?;
+    final me = currentUserId;
+    if (callerId == null || me == null || callerId == me) return;
+    _resetControlState();
+    final video = (extra?['call_type'] as String?) == 'video';
+    final reconstructed = CallSession(
+      id: params.id,
+      type: video ? CallType.video : CallType.audio,
+      isIncoming: true,
+      localUserId: me,
+      peerId: callerId,
+      peerName: (extra?['caller_name'] as String?) ?? 'Instiy User',
+      peerAvatar: extra?['caller_avatar'] as String?,
+      status: CallStatus.ringingIncoming,
+      createdAt: DateTime.now(),
+    );
+    _setSession(reconstructed);
+    await _joinChannelFor(reconstructed);
+    await acceptCall();
+  }
+
+  Future<void> _onSystemDecline(CallKitParams params) async {
+    final session = _session;
+    if (session == null || session.id != params.id) return;
+    if (session.isIncoming && session.isActiveOrRinging) {
+      await rejectCall();
+    }
+  }
+
+  void _onSystemTimeout(String id) {
+    // Remember who rang so "Call back" can redial, then run the same
+    // cleanup as a remote cancel; the caller's own timer ends their side.
+    final session = _session;
+    if (session != null && session.id == id && session.isIncoming) {
+      _lastMissedCall = {
+        'call_id': id,
+        'caller_id': session.peerId,
+        'caller_name': session.peerName,
+        'caller_avatar': session.peerAvatar,
+        'call_type': session.type == CallType.video ? 'video' : 'voice',
+      };
+    }
+    _handleIncomingCancelled({'call_id': id});
+  }
+
+  void _onSystemEnded(CallKitParams params) {
+    // endCall echoes back as an ended event — only act while still
+    // ringing locally; connected sessions end through signaling.
+    final session = _session;
+    if (session == null || session.id != params.id) return;
+    if (session.isIncoming && session.status == CallStatus.ringingIncoming) {
+      _handleIncomingCancelled({'call_id': params.id});
+    }
+  }
+
+  /// Missed-call "Call back" action — redials the stored caller.
+  Future<void> _onSystemCallback(String id) async {
+    final missed = _lastMissedCall;
+    if (missed == null || missed['call_id'] != id) return;
+    final peerId = missed['caller_id'] as String?;
+    if (peerId == null || hasActiveCall) return;
+    await startCall(
+      peerId: peerId,
+      peerName: missed['caller_name'] as String?,
+      peerAvatar: missed['caller_avatar'] as String?,
+      video: (missed['call_type'] as String?) == 'video',
     );
   }
 
@@ -408,21 +540,44 @@ class CallController extends ChangeNotifier {
     // Notify caller that receiver's device received the call and is ringing
     unawaited(_send('ringing', {'call_id': callId, 'by': me}));
 
-    // Show full-screen WhatsApp-style incoming call notification (silent —
-    // the device ringer started below is the sound source).
+    await _presentIncoming(session);
+    _armTimeout(CallEndReason.noAnswer);
+  }
+
+  /// WhatsApp-style incoming display: the OS call UI ringing the phone's
+  /// own ringtone. Falls back to the full-screen local notification plus
+  /// device-ringer/in-app sound when the system UI can't be shown.
+  Future<void> _presentIncoming(CallSession session) async {
+    final video = session.type == CallType.video;
+    final shown = await SystemCallUiService.showIncomingCall(
+      callId: session.id,
+      callerName: session.peerName ?? 'Instiy User',
+      callerAvatar: session.peerAvatar,
+      video: video,
+      extra: {
+        'call_id': session.id,
+        'caller_id': session.peerId,
+        'caller_name': session.peerName,
+        'caller_avatar': session.peerAvatar,
+        'call_type': video ? 'video' : 'voice',
+      },
+    );
+    if (shown) {
+      return;
+    }
+    // Fallback — previous behavior: silent local notification on Android
+    // (the device ringer started below is the sound source).
     unawaited(
       LocalNotificationService.showIncomingCallNotification(
-        callId: callId,
-        callerName: callerName ?? 'Instiy User',
-        callType: type == CallType.video ? 'video' : 'voice',
-        callerAvatar: callerAvatar,
-        callerId: callerId,
+        callId: session.id,
+        callerName: session.peerName ?? 'Instiy User',
+        callType: video ? 'video' : 'voice',
+        callerAvatar: session.peerAvatar,
+        callerId: session.peerId,
         silent: !kIsWeb && Platform.isAndroid,
       ),
     );
-
     await _playSound(outgoing: false);
-    _armTimeout(CallEndReason.noAnswer);
   }
 
   void _handleIncomingCancelled(Map<String, dynamic> payload) {
@@ -480,7 +635,7 @@ class CallController extends ChangeNotifier {
     } else {
       // 'open' — present the incoming-call UI and tell the caller we ring.
       unawaited(_send('ringing', {'call_id': callId, 'by': me}));
-      unawaited(_playSound(outgoing: false));
+      await _presentIncoming(reconstructed);
       _armTimeout(CallEndReason.noAnswer);
     }
   }
@@ -707,6 +862,9 @@ class CallController extends ChangeNotifier {
     final id = callId ?? _session?.id;
     if (id != null) {
       unawaited(LocalNotificationService.cancelCallNotification(id));
+      // Single choke point for dropping the system UI too — accept,
+      // reject, end, timeout and cancel all flow through here.
+      unawaited(SystemCallUiService.dismiss(id));
     }
   }
 
@@ -883,6 +1041,7 @@ class CallController extends ChangeNotifier {
   @override
   void dispose() {
     _authSub?.cancel();
+    unawaited(_systemUiSub?.cancel() ?? Future.value());
     _cancelTimeout();
     _endedFlashTimer.cancel();
     _ringPlayer.dispose();

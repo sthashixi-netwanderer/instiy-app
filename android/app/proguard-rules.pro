@@ -30,6 +30,10 @@
 # local_auth (biometrics)
 -keep class androidx.biometric.** { *; }
 
+# flutter_callkit_incoming (native incoming-call UI; keys are read
+# reflectively and must not be obfuscated in release builds)
+-keep class com.hiennv.flutter_callkit_incoming.** { *; }
+
 # Keep annotations & generic signatures used by JSON serialization / reflection
 -keepattributes *Annotation*
 -keepattributes Signature

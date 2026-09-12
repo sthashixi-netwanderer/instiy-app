@@ -37,6 +37,14 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   /// Index into the sorted packages list driving the plan tabs — the
   /// active tab is the plan quoted when contacting the provider.
   int _activePlanIndex = 0;
+
+  /// Slide direction of the plan panel transition: 1 when moving to a
+  /// later plan (slides in from the right), -1 when moving back.
+  int _planSlideDirection = 1;
+
+  /// Keys for the plan tabs so a panel swipe can scroll the newly
+  /// active tab back into view when tabs overflow the screen.
+  final Map<int, GlobalKey> _planTabKeys = {};
   int _galleryPage = 0;
   final ScrollController _scrollCtrl = ScrollController();
 
@@ -56,6 +64,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     try {
       final service = await ServiceService.getService(widget.serviceId);
       if (!mounted) return;
+      _planTabKeys.removeWhere(
+        (key, _) => key >= (service?.sortedPackages.length ?? 0),
+      );
       setState(() {
         _service = service;
         _isLoading = false;
@@ -88,7 +99,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     Navigator.of(
       context,
     ).pushNamed('/create-service', arguments: service).then((_) {
-      if (mounted) _loadService();
+      // Silent: edits now save in the background, so returning from the
+      // wizard must not flash a loader — fresh data arrives via the
+      // provider notification when the save lands.
+      if (mounted) _loadService(silent: true);
     });
   }
 
@@ -331,7 +345,39 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           SizedBox(height: context.rh(12)),
           _buildPlanTabs(packages, activeIndex),
           SizedBox(height: context.rh(12)),
-          _PlanDetailPanel(package: packages[activeIndex]),
+          GestureDetector(
+            // Swiping the panel switches plans exactly like tapping a tab.
+            onHorizontalDragEnd: (details) =>
+                _onPlanPanelSwiped(details, packages, activeIndex),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final slide = Tween<Offset>(
+                  begin: Offset(0.35 * _planSlideDirection, 0),
+                  end: Offset.zero,
+                ).animate(animation);
+                return ClipRect(
+                  child: SlideTransition(
+                    position: slide,
+                    child: FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    ),
+                  ),
+                );
+              },
+              child: _PlanDetailPanel(
+                key: ValueKey(
+                  packages[activeIndex].id ??
+                      '${packages[activeIndex].tier.name}:'
+                          '${packages[activeIndex].name}',
+                ),
+                package: packages[activeIndex],
+              ),
+            ),
+          ),
         ],
         SizedBox(height: context.rh(24)),
         if (service.providerName != null) _buildProviderCard(service),
@@ -589,9 +635,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 
   /// Plan tabs built from the package names, centered on screen —
-  /// tapping a tab switches the detail panel below it. No swiping; the
-  /// active tab is always the plan quoted when contacting the provider.
-  /// Tabs scroll horizontally if there are too many to fit at once.
+  /// tapping a tab or swiping the panel switches the detail below it.
+  /// The active tab is always the plan quoted when contacting the
+  /// provider. Tabs scroll horizontally if too many to fit at once.
   Widget _buildPlanTabs(List<ServicePackage> packages, int activeIndex) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -605,11 +651,12 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
               children: [
                 for (var i = 0; i < packages.length; i++) ...[
                   _PlanTab(
+                    key: _planTabKeys.putIfAbsent(i, () => GlobalKey()),
                     label: packages[i].name.isNotEmpty
                         ? packages[i].name
                         : packages[i].tier.displayName,
                     selected: i == activeIndex,
-                    onTap: () => setState(() => _activePlanIndex = i),
+                    onTap: () => _goToPlan(i),
                     isPopular: packages[i].isPopular,
                     tier: packages[i].tier,
                   ),
@@ -622,6 +669,42 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         );
       },
     );
+  }
+
+  /// Switches the active plan tab, optionally scrolling the tab row so
+  /// the newly active tab is visible after a panel swipe.
+  void _goToPlan(int index, {bool revealTab = false}) {
+    _planSlideDirection = index >= _activePlanIndex ? 1 : -1;
+    setState(() => _activePlanIndex = index);
+    if (!revealTab) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final tabContext = _planTabKeys[index]?.currentContext;
+      if (tabContext != null) {
+        Scrollable.ensureVisible(
+          tabContext,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  /// Swipe left for the next plan, right for the previous one. The tab
+  /// highlight, panel and contact reference all follow the active tab.
+  void _onPlanPanelSwiped(
+    DragEndDetails details,
+    List<ServicePackage> packages,
+    int activeIndex,
+  ) {
+    const minFlingVelocity = 300;
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity <= -minFlingVelocity && activeIndex < packages.length - 1) {
+      _goToPlan(activeIndex + 1, revealTab: true);
+    } else if (velocity >= minFlingVelocity && activeIndex > 0) {
+      _goToPlan(activeIndex - 1, revealTab: true);
+    }
   }
 
   Widget _buildProviderCard(Service service) {
@@ -1049,6 +1132,7 @@ class _PlanTab extends StatelessWidget {
   final ServiceTier tier;
 
   const _PlanTab({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -1131,7 +1215,7 @@ class _PlanTab extends StatelessWidget {
 class _PlanDetailPanel extends StatelessWidget {
   final ServicePackage package;
 
-  const _PlanDetailPanel({required this.package});
+  const _PlanDetailPanel({super.key, required this.package});
 
   @override
   Widget build(BuildContext context) {

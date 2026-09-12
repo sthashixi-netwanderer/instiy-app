@@ -15,6 +15,7 @@ import '../../models/category_model.dart';
 import '../../models/picked_media.dart';
 import '../../services/service_service.dart';
 import '../../services/service_draft_service.dart';
+import '../../services/supabase_service.dart';
 import '../../services/sound_service.dart';
 import '../../services/video_service.dart';
 import '../../widgets/media_viewer.dart';
@@ -440,12 +441,20 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
 
       if (_isEditing) {
         await _publishEdit(
+          serviceId: widget.existingService!.id,
           title: titleVal,
           description: descriptionVal,
           categoryId: categoryIdVal,
           categoryName: categoryNameVal,
           startingPrice: startingPrice,
           deliveryDays: deliveryDays,
+          newImages: newImagesCopy,
+          newVideos: newVideosCopy,
+          existingImageUrls: List<String>.from(_existingImageUrls),
+          existingVideoUrls: List<String>.from(_existingVideoUrls),
+          showOnClips: showOnClipsVal,
+          clipVideoExistingIndex: _clipVideoExistingIndex,
+          clipVideoNewIndex: clipVideoNewIdx,
           institutionCodes: institutionCodes,
           searchTags: tagsVal,
           packages: packageModels,
@@ -509,64 +518,162 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
     }
   }
 
-  /// Blocking save for edits — the provider stays on the wizard until it
-  /// lands, so failures can be corrected in place.
+  /// Fire-and-forget save for edits — the wizard pops immediately and the
+  /// upload + update run in the background (mirrors the create flow).
+  /// Edits don't use the single draft slot, so a failed edit reports
+  /// through an in-app notification instead of the status card.
   Future<void> _publishEdit({
+    required String serviceId,
     required String title,
     required String description,
     required String categoryId,
     required String categoryName,
     required double startingPrice,
     required int? deliveryDays,
+    required List<PickedMedia> newImages,
+    required List<PickedMedia> newVideos,
+    required List<String> existingImageUrls,
+    required List<String> existingVideoUrls,
+    required bool showOnClips,
+    required int clipVideoExistingIndex,
+    required int clipVideoNewIndex,
     required List<String> institutionCodes,
     required List<String> searchTags,
     required List<ServicePackage> packages,
   }) async {
-    // Upload newly picked images first.
-    final uploaded = await ServiceService.uploadServiceImages(_newImages);
-    final imageUrls = [..._existingImageUrls, ...uploaded];
-
-    // Compress (trimming to the first 30 seconds) and upload new videos.
-    final uploadedVideos = await ServiceService.uploadServiceVideos(
-      _newVideos,
-    );
-    final videoUrls = [..._existingVideoUrls, ...uploadedVideos];
-
-    final clipVideoUrlVal = _resolveClipVideoUrl(
-      existingVideoUrls: _existingVideoUrls,
-      uploadedVideoUrls: uploadedVideos,
-      showOnClips: _showOnClips,
-      clipVideoExistingIndex: _clipVideoExistingIndex,
-      clipVideoNewIndex: _clipVideoNewIndex,
-    );
-
     final provider = ref.read(serviceProvider);
-    final result = await provider.updateService(
-      widget.existingService!.id,
-      title: title,
-      description: description,
-      categoryId: categoryId,
-      categoryName: categoryName,
-      price: startingPrice,
-      deliveryDays: deliveryDays,
-      imageUrls: imageUrls,
-      videoUrls: videoUrls,
-      showOnClips: _showOnClips,
-      clipVideoUrl: clipVideoUrlVal,
-      institutionCodes: institutionCodes,
-      searchTags: searchTags,
-      packages: packages,
-    );
-
     if (!mounted) return;
-    if (result == true) {
-      ShadToaster.of(context).show(
-        const ShadToast(title: Text('Service updated')),
+    ShadToaster.of(context).show(
+      const ShadToast(title: Text('Saving your changes in the background…')),
+    );
+    Navigator.of(context).pop();
+
+    // Background save — no widget dependency.
+    unawaited(
+      _publishEditInBackground(
+        provider: provider,
+        serviceId: serviceId,
+        title: title,
+        description: description,
+        categoryId: categoryId,
+        categoryName: categoryName,
+        startingPrice: startingPrice,
+        deliveryDays: deliveryDays,
+        newImages: newImages,
+        newVideos: newVideos,
+        existingImageUrls: existingImageUrls,
+        existingVideoUrls: existingVideoUrls,
+        showOnClips: showOnClips,
+        clipVideoExistingIndex: clipVideoExistingIndex,
+        clipVideoNewIndex: clipVideoNewIndex,
+        institutionCodes: institutionCodes,
+        searchTags: searchTags,
+        packages: packages,
+      ),
+    );
+  }
+
+  /// Background edit save — uploads new media, updates the service, then
+  /// notifies the provider in-app. Success and failure both notify since
+  /// edits have no status card to report into.
+  static Future<void> _publishEditInBackground({
+    required ServiceProvider provider,
+    required String serviceId,
+    required String title,
+    required String description,
+    required String categoryId,
+    required String categoryName,
+    required double startingPrice,
+    required int? deliveryDays,
+    required List<PickedMedia> newImages,
+    required List<PickedMedia> newVideos,
+    required List<String> existingImageUrls,
+    required List<String> existingVideoUrls,
+    required bool showOnClips,
+    required int clipVideoExistingIndex,
+    required int clipVideoNewIndex,
+    required List<String> institutionCodes,
+    required List<String> searchTags,
+    required List<ServicePackage> packages,
+  }) async {
+    try {
+      // Upload newly picked images first.
+      final uploaded = await ServiceService.uploadServiceImages(newImages);
+      final imageUrls = [...existingImageUrls, ...uploaded];
+
+      // Compress (trimming to the first 30 seconds) and upload new videos.
+      final uploadedVideos = await ServiceService.uploadServiceVideos(
+        newVideos,
       );
-      Navigator.of(context).pop(true);
-    } else {
-      setState(() => _isPublishing = false);
-      _toast('Couldn\'t save the service: $result');
+      final videoUrls = [...existingVideoUrls, ...uploadedVideos];
+
+      final clipVideoUrlVal = _resolveClipVideoUrl(
+        existingVideoUrls: existingVideoUrls,
+        uploadedVideoUrls: uploadedVideos,
+        showOnClips: showOnClips,
+        clipVideoExistingIndex: clipVideoExistingIndex,
+        clipVideoNewIndex: clipVideoNewIndex,
+      );
+
+      final result = await provider.updateService(
+        serviceId,
+        title: title,
+        description: description,
+        categoryId: categoryId,
+        categoryName: categoryName,
+        price: startingPrice,
+        deliveryDays: deliveryDays,
+        imageUrls: imageUrls,
+        videoUrls: videoUrls,
+        showOnClips: showOnClips,
+        clipVideoUrl: clipVideoUrlVal,
+        institutionCodes: institutionCodes,
+        searchTags: searchTags,
+        packages: packages,
+      );
+      if (result != true) {
+        throw Exception(result.toString());
+      }
+
+      await _notifySelf(
+        title: 'Service updated',
+        body: '"$title" — your changes are live.',
+        type: 'service_updated',
+        data: {'service_id': serviceId, 'type': 'service_updated'},
+      );
+    } catch (e) {
+      debugPrint('Background service edit error: $e');
+      await _notifySelf(
+        title: 'Service update failed',
+        body: '"$title" couldn\'t be saved. Open the service to try again.',
+        type: 'service_update_failed',
+        data: {'service_id': serviceId, 'type': 'service_update_failed'},
+      );
+    }
+  }
+
+  /// In-app notification to the signed-in provider, sent when a background
+  /// create or edit finishes. Goes through the create_notification RPC
+  /// (direct notification inserts are blocked by RLS); the service type
+  /// keeps it under the Services scope with deep routing.
+  static Future<void> _notifySelf({
+    required String title,
+    required String body,
+    required String type,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final userId = SupabaseService.auth.currentUser?.id;
+      if (userId == null) return;
+      await SupabaseService.client.rpc('create_notification', params: {
+        'p_user_id': userId,
+        'p_title': title,
+        'p_body': body,
+        'p_type': type,
+        'p_data': data ?? {},
+      });
+    } catch (e) {
+      debugPrint('Service publish notification failed: $e');
     }
   }
 
@@ -701,6 +808,12 @@ class _CreateServiceScreenState extends ConsumerState<CreateServiceScreen> {
       await ServiceDraftService.clearDraft();
       provider.updatePublishingServiceDraft(null, progress: 1);
       unawaited(SoundService.playProductListedSound());
+      await _notifySelf(
+        title: 'Your service is live',
+        body: '"$title" is now visible to customers.',
+        type: 'service_published',
+        data: {'type': 'service_published'},
+      );
     } catch (e) {
       debugPrint('Background service publish error: $e');
       final failedDraft = draft.copyWith(
