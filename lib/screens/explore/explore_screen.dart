@@ -1714,7 +1714,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                               ListTile(
                                 leading: Icon(
                                   _categoryId == null
-                                      ? LucideIcons.checkCircle
+                                      ? LucideIcons.checkCircle2
                                       : LucideIcons.circle,
                                   color: _categoryId == null
                                       ? AppTheme.accent
@@ -1738,7 +1738,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                                 (cat) => ListTile(
                                   leading: Icon(
                                     _categoryId == cat.id
-                                        ? LucideIcons.checkCircle
+                                        ? LucideIcons.checkCircle2
                                         : LucideIcons.circle,
                                     color: _categoryId == cat.id
                                         ? AppTheme.accent

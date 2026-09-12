@@ -93,6 +93,7 @@ const SCREEN_GROUPS: { group: string; screens: { path: string; label: string }[]
     group: 'Discover',
     screens: [
       { path: '/product', label: 'Product Detail' },
+      { path: '/service-detail', label: 'Service Detail' },
       { path: '/curated-collection', label: 'Curated Collection' },
     ],
   },

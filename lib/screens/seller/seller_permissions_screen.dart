@@ -649,7 +649,7 @@ class _PermissionResultCardState extends State<_PermissionResultCard> {
           if (widget.permissionStatus == 'pending') ...[
             const Row(
               children: [
-                Icon(LucideIcons.alertCircle,
+                Icon(LucideIcons.circleAlert,
                     size: 16, color: Colors.orange),
                 SizedBox(width: 6),
                 Text(

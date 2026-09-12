@@ -38,6 +38,7 @@ import 'screens/wallet/wallet_screen.dart';
 import 'screens/orders/orders_screen.dart';
 import 'screens/services/services_screen.dart';
 import 'screens/services/service_detail_screen.dart';
+import 'screens/services/service_provider_screen.dart';
 import 'screens/services/create_service_screen.dart';
 import 'models/service_model.dart';
 import 'screens/wishlist/wishlist_screen.dart';
@@ -475,6 +476,13 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                   if (sellerId.isNotEmpty) {
                     return route(BusinessProfileScreen(sellerId: sellerId));
                   }
+                } else if (uri.path.startsWith('/provider/')) {
+                  final providerId = uri.pathSegments.length > 1
+                      ? uri.pathSegments[1]
+                      : '';
+                  if (providerId.isNotEmpty) {
+                    return route(ServiceProviderScreen(providerId: providerId));
+                  }
                 }
               }
               // Handle deep link io.supabase.instiy://referral or instiy://referral
@@ -501,6 +509,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                   return route(BusinessProfileScreen(sellerId: sellerId));
                 }
               }
+              // Handle deep link io.supabase.instiy://provider/<providerId>
+              if (uri.scheme == 'io.supabase.instiy' && uri.host == 'provider') {
+                final providerId = uri.pathSegments.isNotEmpty
+                    ? uri.pathSegments.first
+                    : '';
+                if (providerId.isNotEmpty) {
+                  return route(ServiceProviderScreen(providerId: providerId));
+                }
+              }
               // Also support path-only formats (like '/store/<sellerId>')
               if (uri.path.startsWith('/store/')) {
                 final sellerId = uri.pathSegments.length > 1
@@ -508,6 +525,15 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
                     : '';
                 if (sellerId.isNotEmpty) {
                   return route(BusinessProfileScreen(sellerId: sellerId));
+                }
+              }
+              // Also support path-only formats (like '/provider/<providerId>')
+              if (uri.path.startsWith('/provider/')) {
+                final providerId = uri.pathSegments.length > 1
+                    ? uri.pathSegments[1]
+                    : '';
+                if (providerId.isNotEmpty) {
+                  return route(ServiceProviderScreen(providerId: providerId));
                 }
               }
               // Handle deep link io.supabase.instiy://product/<productId>
@@ -758,6 +784,9 @@ class _InstiyAppState extends State<InstiyApp> with WidgetsBindingObserver {
             case '/business-profile':
               final sellerId = settings.arguments as String;
               return route(BusinessProfileScreen(sellerId: sellerId));
+            case '/service-provider':
+              final providerId = settings.arguments as String;
+              return route(ServiceProviderScreen(providerId: providerId));
             case '/edit-business-profile':
               final existingProfile = settings.arguments as BusinessProfile?;
               return route(

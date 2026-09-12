@@ -284,7 +284,7 @@ class _ServiceReviewCard extends StatelessWidget {
               if (isOwn)
                 PopupMenuButton<String>(
                   icon: Icon(
-                    LucideIcons.moreVertical,
+                    LucideIcons.ellipsis,
                     size: context.ri(18),
                     color: AppTheme.mutedSteel,
                   ),

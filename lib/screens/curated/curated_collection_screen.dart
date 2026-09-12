@@ -220,7 +220,7 @@ class _CuratedCollectionScreenState
           vertical: context.rh(32),
         ),
         child: EmptyState(
-          icon: LucideIcons.alertCircle,
+          icon: LucideIcons.circleAlert,
           title: 'Failed to load collection',
           description:
               ref.watch(curatedProvider).error ?? 'Please try again later',

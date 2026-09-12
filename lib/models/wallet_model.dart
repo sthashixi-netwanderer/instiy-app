@@ -118,14 +118,18 @@ class WithdrawalRequest {
 class PendingOrderEarning {
   final String orderItemId;
   final String orderId;
+  final String? productId;
   final String productTitle;
+  final String? productThumbnail;
   final double amount;
   final DateTime createdAt;
 
   PendingOrderEarning({
     required this.orderItemId,
     required this.orderId,
+    this.productId,
     required this.productTitle,
+    this.productThumbnail,
     required this.amount,
     required this.createdAt,
   });
@@ -134,7 +138,9 @@ class PendingOrderEarning {
     return PendingOrderEarning(
       orderItemId: json['order_item_id'] as String,
       orderId: json['order_id'] as String,
+      productId: json['product_id'] as String?,
       productTitle: json['product_title'] as String? ?? '',
+      productThumbnail: json['product_thumbnail'] as String?,
       amount: (json['amount'] as num?)?.toDouble() ?? 0,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)

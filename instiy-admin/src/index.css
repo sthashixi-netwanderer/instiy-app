@@ -172,6 +172,8 @@ button, input, select, textarea {
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-item a {

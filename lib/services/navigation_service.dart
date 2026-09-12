@@ -67,6 +67,20 @@ class NavigationService {
     });
   }
 
+  /// Navigate to a service provider screen.
+  static void _navigateToServiceProvider(String providerId) {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) return;
+
+    navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final nav = navigatorKey.currentState;
+      if (nav != null) {
+        nav.pushNamed('/service-provider', arguments: providerId);
+      }
+    });
+  }
+
   /// Referral link (https://instiy.com/referral?code=XXXX): signed-out
   /// users land on register with the code pre-filled; signed-in users
   /// land on their own referral screen.
@@ -181,11 +195,17 @@ class NavigationService {
       } else if (uri.path.startsWith('/store/')) {
         routeName = '/business-profile';
         arguments = uri.pathSegments.length > 1 ? uri.pathSegments[1] : '';
+      } else if (uri.path.startsWith('/provider/')) {
+        routeName = '/service-provider';
+        arguments = uri.pathSegments.length > 1 ? uri.pathSegments[1] : '';
       }
     }
     // Custom scheme: io.supabase.instiy://
     else if (uri.scheme == 'io.supabase.instiy' && uri.host == 'store') {
       routeName = '/business-profile';
+      arguments = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+    } else if (uri.scheme == 'io.supabase.instiy' && uri.host == 'provider') {
+      routeName = '/service-provider';
       arguments = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
     } else if (uri.scheme == 'io.supabase.instiy' && uri.host == 'product') {
       routeName = '/product';
@@ -209,6 +229,9 @@ class NavigationService {
     } else if (uri.path.startsWith('/store/')) {
       routeName = '/business-profile';
       arguments = uri.pathSegments.length > 1 ? uri.pathSegments[1] : '';
+    } else if (uri.path.startsWith('/provider/')) {
+      routeName = '/service-provider';
+      arguments = uri.pathSegments.length > 1 ? uri.pathSegments[1] : '';
     }
     // Edge function share-product link
     else if (uri.path.contains('/functions/v1/share-product')) {
@@ -227,6 +250,8 @@ class NavigationService {
         _navigateToProduct(arguments);
       } else if (routeName == '/business-profile') {
         _navigateToBusinessProfile(arguments);
+      } else if (routeName == '/service-provider') {
+        _navigateToServiceProvider(arguments);
       }
     }
   }

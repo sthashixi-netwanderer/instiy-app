@@ -13,8 +13,10 @@ import '../../config/app_theme.dart';
 import '../../widgets/required_label.dart';
 import '../../widgets/skeleton.dart';
 import '../../services/wallet_service.dart';
+import '../../services/seller_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/wallet_lock_service.dart';
+import '../seller/scanner_screen.dart';
 import 'wallet_tag_screen.dart';
 import 'transaction_detail_screen.dart';
 
@@ -362,72 +364,77 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   }
 
   void _showPendingBreakdown(BuildContext context, WalletProvider provider) {
-    final withdrawals = provider.pendingWithdrawals;
-    final earnings = provider.pendingOrderEarnings;
     showShadSheet(
       context: context,
-      builder: (ctx) => ShadSheet(
-        title: const Text('Pending Balance'),
-        description: Text(
-          '${formatGhs(provider.pendingBalance)} not yet available — withdrawal holds and order earnings awaiting delivery.',
-        ),
-        child: withdrawals.isEmpty && earnings.isEmpty
-            ? Padding(
-                padding: EdgeInsets.symmetric(vertical: context.rh(24)),
-                child: Center(
-                  child: Text(
-                    'No pending activities.\nYour full balance is available.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppTheme.mutedSteel,
-                      fontSize: context.rsp(13),
-                    ),
-                  ),
-                ),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // The sheet's child scrolls as a whole, so no inner
-                  // viewport here — a ListView would get unbounded height.
-                  if (earnings.isNotEmpty) ...[
-                    _buildSectionHeader(
-                      'Order earnings awaiting delivery (${earnings.length})',
-                    ),
-                    ...earnings.map(_buildPendingEarningCard),
-                    SizedBox(height: context.rh(16)),
-                  ],
-                  if (withdrawals.isNotEmpty) ...[
-                    _buildSectionHeader(
-                      'Withdrawals in progress (${withdrawals.length})',
-                    ),
-                    ...withdrawals.map(_buildPendingWithdrawalCard),
-                    SizedBox(height: context.rh(12)),
-                  ],
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total pending',
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final liveProvider = ref.watch(walletProvider);
+          final withdrawals = liveProvider.pendingWithdrawals;
+          final earnings = liveProvider.pendingOrderEarnings;
+          return ShadSheet(
+            title: const Text('Pending Balance'),
+            description: Text(
+              '${formatGhs(liveProvider.pendingBalance)} not yet available — withdrawal holds and order earnings awaiting delivery.',
+            ),
+            child: withdrawals.isEmpty && earnings.isEmpty
+                ? Padding(
+                    padding: EdgeInsets.symmetric(vertical: context.rh(24)),
+                    child: Center(
+                      child: Text(
+                        'No pending activities.\nYour full balance is available.',
+                        textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: context.rsp(14),
-                          color: AppTheme.charcoalInk,
+                          color: AppTheme.mutedSteel,
+                          fontSize: context.rsp(13),
                         ),
                       ),
-                      Text(
-                        formatGhs(provider.pendingBalance),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: context.rsp(15),
-                          color: AppTheme.warningAmber,
+                    ),
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // The sheet's child scrolls as a whole, so no inner
+                      // viewport here — a ListView would get unbounded height.
+                      if (earnings.isNotEmpty) ...[
+                        _buildSectionHeader(
+                          'Order earnings awaiting delivery (${earnings.length})',
                         ),
+                        ...earnings.map(_buildPendingEarningCard),
+                        SizedBox(height: context.rh(16)),
+                      ],
+                      if (withdrawals.isNotEmpty) ...[
+                        _buildSectionHeader(
+                          'Withdrawals in progress (${withdrawals.length})',
+                        ),
+                        ...withdrawals.map(_buildPendingWithdrawalCard),
+                        SizedBox(height: context.rh(12)),
+                      ],
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total pending',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: context.rsp(14),
+                              color: AppTheme.charcoalInk,
+                            ),
+                          ),
+                          Text(
+                            formatGhs(liveProvider.pendingBalance),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: context.rsp(15),
+                              color: AppTheme.warningAmber,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+          );
+        },
       ),
     );
   }
@@ -447,66 +454,488 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   }
 
   Widget _buildPendingEarningCard(PendingOrderEarning e) {
-    return Container(
-      margin: EdgeInsets.only(bottom: context.rh(8)),
-      padding: context.rAll(12),
-      decoration: BoxDecoration(
-        color: AppTheme.warmMist,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showDeliveryConfirmationOptions(context, e),
         borderRadius: BorderRadius.circular(context.rr(12)),
-        border: Border.all(color: AppTheme.whisperBorder),
+        child: Container(
+          margin: EdgeInsets.only(bottom: context.rh(8)),
+          padding: context.rAll(12),
+          decoration: BoxDecoration(
+            color: AppTheme.warmMist,
+            borderRadius: BorderRadius.circular(context.rr(12)),
+            border: Border.all(color: AppTheme.whisperBorder),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(context.rr(10)),
+                child: (e.productThumbnail != null &&
+                        e.productThumbnail!.isNotEmpty)
+                    ? CachedNetworkImage(
+                        imageUrl: e.productThumbnail!,
+                        width: context.rw(46),
+                        height: context.rw(46),
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) => Container(
+                          width: context.rw(46),
+                          height: context.rw(46),
+                          color: AppTheme.whisperBorder.withValues(alpha: 0.3),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (_, _, _) =>
+                            _buildFallbackProductIcon(),
+                      )
+                    : _buildFallbackProductIcon(),
+              ),
+              SizedBox(width: context.rw(12)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      e.productTitle,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: context.rsp(13),
+                        color: AppTheme.charcoalInk,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: context.rh(2)),
+                    Text(
+                      'Tap to confirm delivery • ${DateFormat('MMM d, yyyy').format(e.createdAt)}',
+                      style: TextStyle(
+                        fontSize: context.rsp(11),
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: context.rw(8)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    formatGhs(e.amount),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: context.rsp(13),
+                      color: AppTheme.charcoalInk,
+                    ),
+                  ),
+                  SizedBox(height: context.rh(2)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.scanLine,
+                        size: context.ri(11),
+                        color: AppTheme.accent,
+                      ),
+                      SizedBox(width: context.rw(3)),
+                      Text(
+                        'Verify',
+                        style: TextStyle(
+                          fontSize: context.rsp(10),
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
-      child: Row(
+    );
+  }
+
+  Widget _buildFallbackProductIcon() {
+    return Container(
+      width: context.rw(46),
+      height: context.rw(46),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(context.rr(10)),
+      ),
+      child: Icon(
+        LucideIcons.package,
+        color: AppTheme.accent,
+        size: context.ri(20),
+      ),
+    );
+  }
+
+  void _showDeliveryConfirmationOptions(
+    BuildContext context,
+    PendingOrderEarning earning,
+  ) {
+    AppTheme.showGlassDialog(
+      context: context,
+      title: const Text('Confirm Delivery'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: context.rAll(8),
+            padding: context.rAll(10),
             decoration: BoxDecoration(
-              color: AppTheme.accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(context.rr(10)),
+              color: AppTheme.warmMist,
+              borderRadius: BorderRadius.circular(context.rr(12)),
+              border: Border.all(color: AppTheme.whisperBorder),
             ),
-            child: Icon(
-              LucideIcons.package,
-              color: AppTheme.accent,
-              size: context.ri(18),
-            ),
-          ),
-          SizedBox(width: context.rw(12)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  e.productTitle,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: context.rsp(13),
-                    color: AppTheme.charcoalInk,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(context.rr(8)),
+                  child: (earning.productThumbnail != null &&
+                          earning.productThumbnail!.isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: earning.productThumbnail!,
+                          width: context.rw(44),
+                          height: context.rw(44),
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) => Container(
+                            width: context.rw(44),
+                            height: context.rw(44),
+                            color:
+                                AppTheme.whisperBorder.withValues(alpha: 0.3),
+                          ),
+                          errorWidget: (_, _, _) =>
+                              _buildFallbackProductIcon(),
+                        )
+                      : _buildFallbackProductIcon(),
                 ),
-                SizedBox(height: context.rh(2)),
-                Text(
-                  'Credited after delivery is verified • '
-                  '${DateFormat('MMM d, yyyy').format(e.createdAt)}',
-                  style: TextStyle(
-                    fontSize: context.rsp(11),
-                    color: AppTheme.mutedSteel,
+                SizedBox(width: context.rw(10)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        earning.productTitle,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: context.rsp(13),
+                          color: AppTheme.charcoalInk,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: context.rh(2)),
+                      Text(
+                        'Releases ${formatGhs(earning.amount)} to wallet',
+                        style: TextStyle(
+                          fontSize: context.rsp(11),
+                          color: AppTheme.successMoss,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
+          SizedBox(height: context.rh(16)),
           Text(
-            formatGhs(e.amount),
+            'Confirm delivery with the buyer to release escrow funds:',
             style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: context.rsp(13),
-              color: AppTheme.charcoalInk,
+              fontSize: context.rsp(12),
+              color: AppTheme.mutedSteel,
+            ),
+          ),
+          SizedBox(height: context.rh(12)),
+          // Option 1: Scan QR Code
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).pop();
+                _scanDeliveryQrForEarning(earning);
+              },
+              borderRadius: BorderRadius.circular(context.rr(12)),
+              child: Container(
+                padding: context.rAll(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.pureSurface,
+                  borderRadius: BorderRadius.circular(context.rr(12)),
+                  border: Border.all(color: AppTheme.whisperBorder),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: context.rAll(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(context.rr(10)),
+                      ),
+                      child: Icon(
+                        LucideIcons.scanLine,
+                        color: AppTheme.accent,
+                        size: context.ri(20),
+                      ),
+                    ),
+                    SizedBox(width: context.rw(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Scan QR Code',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: context.rsp(13),
+                              color: AppTheme.charcoalInk,
+                            ),
+                          ),
+                          Text(
+                            'Scan buyer\'s delivery QR code',
+                            style: TextStyle(
+                              fontSize: context.rsp(11),
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      LucideIcons.chevronRight,
+                      size: context.ri(16),
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: context.rh(8)),
+          // Option 2: Enter Delivery Code
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).pop();
+                _showManualDeliveryCodeDialog(earning);
+              },
+              borderRadius: BorderRadius.circular(context.rr(12)),
+              child: Container(
+                padding: context.rAll(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.pureSurface,
+                  borderRadius: BorderRadius.circular(context.rr(12)),
+                  border: Border.all(color: AppTheme.whisperBorder),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: context.rAll(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.successMoss.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(context.rr(10)),
+                      ),
+                      child: Icon(
+                        LucideIcons.keyboard,
+                        color: AppTheme.successMoss,
+                        size: context.ri(20),
+                      ),
+                    ),
+                    SizedBox(width: context.rw(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Enter Delivery Code',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: context.rsp(13),
+                              color: AppTheme.charcoalInk,
+                            ),
+                          ),
+                          Text(
+                            'Type 6-character code from buyer',
+                            style: TextStyle(
+                              fontSize: context.rsp(11),
+                              color: AppTheme.mutedSteel,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      LucideIcons.chevronRight,
+                      size: context.ri(16),
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
       ),
+      actions: [
+        ShadButton.ghost(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
+  }
+
+  Future<void> _scanDeliveryQrForEarning(PendingOrderEarning earning) async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const ScannerScreen(
+          autoClose: true,
+          title: 'Scan Delivery QR',
+          subtitle: 'Point camera at buyer QR or product delivery code',
+        ),
+      ),
+    );
+    if (!mounted || code == null || code.trim().isEmpty) return;
+    await _verifyDeliveryCode(earning, code.trim());
+  }
+
+  void _showManualDeliveryCodeDialog(PendingOrderEarning earning) {
+    final codeController = TextEditingController();
+    AppTheme.showGlassDialog(
+      context: context,
+      title: const Text('Enter Delivery Code'),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter the 6-character delivery code provided by the buyer for "${earning.productTitle}".',
+              style: TextStyle(
+                fontSize: context.rsp(13),
+                color: AppTheme.mutedSteel,
+              ),
+            ),
+            SizedBox(height: context.rh(16)),
+            ShadInput(
+              controller: codeController,
+              placeholder: const Text('e.g. X7K9M2'),
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 6,
+              style: TextStyle(
+                fontSize: context.rsp(22),
+                letterSpacing: 4,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        ShadButton.ghost(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        AnimatedBuilder(
+          animation: codeController,
+          builder: (dialogCtx, _) {
+            final canVerify = codeController.text.trim().isNotEmpty;
+            return ShadButton(
+              backgroundColor: AppTheme.successMoss,
+              foregroundColor: Colors.white,
+              enabled: canVerify,
+              onPressed: canVerify
+                  ? () {
+                      final enteredCode = codeController.text.trim();
+                      Navigator.of(dialogCtx).pop();
+                      _verifyDeliveryCode(earning, enteredCode);
+                    }
+                  : null,
+              child: const Text('Verify'),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<void> _verifyDeliveryCode(
+    PendingOrderEarning earning,
+    String rawCode,
+  ) async {
+    final normalized = rawCode.replaceAll(RegExp(r'\s+'), '');
+    const gqrPrefix = 'instiy-gqr:';
+
+    try {
+      Map<String, dynamic> result;
+      if (normalized.toLowerCase().startsWith(gqrPrefix)) {
+        final buyerId = normalized.substring(gqrPrefix.length);
+        result = await SellerService.verifyBuyerDeliveries(
+          buyerId,
+          [earning.orderItemId],
+        );
+      } else {
+        String cleanCode = normalized;
+        if (cleanCode.toLowerCase().startsWith('instiy-code:')) {
+          cleanCode = cleanCode.substring('instiy-code:'.length);
+        } else if (cleanCode.toLowerCase().startsWith('instiy-item:')) {
+          cleanCode = cleanCode.substring('instiy-item:'.length);
+        } else if (cleanCode.toLowerCase().startsWith('code:')) {
+          cleanCode = cleanCode.substring('code:'.length);
+        }
+        cleanCode = cleanCode.toUpperCase();
+        result = await SellerService.verifyDelivery(
+          earning.orderItemId,
+          cleanCode,
+        );
+      }
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        final amount =
+            (result['amount'] as num?)?.toDouble() ?? earning.amount;
+        ShadToaster.of(context).show(
+          ShadToast(
+            backgroundColor: AppTheme.successMoss,
+            title: Text(
+              'Verified! ${formatGhs(amount)} released to wallet.',
+            ),
+          ),
+        );
+        await ref.read(walletProvider).loadWallet();
+      } else {
+        ShadToaster.of(context).show(
+          ShadToast(
+            backgroundColor: AppTheme.destructive,
+            title: Text(result['error'] as String? ?? 'Verification failed'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ShadToaster.of(context).show(
+        ShadToast(
+          backgroundColor: AppTheme.destructive,
+          title: Text('Error verifying delivery: $e'),
+        ),
+      );
+    }
   }
 
   Widget _buildPendingWithdrawalCard(WithdrawalRequest w) {

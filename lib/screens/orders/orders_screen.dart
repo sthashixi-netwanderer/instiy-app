@@ -427,7 +427,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                         height: MediaQuery.of(context).size.height * 0.12,
                       ),
                       EmptyState(
-                        icon: LucideIcons.package,
+                        icon: LucideIcons.shoppingBag,
                         title: emptyTitle,
                         description: query.isNotEmpty
                             ? 'No orders match "$query"'

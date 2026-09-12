@@ -2253,7 +2253,7 @@ class _MyServiceCard extends StatelessWidget {
               child: Container(
                 padding: context.rAll(6),
                 child: Icon(
-                  LucideIcons.moreVertical,
+                  LucideIcons.ellipsis,
                   size: context.ri(18),
                   color: AppTheme.mutedSteel,
                 ),

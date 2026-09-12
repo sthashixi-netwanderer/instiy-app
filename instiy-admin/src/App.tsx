@@ -23,6 +23,7 @@ import { ReferralSettings } from "./pages/ReferralSettings";
 
 import { Routes, Route, Navigate, useLocation, Link } from "react-router-dom";
 import { OfflineBanner } from "./components/offline-banner";
+import { InstallBanner } from "./components/install-banner";
 
 	import {
 		Shield,
@@ -180,7 +181,12 @@ export const App: React.FC = () => {
 	}
 
 	if (!sessionUser) {
-		return <Login onLoginSuccess={(uid) => setSessionUser(uid)} />;
+		return (
+			<>
+				<InstallBanner />
+				<Login onLoginSuccess={(uid) => setSessionUser(uid)} />
+			</>
+		);
 	}
 
 	interface NavItem {
@@ -459,6 +465,7 @@ export const App: React.FC = () => {
 
 			{/* Main Content */}
 			<main className="main-content" id="main-content-layout">
+				<InstallBanner />
 				<OfflineBanner />
 				<Routes>
 					<Route path="/" element={<Navigate to="/dashboard" replace />} />

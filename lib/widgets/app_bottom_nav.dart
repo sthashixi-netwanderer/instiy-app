@@ -185,7 +185,7 @@ class AppBottomNav extends ConsumerWidget {
                             isAuth,
                             4,
                             LucideIcons.messageSquare,
-                            'Messages',
+                            'Chats',
                             badgeCount: unreadCount,
                             svgAsset:
                                 'assets/message-2-pending-svgrepo-com.svg',

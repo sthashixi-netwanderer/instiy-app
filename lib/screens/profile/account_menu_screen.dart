@@ -7,6 +7,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
 import '../../providers/providers.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/formatters.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/animated_press.dart';
 import '../../widgets/verification_badge.dart';
@@ -28,6 +29,14 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
   void initState() {
     super.initState();
     _loadBusinessName();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(authProvider).user == null) return;
+      final walletProv = ref.read(walletProvider);
+      if (walletProv.wallet == null && !walletProv.isLoading) {
+        unawaited(walletProv.silentRefresh());
+      }
+    });
   }
 
   Future<void> _loadBusinessName() async {
@@ -74,6 +83,7 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
     required String label,
     required VoidCallback onTap,
     bool highlight = false,
+    Widget? trailing,
   }) {
     final color = highlight ? AppTheme.accent : AppTheme.mutedSteel;
     return AnimatedPress(
@@ -104,6 +114,10 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                 ),
               ),
             ),
+            if (trailing != null) ...[
+              SizedBox(width: context.rw(8)),
+              trailing,
+            ],
           ],
         ),
       ),
@@ -113,6 +127,7 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    final walletProv = ref.watch(walletProvider);
     final user = auth.user;
     final isSeller = user?.isSeller == true;
     final displayName = _businessName ?? user?.fullName ?? 'Account';
@@ -244,7 +259,7 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                           ),
                         ),
                         child: Icon(
-                          LucideIcons.penLine,
+                          LucideIcons.pencil,
                           size: context.ri(17),
                           color: AppTheme.accent,
                         ),
@@ -360,6 +375,22 @@ class _AccountMenuScreenState extends ConsumerState<AccountMenuScreen> {
                       icon: LucideIcons.wallet,
                       label: 'Wallet',
                       onTap: () => Navigator.of(context).pushNamed('/wallet'),
+                      trailing: walletProv.wallet == null
+                          ? Text(
+                              '…',
+                              style: TextStyle(
+                                fontSize: context.rsp(13),
+                                color: AppTheme.mutedSteel,
+                              ),
+                            )
+                          : Text(
+                              formatGhs(walletProv.availableBalance),
+                              style: TextStyle(
+                                fontSize: context.rsp(13),
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.charcoalInk,
+                              ),
+                            ),
                     ),
                     Divider(
                       height: 1,

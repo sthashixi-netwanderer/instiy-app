@@ -1162,7 +1162,7 @@ class _PaymentOption extends StatelessWidget {
               ),
             ),
             if (isSelected)
-              Icon(LucideIcons.check, color: AppTheme.accent, size: context.ri(20)),
+              Icon(LucideIcons.checkCircle2, color: AppTheme.accent, size: context.ri(20)),
           ],
         ),
       ),
@@ -1207,7 +1207,7 @@ class _DeliveryOption extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              isSelected ? LucideIcons.check : LucideIcons.circle,
+              isSelected ? LucideIcons.checkCircle2 : LucideIcons.circle,
               color: isSelected ? effectiveColor : AppTheme.mutedSteel,
               size: context.ri(20),
             ),

@@ -189,7 +189,7 @@ class AppTopNav extends ConsumerWidget {
                   ),
                 _buildNavItem(
                   icon: LucideIcons.messageSquare,
-                  label: 'Messages',
+                  label: 'Chats',
                   active: currentIndex == 4,
                   badgeCount: unreadCount,
                   onTap: _tabTap(

@@ -644,41 +644,61 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   }
 
   Widget _buildProviderCard(Service service) {
-    return Container(
-      padding: context.rAll(16),
-      decoration: BoxDecoration(
-        color: AppTheme.warmMist,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // Tapping the provider section opens their public storefront.
+        onTap: () => Navigator.of(context).pushNamed(
+          '/service-provider',
+          arguments: service.providerId,
+        ),
         borderRadius: BorderRadius.circular(context.rr(12)),
-      ),
-      child: Row(
-        children: [
-          ShadAvatar(
-            (service.providerAvatar != null &&
-                    service.providerAvatar!.isNotEmpty)
-                ? service.providerAvatar
-                : null,
-            backgroundColor: AppTheme.accent,
-            placeholder: Text(
-              (service.providerName ?? 'S')[0].toUpperCase(),
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: context.rsp(14),
-              ),
-            ),
+        child: Container(
+          padding: context.rAll(16),
+          decoration: BoxDecoration(
+            color: AppTheme.warmMist,
+            borderRadius: BorderRadius.circular(context.rr(12)),
           ),
-          SizedBox(width: context.rw(12)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  service.providerName!,
+          child: Row(
+            children: [
+              ShadAvatar(
+                (service.providerAvatar != null &&
+                        service.providerAvatar!.isNotEmpty)
+                    ? service.providerAvatar
+                    : null,
+                backgroundColor: AppTheme.accent,
+                placeholder: Text(
+                  (service.providerName ?? 'S')[0].toUpperCase(),
                   style: TextStyle(
-                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                     fontSize: context.rsp(14),
                   ),
                 ),
+              ),
+              SizedBox(width: context.rw(12)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            service.providerName ?? 'Service Provider',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: context.rsp(14),
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          LucideIcons.chevronRight,
+                          size: context.ri(16),
+                          color: AppTheme.mutedSteel,
+                        ),
+                      ],
+                    ),
                 Text(
                   'Service Provider',
                   style: TextStyle(
@@ -768,6 +788,8 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             ),
           ),
         ],
+      ),
+        ),
       ),
     );
   }
