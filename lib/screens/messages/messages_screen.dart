@@ -1376,11 +1376,37 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
             path: processed.path,
             mediaSource: 'camera',
           );
-        case 'video':
-          final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
-          if (picked == null) return;
-          final bytes = await picked.readAsBytes();
-          await _handleVideoPicked(bytes, picked.name, path: picked.path, mediaSource: 'gallery');
+        case 'gallery':
+          // Single mixed picker: images + videos, multi-select. Everything
+          // lands in the pending strip so the user reviews and captions
+          // once before sending.
+          List<XFile> pickedList;
+          try {
+            pickedList = await picker.pickMultipleMedia(
+              maxWidth: 1080,
+              maxHeight: 1080,
+              imageQuality: 60,
+              limit: 10,
+            );
+          } catch (_) {
+            // Platforms without mixed selection fall back to images only.
+            pickedList = await picker.pickMultiImage(
+              maxWidth: 1080,
+              maxHeight: 1080,
+              imageQuality: 60,
+            );
+          }
+          if (pickedList.isEmpty) return;
+          for (final picked in pickedList) {
+            final bytes = await picked.readAsBytes();
+            if (_isVideoFile(picked)) {
+              await _handleVideoPicked(bytes, picked.name,
+                  path: picked.path, mediaSource: 'gallery');
+            } else {
+              await _handleImagePicked(bytes, picked.name,
+                  mediaSource: 'gallery');
+            }
+          }
         default:
           final pickedList = await picker.pickMultiImage(maxWidth: 1080, maxHeight: 1080, imageQuality: 60);
           if (pickedList.isEmpty) return;
@@ -1390,14 +1416,37 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
           }
       }
     } catch (e) {
-      // Camera capture can fail when permission is denied or unavailable.
-      debugPrint('Media capture failed: $e');
+      // Capture/selection can fail when permission is denied or unavailable.
+      debugPrint('Media selection failed: $e');
       if (mounted) {
         ShadToaster.of(context).show(
-          const ShadToast(title: Text('Could not capture media. Check camera permissions.')),
+          const ShadToast(title: Text('Could not select media. Check gallery or camera permissions.')),
         );
       }
     }
+  }
+
+  /// True when a mixed-gallery [XFile] is a video. Prefers the MIME type
+  /// (populated with `requestFullMetadata: true`) and falls back to the
+  /// file extension when metadata is unavailable.
+  bool _isVideoFile(XFile file) {
+    final mime = (file.mimeType ?? '').toLowerCase();
+    if (mime.startsWith('video')) return true;
+    if (mime.startsWith('image')) return false;
+    const videoExts = {
+      'mp4',
+      'mov',
+      'm4v',
+      '3gp',
+      '3g2',
+      'mkv',
+      'webm',
+      'avi',
+    };
+    final name = file.name.toLowerCase();
+    final dot = name.lastIndexOf('.');
+    if (dot == -1) return false;
+    return videoExts.contains(name.substring(dot + 1));
   }
 
   /// Shrinks a camera recording before it joins the pending strip — raw
@@ -1785,18 +1834,9 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
               icon: LucideIcons.image,
               iconColor: _chatColor,
               iconBgColor: _chatColor.withValues(alpha: 0.1),
-              title: 'Gallery Photo',
-              subtitle: 'Send photos from your gallery',
-              onTap: () => Navigator.of(ctx).pop('image'),
-            ),
-            const SizedBox(height: 8),
-            _MediaOption(
-              icon: LucideIcons.film,
-              iconColor: _chatColor,
-              iconBgColor: _chatColor.withValues(alpha: 0.1),
-              title: 'Gallery Video',
-              subtitle: 'Send a video from your gallery (max 60s)',
-              onTap: () => Navigator.of(ctx).pop('video'),
+              title: 'Gallery',
+              subtitle: 'Select photos and videos (up to 10)',
+              onTap: () => Navigator.of(ctx).pop('gallery'),
             ),
           ],
         ),
