@@ -100,19 +100,53 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
 
   Future<void> _loadMediaMessages() async {
     try {
-      final messages = await MessageService.getMessages(
-        widget.conversation.id,
-        offset: 0,
-      );
+      // Page through the conversation so media beyond the latest page is
+      // included too, then order newest-first by sent time.
+      final all = <Message>[];
+      var offset = 0;
+      const pageSize = 50;
+      while (true) {
+        final batch = await MessageService.getMessages(
+          widget.conversation.id,
+          offset: offset,
+          limit: pageSize,
+        );
+        if (batch.isEmpty) break;
+        all.addAll(
+          batch.where((m) => m.mediaUrl != null && m.mediaUrl!.isNotEmpty),
+        );
+        if (batch.length < pageSize || offset >= 950) break;
+        offset += pageSize;
+      }
+      all.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       if (mounted) {
         setState(() {
-          _mediaMessages = messages.where((m) => m.mediaUrl != null).toList();
+          _mediaMessages = all;
           _isLoadingMedia = false;
         });
       }
     } catch (_) {
       if (mounted) setState(() => _isLoadingMedia = false);
     }
+  }
+
+  /// Opens [list] in the viewer at [initialIndex]. "Show in chat" pops the
+  /// viewer and then this screen, returning the message id so the chat can
+  /// scroll straight to it.
+  void _viewMedia(List<Message> list, int initialIndex) {
+    final urls = list.map((m) => m.mediaUrl!).toList();
+    final thumbs = list.map((m) => m.thumbnailUrl).toList();
+    final ids = list.map((m) => m.id).toList();
+    MediaViewer.open(
+      context,
+      urls,
+      initialIndex: initialIndex.clamp(0, urls.length - 1),
+      thumbnailUrls: thumbs,
+      messageIds: ids,
+      onShowInChat: (messageId) {
+        if (mounted) Navigator.of(context).pop(messageId);
+      },
+    );
   }
 
   Future<void> _loadInstitutionLogo(String universityName) async {
@@ -318,9 +352,9 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
           SizedBox(height: context.rh(4)),
 
           // Online / Last seen status
-          if (_presenceLabel().isNotEmpty)
+          if (_presenceLabel(conv).isNotEmpty)
             Text(
-              _presenceLabel(),
+              _presenceLabel(conv),
               style: TextStyle(
                 fontSize: context.rsp(14),
                 color: conv.isOnline ? Colors.green : AppTheme.mutedSteel,
@@ -604,13 +638,19 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
+                  onPressed: () async {
+                    final jumpTo = await Navigator.of(context).push<String>(
                       MaterialPageRoute(
-                        builder: (_) =>
-                            _AllMediaScreen(mediaMessages: _mediaMessages),
+                        builder: (_) => _AllMediaScreen(
+                          mediaMessages: _mediaMessages,
+                        ),
                       ),
                     );
+                    if (jumpTo != null &&
+                        jumpTo.isNotEmpty &&
+                        mounted) {
+                      Navigator.of(context).pop(jumpTo);
+                    }
                   },
                   child: const Text('See all'),
                 ),
@@ -624,15 +664,6 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
                 itemCount: displayCount,
                 itemBuilder: (context, index) {
                   final msg = _mediaMessages[index];
-                  final mediaUrls = _mediaMessages
-                      .where((m) => m.mediaUrl != null)
-                      .map((m) => m.mediaUrl!)
-                      .toList();
-                  final thumbnailUrls = _mediaMessages
-                      .where((m) => m.mediaUrl != null)
-                      .map((m) => m.thumbnailUrl)
-                      .toList();
-                  final mediaIndex = mediaUrls.indexOf(msg.mediaUrl!);
                   return Padding(
                     padding: EdgeInsets.only(
                       right: index == displayCount - 1 ? 0 : context.rw(8),
@@ -640,14 +671,7 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
                     child: SizedBox(
                       width: context.rw(80),
                       child: GestureDetector(
-                        onTap: () {
-                          MediaViewer.open(
-                            context,
-                            mediaUrls,
-                            initialIndex: mediaIndex >= 0 ? mediaIndex : 0,
-                            thumbnailUrls: thumbnailUrls,
-                          );
-                        },
+                        onTap: () => _viewMedia(_mediaMessages, index),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(context.rr(8)),
                           child: Stack(
@@ -987,8 +1011,8 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
     }
   }
 
-  String _presenceLabel() {
-    final conv = widget.conversation;
+  String _presenceLabel([Conversation? conversation]) {
+    final conv = conversation ?? widget.conversation;
     if (conv.isOnline) return 'online';
     final lastSeen = conv.otherUserLastSeen?.toLocal();
     if (lastSeen == null) return '';
@@ -1063,22 +1087,25 @@ class _AllMediaScreen extends StatelessWidget {
         itemCount: mediaMessages.length,
         itemBuilder: (context, index) {
           final msg = mediaMessages[index];
-          final allUrls = mediaMessages
-              .where((m) => m.mediaUrl != null)
-              .map((m) => m.mediaUrl!)
-              .toList();
-          final allThumbnailUrls = mediaMessages
-              .where((m) => m.mediaUrl != null)
-              .map((m) => m.thumbnailUrl)
-              .toList();
-          final mediaIndex = allUrls.indexOf(msg.mediaUrl!);
           return GestureDetector(
             onTap: () {
+              final allUrls =
+                  mediaMessages.map((m) => m.mediaUrl!).toList();
+              final allThumbnailUrls =
+                  mediaMessages.map((m) => m.thumbnailUrl).toList();
+              final allIds = mediaMessages.map((m) => m.id).toList();
               MediaViewer.open(
                 context,
                 allUrls,
-                initialIndex: mediaIndex >= 0 ? mediaIndex : 0,
+                initialIndex: index.clamp(0, allUrls.length - 1),
                 thumbnailUrls: allThumbnailUrls,
+                messageIds: allIds,
+                // The viewer pops itself first; this pop closes the grid
+                // and returns the id to the info screen, which pops itself
+                // so the chat can scroll to the message.
+                onShowInChat: (messageId) {
+                  Navigator.of(context).pop(messageId);
+                },
               );
             },
             child: ClipRRect(

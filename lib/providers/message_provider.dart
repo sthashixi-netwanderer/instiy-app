@@ -1,14 +1,53 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../models/message_model.dart';
 import '../services/message_service.dart';
 import '../services/sound_service.dart';
+import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
 import '../services/notification_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/local_db_service.dart';
 import '../providers/block_provider.dart';
+
+/// Params for one fire-and-forget outgoing message, kept so a failed send
+/// can be retried from the bubble without losing its place in the queue.
+/// Reply-quote display fields live on the optimistic Message itself, so the
+/// task only keeps what the network calls need.
+class _PendingSend {
+  final String kind; // 'text', 'upload', 'remote'
+  final String conversationId;
+  final String content;
+  final Map<String, dynamic>? productReference;
+  final String? replyToMessageId;
+  final String? mediaType;
+  final String? mediaSource;
+  final Uint8List? bytes;
+  final String? extension;
+  final String? folder;
+  final Uint8List? thumbnailBytes;
+  final String? remoteUrl;
+  final void Function(String url)? onUploaded;
+
+  const _PendingSend({
+    required this.kind,
+    required this.conversationId,
+    this.content = '',
+    this.productReference,
+    this.replyToMessageId,
+    this.mediaType,
+    this.mediaSource,
+    this.bytes,
+    this.extension,
+    this.folder,
+    this.thumbnailBytes,
+    this.remoteUrl,
+    this.onUploaded,
+  });
+}
 
 class MessageProvider extends ChangeNotifier {
   List<Conversation> _conversations = [];
@@ -74,6 +113,20 @@ class MessageProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isInitialized => _initialized;
   bool get isOtherUserTyping => _isOtherUserTyping;
+
+  /// Params for every in-flight fire-and-forget send, keyed by the
+  /// optimistic message id. Kept for retry after a failure.
+  final Map<String, _PendingSend> _pendingSends = {};
+
+  /// How many optimistic messages are still sending in [conversationId].
+  /// The chat input uses this for a progress badge — it never blocks typing.
+  int pendingCountFor(String conversationId) {
+    var n = 0;
+    for (final m in _messages) {
+      if (m.conversationId == conversationId && m.isSending) n++;
+    }
+    return n;
+  }
 
   /// Ephemeral theme-change notice (null when none).
   String? get themeChangeNotice => _themeChangeNotice;
@@ -263,8 +316,17 @@ class MessageProvider extends ChangeNotifier {
     });
 
     // Notify listeners every 10 seconds to update dynamic isOnline status and last seen formatting
+    var tick = 0;
     _statusUpdateTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       notifyListeners();
+      // Every 60s, re-fetch peers' last_seen directly. This heals presence
+      // when a realtime users-table event was missed (channel error,
+      // backgrounding, cold start), so an active user cannot stay stuck
+      // appearing offline.
+      tick++;
+      if (tick % 6 == 0) {
+        _refreshPeersPresence(); // ignore: unawaited_futures
+      }
     });
   }
 
@@ -283,6 +345,55 @@ class MessageProvider extends ChangeNotifier {
           .from('users')
           .update({'last_seen': DateTime.now().toUtc().toIso8601String()})
           .eq('id', userId);
+    } catch (_) {}
+  }
+
+  /// Lightweight heal for missed realtime presence events: fetches the
+  /// current last_seen for every peer shown in the lists (plus the open
+  /// chat) and applies it in memory without a full conversation reload.
+  Future<void> _refreshPeersPresence() async {
+    try {
+      final ids = <String>{};
+      for (final c in _conversations) {
+        ids.add(c.otherUserId);
+      }
+      for (final c in _archivedConversations) {
+        ids.add(c.otherUserId);
+      }
+      final active = _activeConversation;
+      if (active != null) ids.add(active.otherUserId);
+      if (ids.isEmpty) return;
+
+      final rows = await SupabaseService.client
+          .from('users')
+          .select('id, last_seen')
+          .inFilter('id', ids.toList());
+      for (final row in rows) {
+        final id = row['id'] as String?;
+        final lastSeenRaw = row['last_seen'] as String?;
+        if (id == null || lastSeenRaw == null) continue;
+        DateTime? before;
+        for (final c in _conversations) {
+          if (c.otherUserId == id) {
+            before = c.otherUserLastSeen;
+            break;
+          }
+        }
+        if (before == null) {
+          for (final c in _archivedConversations) {
+            if (c.otherUserId == id) {
+              before = c.otherUserLastSeen;
+              break;
+            }
+          }
+        }
+        before ??= active?.otherUserId == id ? active?.otherUserLastSeen : null;
+        final fresh = DateTime.parse(lastSeenRaw);
+        if (before == null || fresh.isAfter(before)) {
+          // Reuse the realtime path so list + archived + active stay in sync.
+          _updateUserStatusInMemory(id, fresh);
+        }
+      }
     } catch (_) {}
   }
 
@@ -535,6 +646,8 @@ class MessageProvider extends ChangeNotifier {
           unreadCount: conv.unreadCount,
           isOnline: conv.isOnline,
           isArchived: true,
+          hiddenAt: conv.hiddenAt,
+          otherUserLastSeen: conv.otherUserLastSeen,
           themeColor: conv.themeColor,
         ));
         notifyListeners();
@@ -564,6 +677,8 @@ class MessageProvider extends ChangeNotifier {
           unreadCount: conv.unreadCount,
           isOnline: conv.isOnline,
           isArchived: false,
+          hiddenAt: conv.hiddenAt,
+          otherUserLastSeen: conv.otherUserLastSeen,
           themeColor: conv.themeColor,
         ));
         notifyListeners();
@@ -909,6 +1024,332 @@ class MessageProvider extends ChangeNotifier {
       loadConversations(silent: true); // ignore: unawaited_futures
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  // ── Fire-and-forget send queue ──────────────────────────────────────
+  // Every send inserts an optimistic message synchronously (so previews
+  // appear instantly and in tap order) and finishes in the background.
+  // The chat input never blocks: callers must NOT await these methods.
+
+  /// Queues a text (or product-reference) message. Returns the optimistic id.
+  String queueTextMessage({
+    required String conversationId,
+    required String senderId,
+    required String content,
+    Map<String, dynamic>? productReference,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
+    String? replyToMediaType,
+  }) {
+    final pendingId = 'pending_${const Uuid().v4()}';
+    final optimistic = Message(
+      id: pendingId,
+      conversationId: conversationId,
+      senderId: senderId,
+      content: content,
+      productReference: _refFromMap(productReference),
+      createdAt: DateTime.now(),
+      status: 'sending',
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
+      replyToMediaType: replyToMediaType,
+    );
+    _pendingSends[pendingId] = _PendingSend(
+      kind: 'text',
+      conversationId: conversationId,
+      content: content,
+      productReference: productReference,
+      replyToMessageId: replyToMessageId,
+    );
+    _insertOptimistic(optimistic);
+    _runTextTask(pendingId); // ignore: unawaited_futures
+    return pendingId;
+  }
+
+  /// Queues a media message whose bytes are uploaded in the background.
+  /// [previewBytes] shows instantly in the bubble (image bytes, or the
+  /// video thumbnail frame). Returns the optimistic id.
+  String queueMediaUpload({
+    required String conversationId,
+    required String senderId,
+    required Uint8List bytes,
+    required String folder,
+    required String extension,
+    required String mediaType,
+    String caption = '',
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
+    String? replyToMediaType,
+    String? mediaSource,
+    Uint8List? thumbnailBytes,
+    Uint8List? previewBytes,
+    void Function(String url)? onUploaded,
+  }) {
+    final pendingId = 'pending_${const Uuid().v4()}';
+    final optimistic = Message(
+      id: pendingId,
+      conversationId: conversationId,
+      senderId: senderId,
+      content: caption,
+      mediaType: mediaType,
+      mediaSource: mediaSource,
+      createdAt: DateTime.now(),
+      status: 'sending',
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
+      replyToMediaType: replyToMediaType,
+      localPreviewBytes: previewBytes ?? thumbnailBytes,
+    );
+    _pendingSends[pendingId] = _PendingSend(
+      kind: 'upload',
+      conversationId: conversationId,
+      content: caption,
+      replyToMessageId: replyToMessageId,
+      mediaType: mediaType,
+      mediaSource: mediaSource,
+      bytes: bytes,
+      extension: extension,
+      folder: folder,
+      thumbnailBytes: thumbnailBytes,
+      onUploaded: onUploaded,
+    );
+    _insertOptimistic(optimistic);
+    _runUploadTask(pendingId); // ignore: unawaited_futures
+    return pendingId;
+  }
+
+  /// Queues a message whose media already lives at a remote URL (GIFs,
+  /// stickers). No upload — only the row insert runs in the background.
+  String queueRemoteMediaMessage({
+    required String conversationId,
+    required String senderId,
+    required String mediaUrl,
+    required String mediaType,
+    String caption = '',
+    String? replyToMessageId,
+    String? mediaSource,
+  }) {
+    final pendingId = 'pending_${const Uuid().v4()}';
+    final optimistic = Message(
+      id: pendingId,
+      conversationId: conversationId,
+      senderId: senderId,
+      content: caption,
+      mediaUrl: mediaUrl,
+      mediaType: mediaType,
+      mediaSource: mediaSource,
+      createdAt: DateTime.now(),
+      status: 'sending',
+      replyToMessageId: replyToMessageId,
+    );
+    _pendingSends[pendingId] = _PendingSend(
+      kind: 'remote',
+      conversationId: conversationId,
+      content: caption,
+      replyToMessageId: replyToMessageId,
+      mediaType: mediaType,
+      mediaSource: mediaSource,
+      remoteUrl: mediaUrl,
+    );
+    _insertOptimistic(optimistic);
+    _runRemoteTask(pendingId); // ignore: unawaited_futures
+    return pendingId;
+  }
+
+  /// Retries a failed optimistic message, keeping its position in the list.
+  void retryPending(String pendingId) {
+    final task = _pendingSends[pendingId];
+    if (task == null) return;
+    final idx = _messages.indexWhere((m) => m.id == pendingId);
+    if (idx == -1) return;
+    _messages[idx] = _messages[idx].withStatus('sending');
+    notifyListeners();
+    switch (task.kind) {
+      case 'text':
+        _runTextTask(pendingId); // ignore: unawaited_futures
+        break;
+      case 'upload':
+        _runUploadTask(pendingId); // ignore: unawaited_futures
+        break;
+      case 'remote':
+        _runRemoteTask(pendingId); // ignore: unawaited_futures
+        break;
+    }
+  }
+
+  /// Inserts the optimistic bubble synchronously and nudges the
+  /// conversation snippet so the list preview updates instantly.
+  void _insertOptimistic(Message optimistic) {
+    // Only touch the message list when its conversation is open — never
+    // leak an optimistic bubble into another chat's list.
+    if (_activeConversation != null &&
+        _activeConversation!.id == optimistic.conversationId) {
+      _messages.add(optimistic);
+    }
+    _touchConversationSnippet(
+      optimistic.conversationId,
+      _snippetFor(optimistic),
+    );
+    notifyListeners();
+  }
+
+  /// Converts the outgoing product-reference map into a display model for
+  /// the optimistic bubble. Returns null when the map doesn't match the
+  /// ProductReference shape — the server insert still uses the raw map.
+  ProductReference? _refFromMap(Map<String, dynamic>? map) {
+    if (map == null) return null;
+    try {
+      return ProductReference.fromJson(map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _snippetFor(Message m) {    if (m.mediaType == 'voice') return '🎙️ Voice Note';
+    if (m.mediaType == 'video') return '📹 Video';
+    if (m.mediaType == 'gif') return '🎞️ GIF';
+    if (m.mediaType == 'sticker') return '🎨 Sticker';
+    if (m.mediaType == 'image') {
+      return m.content.isNotEmpty ? '📷 Photo: ${m.content}' : '📷 Photo';
+    }
+    if (m.productReference != null) return '📇 Shared: ${m.productReference!.title}';
+    return m.content;
+  }
+
+  void _touchConversationSnippet(String conversationId, String snippet) {
+    for (var i = 0; i < _conversations.length; i++) {
+      if (_conversations[i].id == conversationId) {
+        final c = _conversations[i];
+        _conversations[i] = Conversation(
+          id: c.id,
+          otherUserId: c.otherUserId,
+          otherUserName: c.otherUserName,
+          otherUserAvatar: c.otherUserAvatar,
+          otherUserVerified: c.otherUserVerified,
+          otherBusinessName: c.otherBusinessName,
+          lastMessage: snippet,
+          lastMessageAt: DateTime.now(),
+          unreadCount: c.unreadCount,
+          isArchived: c.isArchived,
+          hiddenAt: c.hiddenAt,
+          otherUserLastSeen: c.otherUserLastSeen,
+          themeColor: c.themeColor,
+        );
+        break;
+      }
+    }
+  }
+
+  Future<void> _runTextTask(String pendingId) async {
+    final task = _pendingSends[pendingId];
+    if (task == null) return;
+    try {
+      final server = await MessageService.sendMessage(
+        conversationId: task.conversationId,
+        content: task.content,
+        productReference: task.productReference,
+        replyToMessageId: task.replyToMessageId,
+      );
+      _resolvePending(pendingId, server);
+    } catch (_) {
+      _failPending(pendingId);
+    }
+  }
+
+  Future<void> _runUploadTask(String pendingId) async {
+    final task = _pendingSends[pendingId];
+    if (task == null || task.bytes == null) {
+      _failPending(pendingId);
+      return;
+    }
+    try {
+      var mediaUrl = await StorageService.uploadImageBytes(
+        bytes: task.bytes!,
+        folder: task.folder ?? 'chat-media/images',
+        extension: task.extension ?? 'jpg',
+      );
+      if (task.mediaType == 'video' && task.thumbnailBytes != null) {
+        try {
+          final thumbUrl = await StorageService.uploadImageBytes(
+            bytes: task.thumbnailBytes!,
+            folder: 'chat-media/thumbnails',
+            extension: 'jpg',
+          );
+          mediaUrl = '$mediaUrl|$thumbUrl';
+        } catch (_) {}
+      }
+      task.onUploaded?.call(mediaUrl);
+      final server = await MessageService.sendMediaMessage(
+        conversationId: task.conversationId,
+        mediaUrl: mediaUrl,
+        mediaType: task.mediaType ?? 'image',
+        caption: task.content,
+        replyToMessageId: task.replyToMessageId,
+        mediaSource: task.mediaSource,
+      );
+      _resolvePending(pendingId, server);
+    } catch (_) {
+      _failPending(pendingId);
+    }
+  }
+
+  Future<void> _runRemoteTask(String pendingId) async {
+    final task = _pendingSends[pendingId];
+    if (task == null || task.remoteUrl == null) {
+      _failPending(pendingId);
+      return;
+    }
+    try {
+      final server = await MessageService.sendMediaMessage(
+        conversationId: task.conversationId,
+        mediaUrl: task.remoteUrl!,
+        mediaType: task.mediaType ?? 'gif',
+        caption: task.content,
+        replyToMessageId: task.replyToMessageId,
+        mediaSource: task.mediaSource,
+      );
+      _resolvePending(pendingId, server);
+    } catch (_) {
+      _failPending(pendingId);
+    }
+  }
+
+  /// Swaps the optimistic bubble for the confirmed server row in place,
+  /// so queued messages settle in the order they were sent even when an
+  /// earlier upload finishes after a later one.
+  void _resolvePending(String pendingId, Message server) {
+    _pendingSends.remove(pendingId);
+    final idx = _messages.indexWhere((m) => m.id == pendingId);
+    if (idx != -1) {
+      _messages[idx] = server;
+      notifyListeners();
+    } else if (_activeConversation != null &&
+        _activeConversation!.id == server.conversationId &&
+        !_messages.any((m) => m.id == server.id)) {
+      // Realtime echo beat us and the pending row is gone (e.g. list
+      // reloaded mid-upload): just append the confirmed message.
+      _messages.add(server);
+      notifyListeners();
+    }
+    // If the chat is no longer open, the next loadMessages fetch picks the
+    // confirmed row up — never append into another conversation's list.
+    loadConversations(silent: true); // ignore: unawaited_futures
+  }
+
+  void _failPending(String pendingId) {
+    final idx = _messages.indexWhere((m) => m.id == pendingId);
+    if (idx != -1) {
+      _messages[idx] = _messages[idx].withStatus('failed');
       notifyListeners();
     }
   }

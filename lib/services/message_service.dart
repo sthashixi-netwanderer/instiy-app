@@ -348,6 +348,9 @@ class MessageService {
             : null,
         unreadCount: unreadCounts[convId] ?? 0,
         isArchived: true,
+        otherUserLastSeen: otherProfile?['last_seen'] != null
+            ? DateTime.parse(otherProfile!['last_seen'] as String)
+            : null,
         themeColor: json['theme_color'] as String?,
       );
     }).toList();

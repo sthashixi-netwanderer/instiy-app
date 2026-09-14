@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 class Conversation {
   final String id;
@@ -37,9 +38,20 @@ class Conversation {
     this.themeColor,
   }) : _isOnlineField = isOnline;
 
+  /// True when the other user was seen recently. The window is intentionally
+  /// wider than the 30s heartbeat interval so a single missed heartbeat or
+  /// a delayed realtime event cannot flip an active user to offline.
+  /// Small future skew (device clock differences) still counts as online.
+  static const int onlineWindowSeconds = 150;
+  static const int onlineFutureToleranceSeconds = 30;
+
   bool get isOnline {
-    if (otherUserLastSeen != null) {
-      return DateTime.now().difference(otherUserLastSeen!).abs().inSeconds < 60;
+    final lastSeen = otherUserLastSeen;
+    if (lastSeen != null) {
+      final diffSeconds =
+          DateTime.now().difference(lastSeen).inSeconds;
+      return diffSeconds >= -onlineFutureToleranceSeconds &&
+          diffSeconds < onlineWindowSeconds;
     }
     return _isOnlineField;
   }
@@ -159,6 +171,12 @@ class Message {
   final String? replyToMediaUrl;
   final String? replyToMediaType;
 
+  /// Transient local preview for an outgoing message that is still
+  /// uploading (fire-and-forget queue). Never serialized — the server row
+  /// only exists after the upload finishes and the message is inserted.
+  /// For images this is the full bytes; for videos the thumbnail frame.
+  final Uint8List? localPreviewBytes;
+
   Message({
     required this.id,
     required this.conversationId,
@@ -177,6 +195,7 @@ class Message {
     this.replyToSenderName,
     this.replyToMediaUrl,
     this.replyToMediaType,
+    this.localPreviewBytes,
   }) : _mediaUrlField = mediaUrl;
 
   String? get mediaUrl {
@@ -196,6 +215,38 @@ class Message {
   bool get isReply => replyToMessageId != null;
   bool get isGif => mediaType == 'gif';
   bool get isSticker => mediaType == 'sticker';
+
+  /// True while this optimistic message is still uploading/sending in the
+  /// background. The input stays active — the user can queue more chats.
+  bool get isSending => status == 'sending';
+
+  /// True when the background send failed. The bubble stays in place with
+  /// a retry affordance instead of silently disappearing.
+  bool get isFailed => status == 'failed';
+
+  /// Copy with a new delivery status (used for sending → sent/failed).
+  Message withStatus(String newStatus) {
+    return Message(
+      id: id,
+      conversationId: conversationId,
+      senderId: senderId,
+      content: content,
+      mediaUrl: _mediaUrlField,
+      mediaType: mediaType,
+      mediaSource: mediaSource,
+      productReference: productReference,
+      createdAt: createdAt,
+      isRead: isRead,
+      status: newStatus,
+      seenAt: seenAt,
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+      replyToMediaUrl: replyToMediaUrl,
+      replyToMediaType: replyToMediaType,
+      localPreviewBytes: localPreviewBytes,
+    );
+  }
 
   /// True when this video was recorded inside the app (camera source).
   /// Legacy videos (null source) could only come from the gallery.

@@ -21,6 +21,12 @@ class MediaViewer extends StatefulWidget {
   final int initialIndex;
   final List<String?>? thumbnailUrls;
 
+  /// Message id for each page, aligned by index with [mediaUrls].
+  /// When supplied together with [onShowInChat], the menu offers a
+  /// "Show in chat" action that jumps to the message holding the media.
+  final List<String>? messageIds;
+  final void Function(String messageId)? onShowInChat;
+
   /// Image cache the full-screen pages read through. Defaults to the shared
   /// default cache; callers with session-scoped media (e.g. chat) pass their
   /// own manager so opened images land in the session store.
@@ -31,17 +37,21 @@ class MediaViewer extends StatefulWidget {
     required this.mediaUrls,
     this.initialIndex = 0,
     this.thumbnailUrls,
+    this.messageIds,
+    this.onShowInChat,
     this.cacheManager,
   });
 
-  static void open(
+  static Future<void> open(
     BuildContext context,
     List<String> mediaUrls, {
     int initialIndex = 0,
     List<String?>? thumbnailUrls,
+    List<String>? messageIds,
+    void Function(String messageId)? onShowInChat,
     BaseCacheManager? cacheManager,
   }) {
-    Navigator.of(context).push(
+    return Navigator.of(context).push(
       PageRouteBuilder(
         opaque: false,
         barrierColor: Colors.black,
@@ -49,6 +59,8 @@ class MediaViewer extends StatefulWidget {
           mediaUrls: mediaUrls,
           initialIndex: initialIndex,
           thumbnailUrls: thumbnailUrls,
+          messageIds: messageIds,
+          onShowInChat: onShowInChat,
           cacheManager: cacheManager,
         ),
         transitionsBuilder: (_, animation, _, child) {
@@ -307,8 +319,7 @@ class _MediaViewerState extends State<MediaViewer>
     });
   }
 
-  Future<void> _showForwardSheet() async {
-    // Reset forward drag state
+  Future<void> _showForwardSheet() async {    // Reset forward drag state
     _snapBackForward();
 
     final url = widget.mediaUrls[_currentIndex];
@@ -326,8 +337,19 @@ class _MediaViewerState extends State<MediaViewer>
     );
   }
 
-  Future<void> _saveMedia() async {
-    if (_isSaving) return;
+  /// Pops the viewer and hands the current page's message id to the
+  /// caller, which navigates back to the chat and scrolls to it.
+  void _jumpToMessageInChat() {
+    final ids = widget.messageIds;
+    final action = widget.onShowInChat;
+    if (ids == null || action == null) return;
+    if (_currentIndex < 0 || _currentIndex >= ids.length) return;
+    final messageId = ids[_currentIndex];
+    Navigator.of(context).pop();
+    action(messageId);
+  }
+
+  Future<void> _saveMedia() async {    if (_isSaving) return;
     final url = widget.mediaUrls[_currentIndex];
 
     setState(() => _isSaving = true);
@@ -733,8 +755,30 @@ class _MediaViewerState extends State<MediaViewer>
                           onSelected: (value) {
                             if (value == 'save') _saveMedia();
                             if (value == 'forward') _showForwardSheet();
+                            if (value == 'show_in_chat') {
+                              _jumpToMessageInChat();
+                            }
                           },
                           itemBuilder: (context) => [
+                            if (widget.onShowInChat != null &&
+                                widget.messageIds != null)
+                              PopupMenuItem(
+                                value: 'show_in_chat',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      LucideIcons.messageCircle,
+                                      size: context.ri(18),
+                                    ),
+                                    SizedBox(width: context.rw(10)),
+                                    Text(
+                                      'Show in chat',
+                                      style:
+                                          TextStyle(fontSize: context.rsp(14)),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             PopupMenuItem(
                               value: 'forward',
                               child: Row(

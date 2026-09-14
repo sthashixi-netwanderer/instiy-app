@@ -485,7 +485,6 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   final _captionCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   Map<String, dynamic>? _productReference;
-  bool _isSendingMedia = false;
   List<dynamic> _pendingMediaList = [];
   List<bool> _pendingIsVideoList = [];
   // Thumbnails (random video frame) for pending videos, aligned by index
@@ -733,9 +732,11 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   double _listBottomPadding() => 16;
 
   // WhatsApp-style presence label under the user's name in the chat header.
-  String _presenceLabel() {
-    if (widget.conversation.isOnline) return 'online';
-    final lastSeen = widget.conversation.otherUserLastSeen?.toLocal();
+  // Takes the live conversation so realtime last_seen updates are reflected.
+  String _presenceLabel([dynamic conversation]) {
+    final conv = conversation ?? widget.conversation;
+    if (conv.isOnline) return 'online';
+    final lastSeen = conv.otherUserLastSeen?.toLocal();
     if (lastSeen == null) return '';
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -997,6 +998,24 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     return offset;
   }
 
+  /// Jumps to a message requested from outside the chat — e.g. "Show in
+  /// chat" from the media viewer on the chat info screen. Older history is
+  /// paged in until the message is in memory, then the list jumps to it
+  /// with the usual highlight.
+  Future<void> _showMessageInChat(String messageId) async {
+    var guard = 0;
+    while (_messageProvider.messages.every((m) => m.id != messageId) &&
+        _messageProvider.hasMoreMessages &&
+        guard < 25) {
+      guard++;
+      await _messageProvider.loadMoreMessages(widget.conversation.id);
+    }
+    if (!mounted) return;
+    if (_messageProvider.messages.any((m) => m.id == messageId)) {
+      _scrollToMessage(messageId, jump: true);
+    }
+  }
+
   void _scrollToMessage(String messageId, {bool jump = false}) {
     final messages = _messageProvider.messages;
     final index = messages.indexWhere((m) => m.id == messageId);
@@ -1157,45 +1176,34 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     );
   }
 
-  Future<void> _sendMessage() async {
+  /// Fire-and-forget send: snapshots the input, clears it synchronously so
+  /// the user can type the next message immediately, and queues every part
+  /// (text + each attached media) in order. Nothing here is awaited, so the
+  /// input never goes inactive while uploads finish in the background.
+  void _sendMessage() {
     final text = _messageCtrl.text.trim();
     final hasRef = _productReference != null;
     final hasMedia = _pendingMediaList.isNotEmpty;
-    final replyId = _replyToMessage?.id;
+    final reply = _replyToMessage;
     final refToSend = _productReference;
+    final conversationId = widget.conversation.id;
+    final senderId = ref.read(authProvider).user?.id;
 
     if (text.isEmpty && !hasRef && !hasMedia) return;
+    if (senderId == null) return;
 
-    // If there's pending media, send them consecutively
-    if (hasMedia) {
-      for (int i = 0; i < _pendingMediaList.length; i++) {
-        _sendMediaFireAndForget(
-          file: _pendingMediaList[i],
-          mediaType: _pendingIsVideoList[i] ? 'video' : 'image',
-          caption: i == 0 ? text : '',
-          replyToMessageId: replyId,
-          thumbnailBytes: i < _pendingVideoThumbList.length
-              ? _pendingVideoThumbList[i]
-              : null,
-          mediaSource: i < _pendingMediaSourceList.length
-              ? _pendingMediaSourceList[i]
-              : null,
-        );
-      }
-      _messageCtrl.clear();
-      setState(() {
-        _pendingMediaList = [];
-        _pendingIsVideoList = [];
-        _pendingVideoThumbList = [];
-        _pendingMediaSourceList = [];
-        _productReference = null;
-        _replyToMessage = null;
-      });
-      return;
-    }
+    // Snapshot the attachments before clearing the strip.
+    final mediaFiles = List<dynamic>.from(_pendingMediaList);
+    final mediaIsVideo = List<bool>.from(_pendingIsVideoList);
+    final mediaThumbs = List<Uint8List?>.from(_pendingVideoThumbList);
+    final mediaSources = List<String>.from(_pendingMediaSourceList);
 
     _messageCtrl.clear();
     setState(() {
+      _pendingMediaList = [];
+      _pendingIsVideoList = [];
+      _pendingVideoThumbList = [];
+      _pendingMediaSourceList = [];
       _productReference = null;
       _replyToMessage = null;
     });
@@ -1203,13 +1211,103 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
       _scrollToBottom();
     });
 
-    try {
-      await ref.read(messageProvider).sendMessage(
-        text,
-        productReference: refToSend,
-        replyToMessageId: replyId,
+    final msgProv = ref.read(messageProvider);
+    String? replyContent;
+    String? replySender;
+    String? replyMediaUrl;
+    String? replyMediaType;
+    if (reply != null) {
+      replyContent = reply.content;
+      replySender = reply.senderId == senderId
+          ? 'You'
+          : widget.conversation.displayName;
+      replyMediaUrl = reply.mediaUrl;
+      replyMediaType = reply.mediaType;
+    }
+
+    // Attached media first (caption on the first item), then the text as
+    // its own bubble when there is leftover text or a product reference.
+    for (var i = 0; i < mediaFiles.length; i++) {
+      _queueMediaSend(
+        msgProv: msgProv,
+        conversationId: conversationId,
+        senderId: senderId,
+        file: mediaFiles[i],
+        mediaType: mediaIsVideo[i] ? 'video' : 'image',
+        caption: i == 0 ? text : '',
+        replyToMessageId: reply?.id,
+        replyToContent: replyContent,
+        replyToSenderName: replySender,
+        replyToMediaUrl: replyMediaUrl,
+        replyToMediaType: replyMediaType,
+        thumbnailBytes: i < mediaThumbs.length ? mediaThumbs[i] : null,
+        mediaSource: i < mediaSources.length ? mediaSources[i] : null,
       );
-    } catch (_) {}
+    }
+    if (mediaFiles.isEmpty && (text.isNotEmpty || hasRef)) {
+      msgProv.queueTextMessage(
+        conversationId: conversationId,
+        senderId: senderId,
+        content: text,
+        productReference: refToSend,
+        replyToMessageId: reply?.id,
+        replyToContent: replyContent,
+        replyToSenderName: replySender,
+        replyToMediaUrl: replyMediaUrl,
+        replyToMediaType: replyMediaType,
+      );
+    }
+  }
+
+  /// Resolves [file] (in-memory bytes, File, or path) to bytes and queues a
+  /// background upload. Never blocks the input.
+  void _queueMediaSend({
+    required MessageProvider msgProv,
+    required String conversationId,
+    required String senderId,
+    required dynamic file,
+    required String mediaType,
+    required String caption,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+    String? replyToMediaUrl,
+    String? replyToMediaType,
+    Uint8List? thumbnailBytes,
+    String? mediaSource,
+  }) {
+    () async {
+      try {
+        final rawBytes =
+            file is List<int> ? file : await _readFileBytes('$file');
+        final bytes = rawBytes is Uint8List
+            ? rawBytes
+            : (rawBytes != null ? Uint8List.fromList(rawBytes) : null);
+        if (bytes == null || !mounted) return;
+        msgProv.queueMediaUpload(
+          conversationId: conversationId,
+          senderId: senderId,
+          bytes: bytes,
+          folder:
+              'chat-media/${mediaType == 'video' ? 'videos' : 'images'}',
+          extension: mediaType == 'video' ? 'mp4' : 'jpg',
+          mediaType: mediaType,
+          caption: caption,
+          replyToMessageId: replyToMessageId,
+          replyToContent: replyToContent,
+          replyToSenderName: replyToSenderName,
+          replyToMediaUrl: replyToMediaUrl,
+          replyToMediaType: replyToMediaType,
+          mediaSource: mediaSource,
+          thumbnailBytes: thumbnailBytes,
+          previewBytes:
+              mediaType == 'video' ? thumbnailBytes : bytes,
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollToBottom();
+        });
+      } catch (_) {}
+    }();
   }
 
   /// WhatsApp-style jump back to the newest messages. Long distances
@@ -1375,7 +1473,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
             gif.images?.fixedHeight?.url ??
             gif.images?.downsized?.url;
         if (url != null) {
-          await _sendDirectMedia(url, 'gif');
+          _sendDirectMedia(url, 'gif');
         }
       }
     } catch (e) {
@@ -1388,79 +1486,19 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
   }
 
-  Future<void> _sendDirectMedia(String url, String type) async {
-    try {
-      await ref.read(messageProvider).sendMediaMessage(
-        mediaUrl: url,
-        mediaType: type,
-        caption: '',
-      );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom();
-      });
-    } catch (_) {}
-  }
-
-  void _sendMediaFireAndForget({
-    required dynamic file,
-    required String mediaType,
-    required String caption,
-    String? replyToMessageId,
-    Uint8List? thumbnailBytes,
-    String? mediaSource,
-  }) {
-    setState(() => _isSendingMedia = true);
-
-    // Clear input immediately so user can type next message
-    _messageCtrl.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-
-    () async {
-      try {
-        final folder = 'chat-media/${mediaType == 'video' ? 'videos' : 'images'}';
-        final ext = mediaType == 'video' ? 'mp4' : 'jpg';
-        final rawBytes = file is List<int> ? file : await _readFileBytes('$file');
-        final bytes = rawBytes is Uint8List ? rawBytes : (rawBytes != null ? Uint8List.fromList(rawBytes) : null);
-        if (bytes == null) throw Exception('Could not read media file');
-        final url = await StorageService.uploadImageBytes(
-          bytes: bytes,
-          folder: folder,
-          extension: ext,
+  void _sendDirectMedia(String url, String type) {
+    final senderId = ref.read(authProvider).user?.id;
+    if (senderId == null) return;
+    ref.read(messageProvider).queueRemoteMediaMessage(
+          conversationId: widget.conversation.id,
+          senderId: senderId,
+          mediaUrl: url,
+          mediaType: type,
+          caption: '',
         );
-
-        // Videos carry their thumbnail in the media URL ("videoUrl|thumbUrl")
-        // so the chat bubble can show a preview frame without loading the video.
-        var mediaUrl = url;
-        if (mediaType == 'video' && thumbnailBytes != null) {
-          try {
-            final thumbUrl = await StorageService.uploadImageBytes(
-              bytes: thumbnailBytes,
-              folder: 'chat-media/thumbnails',
-              extension: 'jpg',
-            );
-            mediaUrl = '$url|$thumbUrl';
-          } catch (_) {
-            // Thumbnail is optional — send the video without it.
-          }
-        }
-
-        if (mounted) {
-          await ref.read(messageProvider).sendMediaMessage(
-            mediaUrl: mediaUrl,
-            mediaType: mediaType,
-            caption: caption,
-            replyToMessageId: replyToMessageId,
-            mediaSource: mediaSource,
-          );
-        }
-      } catch (_) {
-        // Silently fail - could show a snackbar if needed
-      } finally {
-        if (mounted) {
-          setState(() => _isSendingMedia = false);
-        }
-      }
-    }();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   Widget _buildPendingMediaThumbnail(dynamic media, bool isVideo, Uint8List? videoThumb) {
@@ -1649,59 +1687,62 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   void _sendVoiceNoteFireAndForget(String localPath, String tempPath) {
-    setState(() => _isSendingMedia = true);
+    final senderId = ref.read(authProvider).user?.id;
+    if (senderId == null) return;
+    // Snapshot reply state now — the input stays active and the reply may
+    // change while the upload runs in the background.
+    final reply = _replyToMessage;
+    setState(() => _replyToMessage = null);
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     () async {
       try {
-        final folder = 'chat-media/audio';
         // Read bytes from the temp file and upload via bytes.
         final tempFile = await _readFileBytes(tempPath);
-        if (tempFile == null) throw Exception('Could not read recording file');
-        final url = await StorageService.uploadImageBytes(
-          bytes: tempFile,
-          folder: folder,
-          extension: 'm4a',
-        );
-
-        // Keep the recording on the sender's device (same file name the
-        // voice bubble derives from the URL) so it plays offline instantly
-        // and never needs to round-trip through R2.
-        try {
-          final docsDir = await RecordingHelper.getDocsDir();
-          final voiceDir = '$docsDir/voice_notes';
-          final localName = Uri.parse(url).pathSegments.last;
-          await RecordingHelper.copyFile(localPath, '$voiceDir/$localName');
-        } catch (e) {
-          debugPrint('Error persisting sent voice note locally: $e');
-        }
-
-        try {
-          await RecordingHelper.deleteFile(localPath);
-          await RecordingHelper.deleteFile(tempPath);
-        } catch (_) {}
-
-        if (mounted) {
-          await ref.read(messageProvider).sendMediaMessage(
-            mediaUrl: url,
-            mediaType: 'voice',
-            caption: '',
-            replyToMessageId: _replyToMessage?.id,
-          );
-          setState(() {
-            _replyToMessage = null;
-          });
-        }
+        if (tempFile == null || !mounted) return;
+        ref.read(messageProvider).queueMediaUpload(
+              conversationId: widget.conversation.id,
+              senderId: senderId,
+              bytes: tempFile,
+              folder: 'chat-media/audio',
+              extension: 'm4a',
+              mediaType: 'voice',
+              caption: '',
+              replyToMessageId: reply?.id,
+              replyToContent: reply?.content,
+              replyToSenderName: reply != null
+                  ? (reply.senderId == senderId
+                      ? 'You'
+                      : widget.conversation.displayName)
+                  : null,
+              replyToMediaUrl: reply?.mediaUrl,
+              replyToMediaType: reply?.mediaType,
+              onUploaded: (url) {
+                // Keep the recording on the sender's device (same file name
+                // the voice bubble derives from the URL) so it plays offline
+                // instantly and never needs to round-trip through R2.
+                () async {
+                  try {
+                    final docsDir = await RecordingHelper.getDocsDir();
+                    final voiceDir = '$docsDir/voice_notes';
+                    final localName = Uri.parse(url).pathSegments.last;
+                    await RecordingHelper.copyFile(
+                        localPath, '$voiceDir/$localName');
+                    await RecordingHelper.deleteFile(localPath);
+                    await RecordingHelper.deleteFile(tempPath);
+                  } catch (e) {
+                    debugPrint(
+                        'Error persisting sent voice note locally: $e');
+                  }
+                }();
+              },
+            );
       } catch (e) {
-        debugPrint('Error uploading/sending voice note: $e');
+        debugPrint('Error queueing voice note: $e');
         if (mounted) {
           ShadToaster.of(context).show(
-            ShadToast(title: Text('Failed to upload voice note: $e')),
+            ShadToast(title: Text('Failed to send voice note: $e')),
           );
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isSendingMedia = false);
         }
       }
     }();
@@ -1792,9 +1833,15 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
 
     final blockProv = ref.watch(blockProvider);
-    final otherUserId = widget.conversation.otherUserId;
+    // Use the provider's live conversation so realtime presence updates
+    // (last_seen heartbeats) are reflected in the header. Falls back to the
+    // snapshot passed at navigation time when the provider has no entry.
+    final liveConv = msgProv.activeConversation?.id == widget.conversation.id
+        ? msgProv.activeConversation!
+        : widget.conversation;
+    final otherUserId = liveConv.otherUserId;
     final isBlocked = blockProv.isUserBlocked(otherUserId);
-    final presenceLabel = _presenceLabel();
+    final presenceLabel = _presenceLabel(liveConv);
 
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
@@ -1819,25 +1866,31 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
               : AppTheme.glassAppBar(
               context: context,
               title: GestureDetector(
-                onTap: () {
-                  Navigator.of(context).push(
+                onTap: () async {
+                  final jumpToMessageId =
+                      await Navigator.of(context).push<String>(
                     MaterialPageRoute(
                       builder: (_) => ChatUserInfoScreen(
-                        conversation: widget.conversation,
+                        conversation: liveConv,
                       ),
                     ),
                   );
+                  if (jumpToMessageId != null &&
+                      jumpToMessageId.isNotEmpty &&
+                      mounted) {
+                    unawaited(_showMessageInChat(jumpToMessageId));
+                  }
                 },
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ShadAvatar(
-                      widget.conversation.otherUserAvatar,
+                      liveConv.otherUserAvatar,
                       size: const Size(36, 36),
                       backgroundColor: AppTheme.accent,
                       placeholder: Text(
-                        widget.conversation.displayName.isNotEmpty
-                            ? widget.conversation.displayName[0].toUpperCase()
+                        liveConv.displayName.isNotEmpty
+                            ? liveConv.displayName[0].toUpperCase()
                             : '?',
                         style: const TextStyle(
                           color: Colors.white,
@@ -1856,11 +1909,11 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  widget.conversation.displayName,
+                                  liveConv.displayName,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              if (widget.conversation.otherUserVerified) ...[
+                              if (liveConv.otherUserVerified) ...[
                                 const SizedBox(width: 4),
                                 VerificationBadge(size: 14),
                               ],
@@ -1894,8 +1947,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                     final isVideo = value == 'video';
                     ref.read(callProvider.notifier).startCall(
                           peerId: otherUserId,
-                          peerName: widget.conversation.displayName,
-                          peerAvatar: widget.conversation.otherUserAvatar,
+                          peerName: liveConv.displayName,
+                          peerAvatar: liveConv.otherUserAvatar,
                           video: isVideo,
                         );
                   },
@@ -2117,12 +2170,15 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                             },
                                             onSwipeReply: () => _setReplyTo(msg),
                                             onReplyTap: msg.isReply ? () => _scrollToMessage(msg.replyToMessageId!) : null,
+                                            onRetry: msg.isFailed && isMe
+                                                ? () => msgProv.retryPending(msg.id)
+                                                : null,
                                             onCallback: (isVideo) {
                                               if (isBlocked) return;
                                               ref.read(callProvider.notifier).startCall(
                                                 peerId: otherUserId,
-                                                peerName: widget.conversation.displayName,
-                                                peerAvatar: widget.conversation.otherUserAvatar,
+                                                peerName: liveConv.displayName,
+                                                peerAvatar: liveConv.otherUserAvatar,
                                                 video: isVideo,
                                               );
                                             },
@@ -2463,7 +2519,10 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                 child: IconButton(
                                   icon: const Icon(LucideIcons.paperclip, size: 20),
                                   color: AppTheme.mutedSteel,
-                                  onPressed: (_isSendingMedia || _isProcessingCapture) ? null : _pickMedia,
+                                  // Never blocked by background uploads — the
+                                  // user can attach the next media while the
+                                  // previous one is still sending.
+                                  onPressed: _isProcessingCapture ? null : _pickMedia,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -2522,58 +2581,82 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                   final hasInput = _messageCtrl.text.trim().isNotEmpty ||
                                       _pendingMediaList.isNotEmpty ||
                                       _productReference != null;
+                                  // Background uploads never replace the send
+                                  // button — they show as a small badge so
+                                  // the next message can be queued instantly.
+                                  final pendingCount = msgProv.pendingCountFor(
+                                      widget.conversation.id);
 
-                                  if (_isSendingMedia) {
-                                    return Container(
-                                      width: 44,
-                                      height: 44,
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.pureSurface,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: AppTheme.whisperBorder),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.06),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: const Center(
-                                        child: SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        ),
-                                      ),
-                                    );
-                                  }
-
-                                  return Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: hasInput ? _chatColor : AppTheme.pureSurface,
-                                      shape: BoxShape.circle,
-                                      border: hasInput ? null : Border.all(color: AppTheme.whisperBorder),
-                                      boxShadow: [
-                                        BoxShadow(
+                                  return Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
                                           color: hasInput
-                                              ? _chatColor.withValues(alpha: 0.35)
-                                              : Colors.black.withValues(alpha: 0.06),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
+                                              ? _chatColor
+                                              : AppTheme.pureSurface,
+                                          shape: BoxShape.circle,
+                                          border: hasInput
+                                              ? null
+                                              : Border.all(
+                                                  color: AppTheme.whisperBorder),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: hasInput
+                                                  ? _chatColor.withValues(
+                                                      alpha: 0.35)
+                                                  : Colors.black.withValues(
+                                                      alpha: 0.06),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                    child: IconButton(
-                                      icon: Icon(
-                                        hasInput ? LucideIcons.send : LucideIcons.mic,
-                                        size: 20,
-                                        color: hasInput ? Colors.white : AppTheme.mutedSteel,
+                                        child: IconButton(
+                                          icon: Icon(
+                                            hasInput
+                                                ? LucideIcons.send
+                                                : LucideIcons.mic,
+                                            size: 20,
+                                            color: hasInput
+                                                ? Colors.white
+                                                : AppTheme.mutedSteel,
+                                          ),
+                                          onPressed: hasInput
+                                              ? _sendMessage
+                                              : _startRecording,
+                                        ),
                                       ),
-                                      onPressed: hasInput ? _sendMessage : _startRecording,
-                                    ),
+                                      if (pendingCount > 0)
+                                        Positioned(
+                                          right: -2,
+                                          top: -2,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(5),
+                                            decoration: BoxDecoration(
+                                              color: _chatColor,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: AppTheme.pureSurface,
+                                                width: 2,
+                                              ),
+                                            ),
+                                            child: SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    const AlwaysStoppedAnimation<
+                                                        Color>(Colors.white),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   );
                                 },
                               ),
@@ -2890,6 +2973,7 @@ class _MessageBubble extends StatefulWidget {
   final VoidCallback? onSwipeReply;
   final VoidCallback? onReplyTap;
   final void Function(bool isVideo)? onCallback;
+  final VoidCallback? onRetry;
 
   const _MessageBubble({
     required this.message,
@@ -2906,6 +2990,7 @@ class _MessageBubble extends StatefulWidget {
     this.onSwipeReply,
     this.onReplyTap,
     this.onCallback,
+    this.onRetry,
   });
 
   @override
@@ -2944,6 +3029,22 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
   }
 
   Widget _buildStatusIndicator(Message msg) {
+    if (msg.isSending) {
+      return SizedBox(
+        width: 12,
+        height: 12,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          valueColor: AlwaysStoppedAnimation<Color>(
+            Colors.white.withValues(alpha: 0.8),
+          ),
+        ),
+      );
+    }
+    if (msg.isFailed) {
+      return const Icon(LucideIcons.alertCircle,
+          size: 13, color: Colors.redAccent);
+    }
     final status = msg.status;
     switch (status) {
       case 'sent':
@@ -3044,10 +3145,17 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
   Widget build(BuildContext context) {
     final msg = widget.message;
     final isCall = msg.isCall;
-    final hasMedia = msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty && !isCall;
+    final hasRemoteMedia =
+        msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty && !isCall;
+    final hasLocalPreview = msg.localPreviewBytes != null &&
+        msg.localPreviewBytes!.isNotEmpty &&
+        !isCall;
+    final hasMedia = (hasRemoteMedia || hasLocalPreview) && !isCall;
     final hasProduct = msg.productReference != null && !isCall;
     final hasContent = msg.content.isNotEmpty && !isCall;
     final isVoice = msg.mediaType == 'voice' && !isCall;
+    final isPendingVoice =
+        isVoice && (msg.mediaUrl == null || msg.mediaUrl!.isEmpty);
 
     return GestureDetector(
       onLongPress: widget.onLongPress,
@@ -3168,7 +3276,15 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                       if (msg.isReply) _buildReplyQuote(),
                       if (hasMedia)
                         if (isVoice)
-                          _VoiceBubbleContent(message: msg, isMe: widget.isMe, chatColor: widget.chatColor)
+                          isPendingVoice
+                              ? _PendingVoiceContent(
+                                  isMe: widget.isMe,
+                                  chatColor: widget.chatColor,
+                                )
+                              : _VoiceBubbleContent(
+                                  message: msg,
+                                  isMe: widget.isMe,
+                                  chatColor: widget.chatColor)
                         else
                           _MediaBubbleContent(
                             message: msg,
@@ -3229,7 +3345,29 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                           ),
                           if (widget.isMe) ...[
                             const SizedBox(width: 4),
-                            _buildStatusIndicator(msg),
+                            if (msg.isFailed && widget.onRetry != null)
+                              GestureDetector(
+                                onTap: widget.onRetry,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(LucideIcons.refreshCw,
+                                        size: 12,
+                                        color: Colors.redAccent),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'Retry',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.redAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              _buildStatusIndicator(msg),
                           ],
                           if (widget.isMe && msg.status == 'seen' && msg.seenAt != null) ...[
                             const SizedBox(width: 4),
@@ -3272,6 +3410,51 @@ class _RecordingDot extends StatelessWidget {
   }
 }
 
+/// Placeholder for an outgoing voice note that is still uploading.
+/// The real player needs a remote URL, so queued voice notes show an
+/// uploading row instead of crashing on the null URL.
+class _PendingVoiceContent extends StatelessWidget {
+  final bool isMe;
+  final Color chatColor;
+
+  const _PendingVoiceContent({required this.isMe, required this.chatColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = isMe ? Colors.white : AppTheme.charcoalInk;
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(fg),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Sending voice note…',
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.85)
+                    : AppTheme.mutedSteel,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MediaBubbleContent extends StatelessWidget {
   final dynamic message;
   final bool isMe;
@@ -3291,37 +3474,20 @@ class _MediaBubbleContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = message.mediaUrl as String;
+    final String? url = message.mediaUrl as String?;
     final isVideo = message.mediaType == 'video';
     final thumbnail = message.thumbnailUrl;
+    final Uint8List? localPreview = message.localPreviewBytes as Uint8List?;
+    final isUploading = message.isSending && (url == null || url.isEmpty);
+    final hasLocal = localPreview != null && localPreview.isNotEmpty;
 
-    return GestureDetector(
-      onTap: () {
-        final gallery = (mediaUrls != null && mediaUrls!.isNotEmpty)
-            ? mediaUrls!
-            : [url];
-        final index = gallery.length == 1 ? 0 : initialIndex.clamp(0, gallery.length - 1);
-        MediaViewer.open(
-          context,
-          gallery,
-          cacheManager: ChatMediaCacheManager(),
-          initialIndex: index,
-          thumbnailUrls: thumbnails,
-        );
-      },
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(14),
-          topRight: Radius.circular(14),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (isVideo)
-              // Preview frame extracted at send time; fall back to an icon
-              // for videos without one (e.g. sent from web).
-              if (thumbnail != null)
-                CachedNetworkImage(
+    Widget imageBody;
+    if (url != null && url.isNotEmpty) {
+      imageBody = isVideo
+          // Preview frame extracted at send time; fall back to an icon
+          // for videos without one (e.g. sent from web).
+          ? (thumbnail != null
+              ? CachedNetworkImage(
                   imageUrl: thumbnail,
                   cacheManager: ChatMediaCacheManager(),
                   width: double.infinity,
@@ -3332,47 +3498,95 @@ class _MediaBubbleContent extends StatelessWidget {
                     height: 200,
                     color: AppTheme.charcoalInk,
                     child: const Center(
-                      child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
+                      child: Icon(LucideIcons.film,
+                          size: 48, color: Colors.white54),
                     ),
                   ),
                   errorWidget: (_, _, _) => Container(
                     height: 200,
                     color: AppTheme.charcoalInk,
                     child: const Center(
-                      child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
+                      child: Icon(LucideIcons.film,
+                          size: 48, color: Colors.white54),
                     ),
                   ),
                 )
-              else
-                Container(
+              : Container(
                   width: double.infinity,
                   height: 200,
                   color: AppTheme.charcoalInk,
                   child: const Center(
-                    child: Icon(LucideIcons.film, size: 48, color: Colors.white54),
+                    child: Icon(LucideIcons.film,
+                        size: 48, color: Colors.white54),
                   ),
-                )
-            else
-              CachedNetworkImage(
-                imageUrl: url,
-                cacheManager: ChatMediaCacheManager(),
-                width: double.infinity,
+                ))
+          : CachedNetworkImage(
+              imageUrl: url,
+              cacheManager: ChatMediaCacheManager(),
+              width: double.infinity,
+              height: 200,
+              fit: BoxFit.cover,
+              memCacheWidth: 400,
+              placeholder: (_, _) => Container(
                 height: 200,
-                fit: BoxFit.cover,
-                memCacheWidth: 400,
-                placeholder: (_, _) => Container(
-                  height: 200,
-                  color: AppTheme.warmMist,
-                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                ),
-                errorWidget: (_, _, _) => Container(
-                  height: 200,
-                  color: AppTheme.warmMist,
-                  child: const Center(
-                    child: Icon(LucideIcons.imageOff, size: 32, color: AppTheme.mutedSteel),
-                  ),
+                color: AppTheme.warmMist,
+                child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+              errorWidget: (_, _, _) => Container(
+                height: 200,
+                color: AppTheme.warmMist,
+                child: const Center(
+                  child: Icon(LucideIcons.imageOff,
+                      size: 32, color: AppTheme.mutedSteel),
                 ),
               ),
+            );
+    } else if (hasLocal) {
+      // Optimistic preview while the bytes upload in the background.
+      imageBody = Image.memory(
+        localPreview,
+        width: double.infinity,
+        height: 200,
+        fit: BoxFit.cover,
+      );
+    } else {
+      imageBody = Container(
+        width: double.infinity,
+        height: 200,
+        color: isVideo ? AppTheme.charcoalInk : AppTheme.warmMist,
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    return GestureDetector(
+      // No gallery yet while the upload is in flight.
+      onTap: (url == null || url.isEmpty)
+          ? null
+          : () {
+              final gallery = (mediaUrls != null && mediaUrls!.isNotEmpty)
+                  ? mediaUrls!
+                  : [url];
+              final index = gallery.length == 1
+                  ? 0
+                  : initialIndex.clamp(0, gallery.length - 1);
+              MediaViewer.open(
+                context,
+                gallery,
+                cacheManager: ChatMediaCacheManager(),
+                initialIndex: index,
+                thumbnailUrls: thumbnails,
+              );
+            },
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(14),
+          topRight: Radius.circular(14),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            imageBody,
             if (isVideo)
               Container(
                 padding: const EdgeInsets.all(14),
@@ -3426,6 +3640,25 @@ class _MediaBubbleContent extends StatelessWidget {
                             ),
                           ],
                         ),
+                ),
+              ),
+            // Uploading veil so queued media reads as "sending" while the
+            // input stays free for the next message.
+            if (isUploading)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
                 ),
               ),
           ],
