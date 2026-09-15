@@ -90,6 +90,8 @@ This file provides AI agents with a comprehensive reference of all packages used
 | intl | ^0.20.2 | https://pub.dev/packages/intl | Date formatting & i18n |
 | permission_handler | ^12.0.2 | https://pub.dev/packages/permission_handler | Runtime permissions |
 | local_auth | ^3.0.1 | https://pub.dev/packages/local_auth | Biometric authentication |
+| device_info_plus | ^13.2.0 | https://pub.dev/packages/device_info_plus | Device model for the IP audit trail |
+| package_info_plus | ^10.2.1 | https://pub.dev/packages/package_info_plus | App version for the IP audit trail |
 | flutter_local_notifications | ^21.0.0 | https://pub.dev/packages/flutter_local_notifications | Local notifications |
 | paystack_flutter_sdk | 0.0.1-alpha.2 | https://pub.dev/packages/paystack_flutter_sdk | Payment processing |
 | gal | ^2.3.2 | https://pub.dev/packages/gallery_saver | Save to gallery |

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/chat_media_cache_service.dart';
+import '../services/ip_audit_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/navigation_service.dart';
 import '../services/secrets_service.dart';
@@ -311,6 +312,7 @@ class AuthProvider extends ChangeNotifier {
       _error = null;
       _isLoading = false;
       unawaited(SecretsService.instance.initialize());
+      unawaited(IpAuditService.instance.recordAndHandle('login'));
       notifyListeners();
       return true;
     } catch (e) {
@@ -369,6 +371,7 @@ class AuthProvider extends ChangeNotifier {
       final success = await AuthService.signInWithGoogle();
       if (success) {
         unawaited(SecretsService.instance.initialize());
+        unawaited(IpAuditService.instance.recordAndHandle('login'));
       }
       return success;
     } catch (e) {
