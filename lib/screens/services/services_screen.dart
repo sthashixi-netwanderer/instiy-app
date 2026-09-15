@@ -34,6 +34,7 @@ class ServicesScreen extends ConsumerStatefulWidget {
 class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   final _searchCtrl = TextEditingController();
   final _appealCtrl = TextEditingController();
+  final _discoverScrollCtrl = ScrollController();
 
   /// False shows the Discover marketplace; true shows the provider's
   /// My Services dashboard. The switch lives in the top navbar — there are
@@ -44,6 +45,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   @override
   void initState() {
     super.initState();
+    _discoverScrollCtrl.addListener(_onDiscoverScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final prov = ref.read(serviceProvider);
       prov.loadServices();
@@ -59,10 +61,21 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
 
   @override
   void dispose() {
+    _discoverScrollCtrl.dispose();
     _searchDebounce?.cancel();
     _searchCtrl.dispose();
     _appealCtrl.dispose();
     super.dispose();
+  }
+
+  /// Fetches the next page once the Discover grid nears its end — the
+  /// marketplace arrives in chunks instead of one unbounded query. The
+  /// provider ignores redundant calls, so no local guards are needed.
+  void _onDiscoverScroll() {
+    if (!_discoverScrollCtrl.hasClients) return;
+    final position = _discoverScrollCtrl.position;
+    if (position.pixels < position.maxScrollExtent * 0.8) return;
+    ref.read(serviceProvider).loadMoreServices();
   }
 
   Future<void> _loadServices() async {
@@ -332,6 +345,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                   : RefreshIndicator(
                       onRefresh: _loadServices,
                       child: GridView.builder(
+                        controller: _discoverScrollCtrl,
                         padding: EdgeInsets.fromLTRB(
                           context.rw(16),
                           0,
@@ -345,11 +359,17 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                           crossAxisSpacing: 12,
                           childAspectRatio: 0.68,
                         ),
-                        itemCount: services.length,
-                        itemBuilder: (context, index) => _ServiceCard(
-                          service: services[index],
-                          onTap: () => _openService(services[index]),
-                        ),
+                        // The extra cell is a skeleton while another page
+                        // can still be loaded.
+                        itemCount: services.length +
+                            (serviceProv.hasMoreServices ? 1 : 0),
+                        itemBuilder: (context, index) =>
+                            index == services.length
+                                ? const ProductCardSkeleton()
+                                : _ServiceCard(
+                                    service: services[index],
+                                    onTap: () => _openService(services[index]),
+                                  ),
                       ),
                     ),
         ),

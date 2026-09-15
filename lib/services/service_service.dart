@@ -17,10 +17,13 @@ class ServiceService {
     reviews:service_reviews(rating)
   ''';
 
-  /// Browse published services. Signed-out friendly (public read policy).
-  /// [institutionName] filters to listings restricted to that institution —
-  /// listings with no restriction ("All institutions") always match.
-  static Future<List<Service>> getServices({
+  /// Rows requested per Discover page — see [getServicesPage].
+  static const int browsePageSize = 20;
+
+  /// Shared browse query: filters plus a deterministic total order. The id
+  /// tiebreaker keeps offset pagination stable when two listings share a
+  /// created_at — without it a page boundary can drop or repeat a row.
+  static Future<List<dynamic>> _fetchRows({
     String? categoryId,
     String? searchQuery,
     String? providerId,
@@ -74,17 +77,21 @@ class ServiceService {
       }
     }
 
-    final ordered = query.order('created_at', ascending: false);
+    final ordered = query
+        .order('created_at', ascending: false)
+        .order('id', ascending: false);
     final response = limit != null
         ? await ordered.range(offset ?? 0, (offset ?? 0) + limit - 1)
         : await ordered;
-    
-    // In browse mode (providerId == null), ensure services whose provider is
-    // no longer an active service provider or suspended are excluded.
-    final rawList = response as List<dynamic>;
-    return rawList
+    return response as List<dynamic>;
+  }
+
+  /// In browse mode (browsing = true), services whose provider is no longer
+  /// an active service provider or is suspended are excluded client-side.
+  static List<Service> _mapRows(List<dynamic> rows, {required bool browsing}) {
+    return rows
         .where((row) {
-          if (providerId == null) {
+          if (browsing) {
             final provider = row['provider'] as Map<String, dynamic>?;
             if (provider != null) {
               if (provider['is_service_provider'] == false) return false;
@@ -95,6 +102,62 @@ class ServiceService {
         })
         .map<Service>((row) => Service.fromJson(row))
         .toList();
+  }
+
+  /// Browse published services. Signed-out friendly (public read policy).
+  /// [institutionName] filters to listings restricted to that institution —
+  /// listings with no restriction ("All institutions") always match.
+  static Future<List<Service>> getServices({
+    String? categoryId,
+    String? searchQuery,
+    String? providerId,
+    List<ServiceStatus>? statuses,
+    String? institutionName,
+    String? tag,
+    int? limit,
+    int? offset,
+  }) async {
+    final rows = await _fetchRows(
+      categoryId: categoryId,
+      searchQuery: searchQuery,
+      providerId: providerId,
+      statuses: statuses,
+      institutionName: institutionName,
+      tag: tag,
+      limit: limit,
+      offset: offset,
+    );
+    return _mapRows(rows, browsing: providerId == null);
+  }
+
+  /// One page of browse results plus whether the server has rows past it.
+  /// The page is probed with limit + 1 rows so [hasMore] reflects the raw
+  /// row count — the client-side provider filter in [_mapRows] can otherwise
+  /// make a full page look like the end of the list.
+  static Future<({List<Service> services, bool hasMore})> getServicesPage({
+    String? categoryId,
+    String? searchQuery,
+    String? institutionName,
+    String? tag,
+    int limit = browsePageSize,
+    int offset = 0,
+  }) async {
+    final rows = await _fetchRows(
+      categoryId: categoryId,
+      searchQuery: searchQuery,
+      institutionName: institutionName,
+      tag: tag,
+      limit: limit + 1,
+      offset: offset,
+    );
+    final hasMore = rows.length > limit;
+    return (
+      services: _mapRows(
+        hasMore ? rows.sublist(0, limit) : rows,
+        browsing: true,
+      ),
+      hasMore: hasMore,
+    );
   }
 
   /// Active services whose video is featured in the Clips feed (public read,

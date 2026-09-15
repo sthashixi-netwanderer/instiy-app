@@ -38,6 +38,17 @@ class ServiceProvider extends ChangeNotifier {
   bool _myServicesLoading = false;
   bool _categoriesLoading = false;
   bool _optingIn = false;
+
+  /// Discover pagination — browse loads in [servicesPageSize] chunks so the
+  /// grid (and every realtime refresh of it) never pulls the whole services
+  /// table plus its package/review joins in one request.
+  static const int servicesPageSize = ServiceService.browsePageSize;
+
+  /// Highest browse page currently held in [_services] (0-based).
+  int _servicesPage = 0;
+  bool _hasMoreServices = true;
+  bool _loadingMoreServices = false;
+
   String _searchQuery = '';
   String? _selectedCategoryId;
   String? _selectedInstitutionName;
@@ -119,19 +130,34 @@ class ServiceProvider extends ChangeNotifier {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'services',
-          callback: (_) => _onRealtimeChange(),
+          callback: (payload) => _onRealtimeChange(
+            refreshMyListings: _servicesRowMayBeMine(
+              payload.newRecord,
+              payload.oldRecord,
+            ),
+          ),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'service_packages',
-          callback: (_) => _onRealtimeChange(),
+          callback: (payload) => _onRealtimeChange(
+            refreshMyListings: _childRowMayBeMine(
+              payload.newRecord,
+              payload.oldRecord,
+            ),
+          ),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'service_reviews',
-          callback: (_) => _onRealtimeChange(),
+          callback: (payload) => _onRealtimeChange(
+            refreshMyListings: _childRowMayBeMine(
+              payload.newRecord,
+              payload.oldRecord,
+            ),
+          ),
         );
     _servicesChannel!.subscribe(_onChannelStatus('services'));
 
@@ -188,25 +214,66 @@ class ServiceProvider extends ChangeNotifier {
     }
   }
 
-  void _onRealtimeChange() {
+  void _onRealtimeChange({bool refreshMyListings = true}) {
     _realtimeDebounce?.cancel();
     _realtimeDebounce = Timer(const Duration(milliseconds: 250), () {
-      _silentReload();
+      _silentReload(refreshMyListings: refreshMyListings);
     });
   }
 
-  Future<void> _silentReload() async {
+  /// Whether a services-row change belongs to the signed-in provider. DELETE
+  /// payloads only carry the primary key, so a row that doesn't say counts as
+  /// "maybe mine" and the dashboard refreshes.
+  bool _servicesRowMayBeMine(
+    Map<String, dynamic> newRecord,
+    Map<String, dynamic> oldRecord,
+  ) {
+    final mine = _currentUserId;
+    if (mine == null) return false;
+    final newProvider = newRecord['provider_id'] as String?;
+    final oldProvider = oldRecord['provider_id'] as String?;
+    if (newProvider == null && oldProvider == null) return true;
+    return newProvider == mine || oldProvider == mine;
+  }
+
+  /// Whether a service_packages/service_reviews change targets one of the
+  /// signed-in provider's own listings (same unknown-payload caveat).
+  bool _childRowMayBeMine(
+    Map<String, dynamic> newRecord,
+    Map<String, dynamic> oldRecord,
+  ) {
+    final newService = newRecord['service_id'] as String?;
+    final oldService = oldRecord['service_id'] as String?;
+    if (newService == null && oldService == null) return true;
+    final ownIds = _myServices.map((s) => s.id).toSet();
+    return ownIds.contains(newService) || ownIds.contains(oldService);
+  }
+
+  /// Realtime refresh. Only the rows the user has already scrolled through
+  /// are refetched, so the query stays bounded by what is on screen instead
+  /// of pulling the whole table on every change anywhere in the marketplace.
+  /// The pagination cursor is left untouched so scrolling continues where it
+  /// was. [refreshMyListings] additionally reloads the creator dashboard;
+  /// callers skip it when the change provably touched another provider.
+  Future<void> _silentReload({bool refreshMyListings = true}) async {
+    final generation = ++_browseGeneration;
+    _loadingMoreServices = false;
     try {
-      final results = await ServiceService.getServices(
+      final page = await ServiceService.getServicesPage(
         categoryId: _selectedCategoryId,
         institutionName: _selectedInstitutionName,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+        limit: (_servicesPage + 1) * servicesPageSize,
       );
-      _services = results;
-      if (_currentUserId != null) {
+      if (generation != _browseGeneration) return;
+      final results = page.services;
+      _services = _searchQuery.isEmpty ? (results..shuffle()) : results;
+      _loadedOnce = true;
+      if (_currentUserId != null && refreshMyListings) {
         await checkServiceProviderStatus();
         _myServices = await ServiceService.getMyServices();
       }
+      if (generation != _browseGeneration) return;
       notifyListeners();
     } catch (_) {}
   }
@@ -220,6 +287,9 @@ class ServiceProvider extends ChangeNotifier {
     _isServiceProvider = null;
     _latestAppeal = null;
     _loadedOnce = false;
+    _servicesPage = 0;
+    _hasMoreServices = true;
+    _loadingMoreServices = false;
     notifyListeners();
   }
 
@@ -228,6 +298,8 @@ class ServiceProvider extends ChangeNotifier {
   List<Category> get categories => _categories;
   List<Institution> get institutions => _institutions;
   bool get isLoading => _isLoading;
+  bool get hasMoreServices => _hasMoreServices;
+  bool get loadingMoreServices => _loadingMoreServices;
   bool get myServicesLoading => _myServicesLoading;
   bool get categoriesLoading => _categoriesLoading;
   bool get optingIn => _optingIn;
@@ -271,9 +343,10 @@ class ServiceProvider extends ChangeNotifier {
     loadServices();
   }
 
-  /// Loads the browse results. [silent] keeps the previous results visible
-  /// (no loading flag) — used by live search, where flashing a skeleton
-  /// between keystrokes would be jarring. Stale responses are discarded.
+  /// Loads the first browse page (resetting any pagination). [silent] keeps
+  /// the previous results visible (no loading flag) — used by live search,
+  /// where flashing a skeleton between keystrokes would be jarring. Stale
+  /// responses are discarded.
   Future<void> loadServices({bool silent = false}) async {
     if (!silent) {
       _isLoading = true;
@@ -281,9 +354,10 @@ class ServiceProvider extends ChangeNotifier {
       notifyListeners();
     }
     final generation = ++_browseGeneration;
+    _loadingMoreServices = false;
 
     try {
-      final results = await ServiceService.getServices(
+      final page = await ServiceService.getServicesPage(
         categoryId: _selectedCategoryId,
         institutionName: _selectedInstitutionName,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
@@ -293,7 +367,10 @@ class ServiceProvider extends ChangeNotifier {
       // always showing newest-first. Skipped while searching so text matches
       // keep the server's relevance order. Shuffled once per load (not per
       // build), so the grid stays stable while scrolling.
+      final results = page.services;
       _services = _searchQuery.isEmpty ? (results..shuffle()) : results;
+      _servicesPage = 0;
+      _hasMoreServices = page.hasMore;
       _loadedOnce = true;
     } catch (e) {
       if (generation != _browseGeneration) return;
@@ -301,6 +378,44 @@ class ServiceProvider extends ChangeNotifier {
     } finally {
       if (generation == _browseGeneration) {
         _isLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Appends the next browse page. Re-entrant calls and calls past the last
+  /// page are ignored, and a browse reset (filter/search change or realtime
+  /// refresh) invalidates an in-flight page via the generation check.
+  Future<void> loadMoreServices() async {
+    if (_isLoading || _loadingMoreServices || !_hasMoreServices) return;
+    _loadingMoreServices = true;
+    notifyListeners();
+    final generation = _browseGeneration;
+
+    try {
+      final page = await ServiceService.getServicesPage(
+        categoryId: _selectedCategoryId,
+        institutionName: _selectedInstitutionName,
+        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+        offset: (_servicesPage + 1) * servicesPageSize,
+      );
+      if (generation != _browseGeneration) return;
+      // Another provider publishing mid-scroll shifts the server's offsets,
+      // so a row can come back twice — keep the first copy.
+      final loadedIds = _services.map((s) => s.id).toSet();
+      final fresh = page.services
+          .where((s) => !loadedIds.contains(s.id))
+          .toList();
+      if (_searchQuery.isEmpty) fresh.shuffle();
+      _services = [..._services, ...fresh];
+      _servicesPage++;
+      _hasMoreServices = page.hasMore;
+    } catch (_) {
+      // Keep the current page loaded; the scroll listener retries on the
+      // next scroll gesture.
+    } finally {
+      if (generation == _browseGeneration) {
+        _loadingMoreServices = false;
         notifyListeners();
       }
     }
