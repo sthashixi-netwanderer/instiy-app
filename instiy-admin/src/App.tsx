@@ -3,6 +3,7 @@ import { supabase } from "./supabaseClient";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Users } from "./pages/Users";
+import { IpAudit } from "./pages/IpAudit";
 import { Categories } from "./pages/Categories";
 import { Products } from "./pages/Products";
 import { Services } from "./pages/Services";
@@ -48,6 +49,7 @@ import { InstallBanner } from "./components/install-banner";
 		Wallet,
 		Megaphone,
 		Gift,
+		Globe,
 	} from "lucide-react";
 const instiyLogo = "/favicon.svg";
 
@@ -204,12 +206,18 @@ export const App: React.FC = () => {
 			icon: <LayoutDashboard size={18} />,
 			path: "/dashboard",
 		},
-		{
-			id: "users",
-			label: "Users & Sellers",
-			icon: <UsersIcon size={18} />,
-			path: "/users",
-		},
+			{
+				id: "users",
+				label: "Users & Sellers",
+				icon: <UsersIcon size={18} />,
+				path: "/users",
+			},
+			{
+				id: "ip-audit",
+				label: "IP Audit",
+				icon: <Globe size={18} />,
+				path: "/ip-audit",
+			},
 		{
 			id: "verifications",
 			label: "Verifications",
@@ -471,6 +479,7 @@ export const App: React.FC = () => {
 					<Route path="/" element={<Navigate to="/dashboard" replace />} />
 					<Route path="/dashboard" element={<Dashboard />} />
 					<Route path="/users" element={<Users />} />
+					<Route path="/ip-audit" element={<IpAudit />} />
 					<Route path="/verifications" element={<Verifications />} />
 					<Route path="/categories" element={<Categories />} />
 					<Route path="/products" element={<Products />} />

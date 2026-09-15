@@ -22,7 +22,10 @@ import { formatCurrency, formatGhs } from "../utils/format";
 
 export const Users: React.FC = () => {
 	const [users, setUsers] = useState<any[]>([]);
-	const [searchQuery, setSearchQuery] = useState("");
+	// Supports deep links from the IP audit page (/users?q=<email>)
+	const [searchQuery, setSearchQuery] = useState(
+		() => new URLSearchParams(window.location.search).get("q") ?? "",
+	);
 	const [loading, setLoading] = useState(true);
 	const [selectedUser, setSelectedUser] = useState<any>(null);
 	const [userWallet, setUserWallet] = useState<any>(null);
