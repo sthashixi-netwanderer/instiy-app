@@ -7,13 +7,17 @@ Status: Approved design (brainstorming complete), pending implementation plan
 
 Give admins a page in the Instiy admin panel to audit the public IP addresses
 that use the app: which devices they belong to, and which user accounts they
-are associated with. Admins can also block an IP, which locks the app for
-clients on that IP.
+are associated with. Unauthenticated (signed-out) usage is a first-class part
+of the audit — an IP that was seen anonymously and later shows a login tells
+the admin where the app is being used from even when no account was involved.
+Admins can also block an IP, which locks the app for clients on that IP.
 
 ## Decisions (from brainstorming)
 
 - **Capture scope:** app sessions (cold start, signed-in or not) + successful
-  logins. Anonymous sessions produce events with no associated account.
+  logins. Anonymous sessions produce events with no associated account, and
+  those events are surfaced explicitly in the admin UI (anonymous badge,
+  anonymous-only filter, anonymous stat) — not just silently stored.
 - **IP source:** the Cloudflare worker (`api.instiy.com`) reads
   `CF-Connecting-IP`. The client never reports its own IP.
 - **Device detail:** full hardware model via `device_info_plus` + app version
@@ -93,13 +97,17 @@ this revoke pattern on `product_views` functions). Unlike
 expose IP↔account linkage and must refuse non-admins even though EXECUTE is
 what RLS would otherwise not cover on security-definer functions:
 
-- `get_ip_audit_summary(p_offset int, p_limit int, p_search text)` → one row
-  per IP: `ip_address, country, event_count, login_count, account_count,
+- `get_ip_audit_summary(p_offset int, p_limit int, p_search text,
+  p_anonymous_only boolean default false)` → one row per IP: `ip_address,
+  country, event_count, login_count, account_count, anonymous_event_count,
   first_seen, last_seen, platforms[], device_models[], user_ids[], is_blocked,
   block_reason`. Grouped by IP, ordered by `last_seen desc`. `p_search`
   matches IP substring (`host(ip_address) ilike`) OR any associated user's
-  email/full_name. Joins `blocked_ips` for the block columns.
-- `get_ip_audit_count(p_search text)` → total matching IPs, for pagination.
+  email/full_name. `p_anonymous_only = true` restricts to IPs that have at
+  least one event with `user_id IS NULL`. Joins `blocked_ips` for the block
+  columns.
+- `get_ip_audit_count(p_search text, p_anonymous_only boolean default false)`
+  → total matching IPs, for pagination.
 
 Retention: enable `pg_cron` and schedule a daily job deleting `ip_events`
 older than 180 days.
@@ -166,19 +174,23 @@ sidebar nav item "IP Audit" (lucide `Globe` icon) in `App.tsx`.
 radix `dialog.tsx` for modals):
 
 - Stat cards: unique IPs (matching current search), events in the last 7
-  days, blocked IP count.
+  days, anonymous events in the last 7 days (signed-out usage), blocked IP
+  count.
 - Main table (rows from `get_ip_audit_summary`, paginated 25/page with
   prev/next using `get_ip_audit_count`): IP + country, platform chips,
-  associated accounts (count + up-to-3 avatar stack), event count, first/last
+  associated accounts (count + up-to-3 avatar stack; an "Anonymous activity"
+  chip marks IPs that also have signed-out events), event count, first/last
   seen, blocked badge, block/unblock action.
-- Search box (debounced) feeding `p_search`.
+- Search box (debounced) feeding `p_search`, plus an "Anonymous only"
+  toggle feeding `p_anonymous_only`.
 - Row click opens the **IP details modal**:
   - *Header:* IP, country, blocked badge, Block/Unblock button.
   - *Device section:* distinct device models, platforms, OS versions, app
     versions, and stored user-agents parsed into browser/OS chips with a
     hand-rolled parser (no new dependency).
   - *Activity section:* latest ~50 events for the IP (type badge
-    session/login, device model, platform, time-ago).
+    session/login, device model, platform, time-ago, and the associated
+    account per event — signed-out events show "Anonymous session").
   - *Accounts section:* all accounts seen on this IP — avatar, name, email,
     university, suspended/admin badges, "View in Users" link.
 - **Block dialog:** required reason text; warning banner showing the number
