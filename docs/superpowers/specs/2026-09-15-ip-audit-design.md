@@ -24,6 +24,15 @@ clients on that IP.
   reject blocked IPs server-side. Known limit: a modified client on a blocked
   IP could still reach Supabase directly; normal users and all privileged
   worker operations are fully blocked.
+- **Country data:** Cloudflare's `request.cf.country` at capture time.
+  Evaluated `ip_whoer` (npm) and rejected it for this feature: `getIpInfo()`
+  is a zero-argument *self-lookup* — called from the worker it would report
+  Cloudflare's egress IP, and from the admin browser the admin's own IP, so
+  it cannot attribute country to the audited user. (Its `package.json` also
+  lists itself as a dependency, which breaks installing it as a dep.) If
+  city/region/ISP detail is wanted later, the path is extending `ip_whoer`
+  with an optional target-IP argument (whoer.to's `ip2co?ip=` endpoint it
+  already calls supports this) behind a cached worker endpoint.
 
 ## Non-goals
 
