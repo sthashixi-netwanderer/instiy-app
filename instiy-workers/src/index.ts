@@ -5,6 +5,8 @@ import { handleSendSms } from './handlers/send-sms';
 import { handlePushNotifications } from './handlers/push-notifications';
 import { handleR2UploadProxy, handleDeleteR2Object } from './handlers/r2-upload';
 import { handleDeepLinks } from './handlers/deep-links';
+import { handleSessionAudit } from './handlers/ip-audit';
+import { isIpBlocked, blockedResponse } from './middleware/ip-block';
 
 // Env interface is globally defined in worker-configuration.d.ts
 
@@ -51,6 +53,13 @@ export default {
     if (path.startsWith('/functions/v1/')) {
       const route = path.replace('/functions/v1/', '');
 
+      // IP blocklist. Every API route is gated EXCEPT session-audit — a
+      // blocked client must still be able to learn that it is blocked.
+      if (route !== 'session-audit') {
+        const { blocked, reason } = await isIpBlocked(request, env);
+        if (blocked) return blockedResponse(reason, corsHeaders);
+      }
+
       // Share product — public, no auth required
       if (route === 'share-product' || route.startsWith('share-product/')) {
         return handleShareProduct(request, env, corsHeaders);
@@ -82,6 +91,8 @@ export default {
           return handleSendSms(request, env, corsHeaders);
         case 'push-notifications':
           return handlePushNotifications(request, env, corsHeaders);
+        case 'session-audit':
+          return handleSessionAudit(request, env, corsHeaders);
         default:
           return new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
