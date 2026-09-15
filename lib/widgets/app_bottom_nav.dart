@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -107,10 +108,17 @@ class AppBottomNav extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final msgState = ref.watch(messageProvider);
     final unreadCount = msgState.unreadCount;
+    final missedCallCount = msgState.missedCallCount;
     final unreadExploreCount = msgState.unreadExploreNotificationsCount;
     final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
+    // Dashboard hosts both the Selling and Services dashboards — visible
+    // when opted in as either. Watching the provider also constructs it,
+    // which triggers the provider-status check for signed-in users.
+    final isServiceProvider =
+        ref.watch(serviceProvider).isServiceProvider == true;
+    final showDash = isSeller || isServiceProvider;
     final isServicesTab = currentIndex == 2;
 
     return Padding(
@@ -180,23 +188,21 @@ class AppBottomNav extends ConsumerWidget {
                               LucideIcons.video,
                               'Clips',
                             ),
-                          _navButton(
-                            context,
-                            isAuth,
-                            4,
-                            LucideIcons.messageSquare,
-                            'Chats',
-                            badgeCount: unreadCount,
+                          _ChatsNavButton(
+                            selected: currentIndex == 4,
+                            unreadCount: unreadCount,
+                            missedCount: missedCallCount,
                             svgAsset:
                                 'assets/message-2-pending-svgrepo-com.svg',
+                            onTap: () => _handleNavTap(context, isAuth, 4),
                           ),
-                          if (isSeller)
+                          if (showDash)
                             _navButton(
                               context,
                               isAuth,
                               5,
                               LucideIcons.layoutDashboard,
-                              'Dashboard',
+                              'Dash',
                             ),
                         ]
                       : [
@@ -363,6 +369,219 @@ class _NavButton extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.mutedSteel,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Chats tab button that alternates between the chat icon and a phone
+/// handset while there are unseen missed calls: chat phase carries the
+/// unread-messages badge, caller phase carries the missed-call count.
+/// The swap runs on a 5s loop for as long as [missedCount] is positive
+/// and settles back on the chat icon once it clears. Chrome (34×34 slot,
+/// selected gradient box, badge, label) mirrors [_NavButton].
+class _ChatsNavButton extends StatefulWidget {
+  final bool selected;
+  final int unreadCount;
+  final int missedCount;
+  final String? svgAsset;
+  final VoidCallback onTap;
+
+  const _ChatsNavButton({
+    required this.selected,
+    required this.unreadCount,
+    required this.missedCount,
+    this.svgAsset,
+    required this.onTap,
+  });
+
+  @override
+  State<_ChatsNavButton> createState() => _ChatsNavButtonState();
+}
+
+class _ChatsNavButtonState extends State<_ChatsNavButton> {
+  static const _switchInterval = Duration(seconds: 5);
+  static const _switchDuration = Duration(milliseconds: 500);
+
+  bool _showCaller = false;
+  Timer? _switchTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _switchTimer = Timer.periodic(_switchInterval, (_) {
+      if (!mounted) return;
+      if (widget.missedCount > 0) {
+        setState(() => _showCaller = !_showCaller);
+      } else if (_showCaller) {
+        setState(() => _showCaller = false);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_ChatsNavButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.missedCount == 0 && _showCaller) {
+      setState(() => _showCaller = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _switchTimer?.cancel();
+    super.dispose();
+  }
+
+  Widget _iconSlot(Widget icon) {
+    if (widget.selected) {
+      return Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppTheme.accentBright, AppTheme.accent],
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: icon,
+      );
+    }
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: Center(child: icon),
+    );
+  }
+
+  Widget _withBadge(Widget slot, int count) {
+    if (count <= 0) return slot;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        slot,
+        Positioned(
+          right: -4,
+          top: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppTheme.destructive,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+            alignment: Alignment.center,
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Phone phase only while missed calls exist; otherwise pinned on chat.
+    final showPhone = widget.missedCount > 0 && _showCaller;
+
+    final Widget iconArea = AnimatedSwitcher(
+      duration: _switchDuration,
+      transitionBuilder: (child, animation) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+        return FadeTransition(
+          opacity: curved,
+          child:
+              ScaleTransition(scale: curved, child: child),
+        );
+      },
+      child: showPhone
+          ? KeyedSubtree(
+              key: const ValueKey('caller'),
+              child: _withBadge(
+                _iconSlot(
+                  Icon(
+                    LucideIcons.phone,
+                    size: 20,
+                    color: widget.selected
+                        ? Colors.white
+                        : AppTheme.mutedSteel,
+                  ),
+                ),
+                widget.missedCount,
+              ),
+            )
+          : KeyedSubtree(
+              key: const ValueKey('chats'),
+              child: _withBadge(
+                _iconSlot(
+                  widget.svgAsset != null
+                      ? SvgPicture.asset(
+                          widget.svgAsset!,
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                          colorFilter: ColorFilter.mode(
+                            widget.selected
+                                ? Colors.white
+                                : AppTheme.mutedSteel,
+                            BlendMode.srcIn,
+                          ),
+                        )
+                      : Icon(
+                          LucideIcons.messageSquare,
+                          size: 20,
+                          color: widget.selected
+                              ? Colors.white
+                              : AppTheme.mutedSteel,
+                        ),
+                ),
+                widget.unreadCount,
+              ),
+            ),
+    );
+
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: widget.selected,
+        label: 'Chats',
+        child: InkResponse(
+          onTap: widget.onTap,
+          radius: 34,
+          child: SizedBox(
+            height: double.infinity,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                iconArea,
+                if (!widget.selected) ...[
+                  const SizedBox(height: 3),
+                  const Text(
+                    'Chats',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       color: AppTheme.mutedSteel,

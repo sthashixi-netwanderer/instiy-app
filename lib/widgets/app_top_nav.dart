@@ -105,6 +105,11 @@ class AppTopNav extends ConsumerWidget {
     final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
+    // Dashboard hosts both the Selling and Services dashboards — visible
+    // when opted in as either (see AppBottomNav).
+    final isServiceProvider =
+        ref.watch(serviceProvider).isServiceProvider == true;
+    final showDash = isSeller || isServiceProvider;
     final isServicesTab = currentIndex == 2;
 
     return ClipRRect(
@@ -204,9 +209,11 @@ class AppTopNav extends ConsumerWidget {
                     active: false,
                     onTap: () => Navigator.of(context).pushNamed('/sell'),
                   ),
+                ],
+                if (showDash)
                   _buildNavItem(
                     icon: LucideIcons.layoutDashboard,
-                    label: 'Dashboard',
+                    label: 'Dash',
                     active: currentIndex == 5,
                     onTap: _tabTap(
                       5,
@@ -214,7 +221,6 @@ class AppTopNav extends ConsumerWidget {
                           Navigator.of(context).pushNamed('/seller-dashboard'),
                     ),
                   ),
-                ],
               ] else ...[
                 _buildNavItem(
                   icon: LucideIcons.home,

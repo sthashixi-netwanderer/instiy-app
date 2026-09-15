@@ -28,6 +28,7 @@ import '../../providers/providers.dart';
 import '../../providers/chat_background_provider.dart';
 import '../../widgets/verification_badge.dart';
 import '../../providers/message_provider.dart';
+import '../../providers/presence_provider.dart';
 import '../../utils/formatters.dart';
 
 
@@ -325,6 +326,60 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   }
 }
 
+/// Avatar with an online/offline presence dot (green/gray), same convention
+/// as the chat info screen. Watches [peerOnlineProvider], so the dot flips
+/// on its own whenever presence state changes — no manual refresh.
+class _PresenceAvatar extends ConsumerWidget {
+  final String? avatarUrl;
+  final Size size;
+  final String fallbackInitial;
+  final String peerUserId;
+  final double dotSize;
+
+  const _PresenceAvatar({
+    required this.avatarUrl,
+    required this.size,
+    required this.fallbackInitial,
+    required this.peerUserId,
+    this.dotSize = 14,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isOnline = ref.watch(peerOnlineProvider(peerUserId));
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ShadAvatar(
+          (avatarUrl != null && avatarUrl!.isNotEmpty) ? avatarUrl : null,
+          size: size,
+          backgroundColor: AppTheme.accent,
+          placeholder: Text(
+            fallbackInitial,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Container(
+            width: dotSize,
+            height: dotSize,
+            decoration: BoxDecoration(
+              color: isOnline ? Colors.green : Colors.grey,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ConversationTile extends StatelessWidget {
   final dynamic conversation;
   final VoidCallback onTap;
@@ -348,19 +403,11 @@ class _ConversationTile extends StatelessWidget {
         padding: context.rPadding(horizontal: 8, vertical: 10),
         child: Row(
           children: [
-            ShadAvatar(
-              (conversation.otherUserAvatar != null && conversation.otherUserAvatar!.isNotEmpty)
-                  ? conversation.otherUserAvatar!
-                  : null,
+            _PresenceAvatar(
+              avatarUrl: conversation.otherUserAvatar,
               size: Size(context.rw(48), context.rh(48)),
-              backgroundColor: AppTheme.accent,
-              placeholder: Text(
-                (conversation.displayName)[0].toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              fallbackInitial: (conversation.displayName)[0].toUpperCase(),
+              peerUserId: conversation.otherUserId,
             ),
             SizedBox(width: context.rw(12)),
             Expanded(
@@ -869,6 +916,31 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
         }
       } else {
         _selectedMessageIds.add(messageId);
+      }
+    });
+  }
+
+  void _enterAlbumSelectionMode(List<Message> album) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isSelectionMode = true;
+      _selectedMessageIds.addAll(album.map((m) => m.id));
+    });
+  }
+
+  void _toggleAlbumSelection(List<Message> album) {
+    setState(() {
+      final allSelected =
+          album.every((m) => _selectedMessageIds.contains(m.id));
+      if (allSelected) {
+        for (final m in album) {
+          _selectedMessageIds.remove(m.id);
+        }
+        if (_selectedMessageIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedMessageIds.addAll(album.map((m) => m.id));
       }
     });
   }
@@ -1924,19 +1996,14 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    ShadAvatar(
-                      liveConv.otherUserAvatar,
+                    _PresenceAvatar(
+                      avatarUrl: liveConv.otherUserAvatar,
                       size: const Size(36, 36),
-                      backgroundColor: AppTheme.accent,
-                      placeholder: Text(
-                        liveConv.displayName.isNotEmpty
-                            ? liveConv.displayName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      fallbackInitial: liveConv.displayName.isNotEmpty
+                          ? liveConv.displayName[0].toUpperCase()
+                          : '?',
+                      peerUserId: liveConv.otherUserId,
+                      dotSize: 12,
                     ),
                     SizedBox(width: context.rw(10)),
                     Flexible(
@@ -2160,6 +2227,10 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                           mediaUrls.add(url);
                                           mediaThumbs.add(m.thumbnailUrl);
                                         }
+                                        // Collapse bursts of consecutive media
+                                        // into WhatsApp-style album rows.
+                                        final rows =
+                                            _buildChatRows(msgProv.messages);
                                         return ListView.builder(
                                         // Attaching the controller is what
                                         // brings the initial jump-to-latest,
@@ -2173,7 +2244,7 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                           16,
                                           _listBottomPadding(),
                                         ),
-                                        itemCount: msgProv.messages.length + (msgProv.hasMoreMessages ? 1 : 0),
+                                        itemCount: rows.length + (msgProv.hasMoreMessages ? 1 : 0),
                                         itemBuilder: (context, index) {
                                           if (index == 0 && msgProv.hasMoreMessages) {
                                             return const Padding(
@@ -2187,12 +2258,62 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                               ),
                                             );
                                           }
-                                          final msgIndex = msgProv.hasMoreMessages ? index - 1 : index;
-                                          final msg = msgProv.messages[msgIndex];
-                                          final isMe = msg.senderId == userId;
-                                          final isFirstUnread = _firstUnreadMessageId == msg.id;
+                                          final rowIndex = msgProv.hasMoreMessages ? index - 1 : index;
+                                          final row = rows[rowIndex];
+                                          final isFirstUnread = row.messages
+                                              .any((m) => m.id == _firstUnreadMessageId);
 
-                                          final child = _MessageBubble(
+                                          final Widget child;
+                                          if (row.isAlbum) {
+                                            final album = row.messages;
+                                            final isMe =
+                                                album.last.senderId == userId;
+                                            final anyFailed = album.any(
+                                                (m) => m.isFailed);
+                                            child = _MediaAlbumBubble(
+                                              messages: album,
+                                              isMe: isMe,
+                                              isSelected: album.every((m) =>
+                                                  _selectedMessageIds
+                                                      .contains(m.id)),
+                                              isSelectionMode:
+                                                  _isSelectionMode,
+                                              isHighlighted: album.any((m) =>
+                                                  m.id ==
+                                                  _highlightedMessageId),
+                                              chatColor: _chatColor,
+                                              conversationMediaUrls: mediaUrls,
+                                              conversationMediaThumbnails:
+                                                  mediaThumbs,
+                                              mediaIndexById: mediaIndexById,
+                                              onLongPress: () => isMe
+                                                  ? _enterAlbumSelectionMode(
+                                                      album)
+                                                  : null,
+                                              onTap: () {
+                                                if (_isSelectionMode &&
+                                                    isMe) {
+                                                  _toggleAlbumSelection(album);
+                                                }
+                                              },
+                                              onSwipeReply: () =>
+                                                  _setReplyTo(album.last),
+                                              onRetry: anyFailed && isMe
+                                                  ? () {
+                                                      for (final m in album) {
+                                                        if (m.isFailed) {
+                                                          msgProv.retryPending(
+                                                              m.id);
+                                                        }
+                                                      }
+                                                    }
+                                                  : null,
+                                            );
+                                          } else {
+                                          final msg = row.messages.single;
+                                          final isMe = msg.senderId == userId;
+
+                                          child = _MessageBubble(
                                             message: msg,
                                             isMe: isMe,
                                             isSelected: _selectedMessageIds.contains(msg.id),
@@ -2223,6 +2344,8 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                               );
                                             },
                                           );
+
+                                          } // end single-message branch
 
                                           if (isFirstUnread) {
                                             return Column(
@@ -3490,6 +3613,671 @@ class _PendingVoiceContent extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One row in the chat list: either a lone message or a burst of
+/// consecutive media sent together (no text in between), rendered as a
+/// single WhatsApp-style album grid.
+class _ChatRow {
+  final List<Message> messages;
+  const _ChatRow(this.messages);
+  bool get isAlbum => messages.length > 1;
+}
+
+/// True when [m] can sit inside an album: an image/video/gif bubble with
+/// no product card, reply quote, call log or voice note. Caption text does
+/// not disqualify it — a captioned burst still renders as one album with
+/// the caption underneath.
+bool _isAlbumMedia(Message m) {
+  if (m.isCall) return false;
+  if (m.mediaType == 'voice' || m.mediaType == 'call') return false;
+  if (m.productReference != null) return false;
+  if (m.isReply) return false;
+  final hasRemote = m.mediaUrl != null && m.mediaUrl!.isNotEmpty;
+  final hasLocal =
+      m.localPreviewBytes != null && m.localPreviewBytes!.isNotEmpty;
+  if (!hasRemote && !hasLocal) return false;
+  final t = (m.mediaType ?? 'image').toLowerCase();
+  return t == 'image' || t == 'video' || t == 'gif';
+}
+
+/// Groups oldest → newest messages into [_ChatRow]s. Consecutive album
+/// media from the same sender within a short window collapse into one row.
+List<_ChatRow> _buildChatRows(List<Message> messages) {
+  final rows = <_ChatRow>[];
+  var i = 0;
+  while (i < messages.length) {
+    final m = messages[i];
+    if (!_isAlbumMedia(m)) {
+      rows.add(_ChatRow([m]));
+      i++;
+      continue;
+    }
+    var j = i + 1;
+    while (j < messages.length) {
+      final n = messages[j];
+      if (!_isAlbumMedia(n) || n.senderId != m.senderId) break;
+      if (n.createdAt.difference(messages[j - 1].createdAt).abs() >
+          const Duration(minutes: 5)) {
+        break;
+      }
+      j++;
+    }
+    rows.add(_ChatRow(messages.sublist(i, j)));
+    i = j;
+  }
+  return rows;
+}
+
+/// Shared thumbnail for an album item: video frame (or icon fallback),
+/// remote image, optimistic local preview while uploading, or a spinner.
+Widget _albumThumbImage(Message m) {
+  final url = m.mediaUrl;
+  final isVideo = m.mediaType == 'video';
+  final thumbnail = m.thumbnailUrl;
+  final local = m.localPreviewBytes;
+  final hasLocal = local != null && local.isNotEmpty;
+  if (url != null && url.isNotEmpty) {
+    if (isVideo) {
+      if (thumbnail != null) {
+        return CachedNetworkImage(
+          imageUrl: thumbnail,
+          cacheManager: ChatMediaCacheManager(),
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          memCacheWidth: 400,
+          placeholder: (_, _) => Container(
+            color: AppTheme.charcoalInk,
+            child: const Center(
+              child: Icon(LucideIcons.film, size: 32, color: Colors.white54),
+            ),
+          ),
+          errorWidget: (_, _, _) => Container(
+            color: AppTheme.charcoalInk,
+            child: const Center(
+              child: Icon(LucideIcons.film, size: 32, color: Colors.white54),
+            ),
+          ),
+        );
+      }
+      return Container(
+        color: AppTheme.charcoalInk,
+        child: const Center(
+          child: Icon(LucideIcons.film, size: 32, color: Colors.white54),
+        ),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      cacheManager: ChatMediaCacheManager(),
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      memCacheWidth: 400,
+      placeholder: (_, _) => Container(
+        color: AppTheme.warmMist,
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      errorWidget: (_, _, _) => Container(
+        color: AppTheme.warmMist,
+        child: const Center(
+          child: Icon(
+            LucideIcons.imageOff,
+            size: 28,
+            color: AppTheme.mutedSteel,
+          ),
+        ),
+      ),
+    );
+  }
+  if (hasLocal) return Image.memory(local, fit: BoxFit.cover);
+  return Container(
+    color: isVideo ? AppTheme.charcoalInk : AppTheme.warmMist,
+    child: const Center(
+      child: SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    ),
+  );
+}
+
+/// WhatsApp-style album for a burst of consecutive image/video messages:
+/// 2-column grid, up to 4 tiles visible, last tile showing "+N" for the
+/// remainder. Tapping a tile opens the conversation gallery at that item;
+/// tapping the "+N" tile opens this album's scrollable grid instead.
+class _MediaAlbumBubble extends StatelessWidget {
+  final List<Message> messages;
+  final bool isMe;
+  final bool isSelected;
+  final bool isSelectionMode;
+  final bool isHighlighted;
+  final Color chatColor;
+  final List<String>? conversationMediaUrls;
+  final List<String?>? conversationMediaThumbnails;
+  final Map<String, int> mediaIndexById;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onTap;
+  final VoidCallback? onSwipeReply;
+  final VoidCallback? onRetry;
+
+  const _MediaAlbumBubble({
+    required this.messages,
+    required this.isMe,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    this.isHighlighted = false,
+    required this.chatColor,
+    this.conversationMediaUrls,
+    this.conversationMediaThumbnails,
+    this.mediaIndexById = const {},
+    this.onLongPress,
+    this.onTap,
+    this.onSwipeReply,
+    this.onRetry,
+  });
+
+  void _openAt(BuildContext context, Message m) {
+    final url = m.mediaUrl;
+    if (url == null || url.isEmpty) return;
+    final gallery = (conversationMediaUrls != null &&
+            conversationMediaUrls!.isNotEmpty)
+        ? conversationMediaUrls!
+        : [url];
+    final index = gallery.length == 1
+        ? 0
+        : (mediaIndexById[m.id] ?? 0).clamp(0, gallery.length - 1);
+    MediaViewer.open(
+      context,
+      gallery,
+      cacheManager: ChatMediaCacheManager(),
+      initialIndex: index,
+      thumbnailUrls: conversationMediaThumbnails,
+    );
+  }
+
+  /// Pushes the scrollable grid with every item in this album, so the
+  /// hidden remainder behind "+N" can be browsed and picked.
+  void _openGallery(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _AlbumGalleryScreen(messages: messages),
+      ),
+    );
+  }
+
+  Widget _tileImage(Message m) => _albumThumbImage(m);
+
+  Widget _tile(BuildContext context, Message m, {int plusMore = 0}) {
+    final isVideo = m.mediaType == 'video';
+    final isUploading = m.isSending &&
+        (m.mediaUrl == null || m.mediaUrl!.isEmpty);
+    // The "+N" tile jumps to the album's scrollable grid; every other
+    // tile opens the viewer straight at that item.
+    final onTap =
+        plusMore > 0 ? () => _openGallery(context) : () => _openAt(context, m);
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _tileImage(m),
+            if (isVideo)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      const Icon(LucideIcons.play, color: Colors.white, size: 20),
+                ),
+              ),
+            if (isUploading)
+              Container(
+                color: Colors.black.withValues(alpha: 0.35),
+                child: const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            if (plusMore > 0)
+              Container(
+                color: Colors.black.withValues(alpha: 0.55),
+                child: Center(
+                  child: Text(
+                    '+$plusMore',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusIcon(Message msg) {
+    if (msg.isSending) {
+      return SizedBox(
+        width: 12,
+        height: 12,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          valueColor: AlwaysStoppedAnimation<Color>(
+            Colors.white.withValues(alpha: 0.8),
+          ),
+        ),
+      );
+    }
+    if (msg.isFailed) {
+      return const Icon(
+        LucideIcons.alertCircle,
+        size: 13,
+        color: Colors.redAccent,
+      );
+    }
+    switch (msg.status) {
+      case 'sent':
+        return Icon(
+          LucideIcons.check,
+          size: 12,
+          color: Colors.white.withValues(alpha: 0.6),
+        );
+      case 'delivered':
+        return Icon(
+          LucideIcons.checkCheck,
+          size: 12,
+          color: Colors.white.withValues(alpha: 0.6),
+        );
+      case 'seen':
+        return const Icon(LucideIcons.checkCheck, size: 12, color: Colors.white);
+      default:
+        return Icon(
+          LucideIcons.check,
+          size: 12,
+          color: Colors.white.withValues(alpha: 0.6),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final last = messages.last;
+    const gap = SizedBox(width: 4, height: 4);
+    final visible = messages.length > 4 ? messages.sublist(0, 4) : messages;
+    final hiddenCount = messages.length - visible.length;
+    final caption = messages
+        .where((m) => m.content.trim().isNotEmpty)
+        .map((m) => m.content.trim())
+        .join('\n');
+    final hasFailed = messages.any((m) => m.isFailed);
+    double dragOffset = 0;
+
+    return GestureDetector(
+      onLongPress: onLongPress,
+      onTap: onTap,
+      onHorizontalDragStart: (_) => dragOffset = 0,
+      onHorizontalDragUpdate: (details) {
+        if (!isMe) {
+          dragOffset = (dragOffset + details.delta.dx).clamp(0, 120);
+        } else {
+          dragOffset = (dragOffset + details.delta.dx).clamp(-120, 0);
+        }
+      },
+      onHorizontalDragEnd: (details) {
+        if (dragOffset.abs() > 80) onSwipeReply?.call();
+        dragOffset = 0;
+      },
+      child: Container(
+        color: isHighlighted
+            ? chatColor.withValues(alpha: 0.3)
+            : Colors.transparent,
+        child: Stack(
+          children: [
+            if (isSelectionMode && isMe)
+              Positioned(
+                right: 3,
+                top: 0,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: isSelected ? chatColor : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? chatColor : AppTheme.whisperBorder,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isSelected
+                      ? const Icon(
+                          LucideIcons.check,
+                          size: 14,
+                          color: Colors.white,
+                        )
+                      : null,
+                ),
+              ),
+            Align(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: EdgeInsets.only(
+                  bottom: 8,
+                  left: isMe ? 0 : (isSelectionMode ? 28 : 0),
+                  right: isMe ? (isSelectionMode ? 28 : 0) : 0,
+                ),
+                padding: const EdgeInsets.all(4),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.78,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (isMe
+                          ? chatColor.withValues(alpha: 0.8)
+                          : AppTheme.pureSurface.withValues(alpha: 0.8))
+                      : (isMe ? chatColor : AppTheme.pureSurface),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isMe ? 16 : 4),
+                    bottomRight: Radius.circular(isMe ? 4 : 16),
+                  ),
+                  border:
+                      isMe ? null : Border.all(color: AppTheme.whisperBorder),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _albumGrid(context, visible, hiddenCount, gap),
+                    ),
+                    if (caption.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                        child: Text(
+                          caption,
+                          style: TextStyle(
+                            color:
+                                isMe ? Colors.white : AppTheme.charcoalInk,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            DateFormat('HH:mm').format(last.createdAt),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isMe
+                                  ? Colors.white.withValues(alpha: 0.7)
+                                  : AppTheme.mutedSteel,
+                            ),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 4),
+                            if (hasFailed && onRetry != null)
+                              GestureDetector(
+                                onTap: onRetry,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      LucideIcons.refreshCw,
+                                      size: 12,
+                                      color: Colors.redAccent,
+                                    ),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'Retry',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.redAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              _statusIcon(last),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _albumGrid(
+    BuildContext context,
+    List<Message> visible,
+    int hiddenCount,
+    Widget gap,
+  ) {
+    if (visible.length == 2) {
+      return SizedBox(
+        height: 180,
+        child: Row(
+          children: [
+            Expanded(child: _tile(context, visible[0])),
+            gap,
+            Expanded(
+              child: _tile(
+                context,
+                visible[1],
+                plusMore: hiddenCount,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (visible.length == 3) {
+      return Column(
+        children: [
+          SizedBox(
+            height: 140,
+            child: Row(
+              children: [
+                Expanded(child: _tile(context, visible[0])),
+                gap,
+                Expanded(child: _tile(context, visible[1])),
+              ],
+            ),
+          ),
+          gap,
+          SizedBox(
+            height: 120,
+            width: double.infinity,
+            child: _tile(
+              context,
+              visible[2],
+              plusMore: hiddenCount,
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        SizedBox(
+          height: 140,
+          child: Row(
+            children: [
+              Expanded(child: _tile(context, visible[0])),
+              gap,
+              Expanded(child: _tile(context, visible[1])),
+            ],
+          ),
+        ),
+        gap,
+        SizedBox(
+          height: 140,
+          child: Row(
+            children: [
+              Expanded(child: _tile(context, visible[2])),
+              gap,
+              Expanded(
+                child: _tile(
+                  context,
+                  visible[3],
+                  plusMore: hiddenCount,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Scrollable grid with every item of one media album, opened from the
+/// "+N" tile. Tapping a thumbnail selects it into the full-screen viewer
+/// (scoped to this album, so swiping stays inside the group).
+class _AlbumGalleryScreen extends StatelessWidget {
+  final List<Message> messages;
+
+  const _AlbumGalleryScreen({required this.messages});
+
+  void _openViewer(BuildContext context, int galleryIndex) {
+    final gallery = <String>[];
+    final thumbs = <String?>[];
+    for (final m in messages) {
+      final url = m.mediaUrl;
+      if (url == null || url.isEmpty) continue;
+      gallery.add(url);
+      thumbs.add(m.thumbnailUrl);
+    }
+    if (gallery.isEmpty) return;
+    MediaViewer.open(
+      context,
+      gallery,
+      cacheManager: ChatMediaCacheManager(),
+      initialIndex: galleryIndex.clamp(0, gallery.length - 1),
+      thumbnailUrls: thumbs,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final photoCount = messages.where((m) => m.mediaType != 'video').length;
+    final videoCount = messages.length - photoCount;
+    final parts = <String>[];
+    if (photoCount > 0) parts.add('$photoCount photo${photoCount == 1 ? '' : 's'}');
+    if (videoCount > 0) parts.add('$videoCount video${videoCount == 1 ? '' : 's'}');
+    // Gallery position of each message (skips still-uploading items
+    // that have no remote URL yet).
+    final galleryIndexById = <String, int>{};
+    var gi = 0;
+    for (final m in messages) {
+      if (m.mediaUrl != null && m.mediaUrl!.isNotEmpty) {
+        galleryIndexById[m.id] = gi++;
+      }
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.cleanBackground,
+      appBar: AppTheme.glassAppBar(
+        context: context,
+        title: Text(
+          parts.isEmpty ? 'Album' : parts.join(' · '),
+        ),
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+        ),
+        itemCount: messages.length,
+        itemBuilder: (context, index) {
+          final m = messages[index];
+          final isVideo = m.mediaType == 'video';
+          final galleryIndex = galleryIndexById[m.id];
+          final selectable = galleryIndex != null;
+          return GestureDetector(
+            onTap: selectable ? () => _openViewer(context, galleryIndex) : null,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _albumThumbImage(m),
+                  if (isVideo)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          LucideIcons.play,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  if (!selectable)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

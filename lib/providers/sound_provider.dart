@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/local_notification_service.dart';
 
 class SoundOption {
   final String id;
@@ -19,6 +21,11 @@ class SoundOption {
 class SoundProvider extends ChangeNotifier {
   static const String _selectedSoundKey = 'selected_notification_sound';
   static const String _soundEnabledKey = 'notification_sound_enabled';
+
+  /// Sentinel for "use the device default notification sound". Stored in
+  /// [_selectedSoundKey] and synced to the push-token rows so background
+  /// pushes also use the OS default.
+  static const String deviceDefaultId = 'device_default';
   final AudioPlayer _player = AudioPlayer();
 
   String _selectedSoundId = 'notification_alert';
@@ -101,6 +108,9 @@ class SoundProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_selectedSoundKey, id);
     notifyListeners();
+    // Sync to the server so background pushes address the same OS sound.
+    // Fire-and-forget: the local choice applies immediately regardless.
+    unawaited(LocalNotificationService.updatePushSound(id));
   }
 
   Future<void> setSoundEnabled(bool enabled) async {

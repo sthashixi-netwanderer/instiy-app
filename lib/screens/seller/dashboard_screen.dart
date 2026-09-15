@@ -17,6 +17,8 @@ import '../../services/institution_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/adaptive_nav.dart';
+import '../../widgets/user_avatar_menu.dart';
+import '../services/my_services_panel.dart';
 import 'seller_orders_screen.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/app_button.dart';
@@ -34,6 +36,9 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
   bool _isLocked = true;
   bool _checkingLock = true;
 
+  /// 0 = Selling (product dashboard), 1 = Services (provider dashboard).
+  int _selectedTab = 0;
+
   @override
   void initState() {
     super.initState();
@@ -43,7 +48,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
   Future<void> _checkLock() async {
     final unlocked = await WalletLockService.unlockIfNeeded(
       screenKey: 'seller_dashboard',
-      reason: 'Authenticate to view your seller dashboard',
+      reason: 'Authenticate to view your dashboard',
     );
     if (!mounted) return;
     if (unlocked) {
@@ -166,7 +171,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
         backgroundColor: AppTheme.cleanBackground,
         appBar: AppTheme.glassAppBar(
           context: context,
-          title: const Text('Seller Dashboard'),
+          title: const Text('Dashboard'),
           automaticallyImplyLeading: false,
         ),
         body: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
@@ -179,7 +184,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
         extendBodyBehindAppBar: true,
         appBar: AppTheme.glassAppBar(
           context: context,
-          title: const Text('Seller Dashboard'),
+          title: const Text('Dashboard'),
           automaticallyImplyLeading: false,
         ),
         body: Center(
@@ -206,7 +211,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
               ),
               SizedBox(height: context.rh(8)),
               Text(
-                'Use your fingerprint or screen lock\nto view your seller dashboard.',
+                'Use your fingerprint or screen lock\nto view your dashboard.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppTheme.mutedSteel),
               ),
@@ -214,7 +219,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
               ShadButton(
                 onPressed: () async {
                   final authed = await WalletLockService.authenticate(
-                    reason: 'Authenticate to view your seller dashboard',
+                    reason: 'Authenticate to view your dashboard',
                   );
                   if (authed && mounted) {
                     setState(() => _isLocked = false);
@@ -244,8 +249,27 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
       extendBody: true,
       appBar: AppTheme.glassAppBar(
         context: context,
-        title: const Text('Seller Dashboard'),
+        title: const Text('Dashboard'),
         automaticallyImplyLeading: false,
+        actions: [
+          Builder(
+            builder: (context) {
+              final unread = ref
+                  .watch(messageProvider)
+                  .unreadNotificationsCount;
+              return Padding(
+                padding: EdgeInsets.only(right: context.rw(8)),
+                child: BadgeIconButton(
+                  icon: LucideIcons.bell,
+                  count: unread,
+                  activeColor: AppTheme.accent,
+                  onPressed: () =>
+                      Navigator.of(context).pushNamed('/notifications'),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       bottomNavigationBar: AdaptiveNav(
         currentIndex: ref.watch(shellTabProvider),
@@ -261,17 +285,30 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
               ),
               child: const ListSkeleton(count: 6),
             )
-          : RefreshIndicator(
-              onRefresh: () async => _loadData(),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  MediaQuery.of(context).padding.top + kToolbarHeight + 16,
-                  16,
-                  100,
+          : Column(
+              children: [
+                SizedBox(
+                  height:
+                      MediaQuery.paddingOf(context).top +
+                      kToolbarHeight +
+                      16,
                 ),
-                children: [
+                _buildTabSwitcher(),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _selectedTab == 0
+                      ? RefreshIndicator(
+                          onRefresh: () async => _loadData(),
+                          child: ListView(
+                            physics:
+                                const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(
+                              16,
+                              0,
+                              16,
+                              100,
+                            ),
+                            children: [
                   // Seller profile card
                   _buildProfileCard(user),
                   const SizedBox(height: 16),
@@ -346,9 +383,87 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                   _buildQuickActions(context, stats),
                   const SizedBox(height: 24),
                   const SizedBox(height: 80),
-                ],
+                            ],
+                          ),
+                        )
+                      : const MyServicesPanel(),
+                ),
+              ],
+            ),
+    );
+  }
+
+  /// Segmented Selling / Services switcher above the dashboard body.
+  Widget _buildTabSwitcher() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppTheme.warmMist,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Expanded(child: _tabPill(0, 'Selling', LucideIcons.store)),
+            Expanded(
+              child: _tabPill(
+                1,
+                'Services',
+                LucideIcons.briefcaseBusiness,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabPill(int index, String label, IconData icon) {
+    final selected = _selectedTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTab = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.pureSurface : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected
+                  ? AppTheme.accent
+                  : AppTheme.mutedSteel,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight:
+                    selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected
+                    ? AppTheme.charcoalInk
+                    : AppTheme.mutedSteel,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

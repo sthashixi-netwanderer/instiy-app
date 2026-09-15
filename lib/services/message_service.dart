@@ -650,6 +650,40 @@ class MessageService {
     return response.length;
   }
 
+  /// Unseen incoming calls the user didn't pick up. Call logs are plain
+  /// messages (media_type 'call'), so this mirrors [getUnreadCount] and
+  /// keeps only rows where this device was the callee with a
+  /// missed/no-answer status. Opening the conversation marks them read
+  /// via [markAsSeen], which clears the count.
+  static Future<int> getMissedCallCount() async {
+    final supabase = SupabaseService.instance;
+    final uid = supabase.currentUser?.id;
+    if (uid == null) return 0;
+
+    final response = await supabase
+        .from('messages')
+        .select('media_url')
+        .eq('receiver_id', uid)
+        .eq('is_read', false)
+        .eq('media_type', 'call');
+
+    var count = 0;
+    for (final row in (response as List)) {
+      try {
+        final raw = row['media_url'] as String?;
+        if (raw == null || raw.isEmpty) continue;
+        final data = jsonDecode(raw) as Map<String, dynamic>;
+        final status = data['status'] as String?;
+        final calleeId = data['callee_id'] as String?;
+        if ((status == 'missed' || status == 'no_answer') &&
+            calleeId == uid) {
+          count++;
+        }
+      } catch (_) {}
+    }
+    return count;
+  }
+
   static Future<void> markAsRead(String conversationId) async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser!.id;

@@ -16,6 +16,14 @@
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		97C147081CF9000F007C117D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 97C147091CF9000F007C117D /* GoogleService-Info.plist */; };
+		INST1YSND00BF00000000000 /* notification_alert.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND00FR00000000000 /* notification_alert.caf */; };
+		INST1YSND01BF00000000000 /* new_message.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND01FR00000000000 /* new_message.caf */; };
+		INST1YSND02BF00000000000 /* in_chat_message.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND02FR00000000000 /* in_chat_message.caf */; };
+		INST1YSND03BF00000000000 /* slack_message.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND03FR00000000000 /* slack_message.caf */; };
+		INST1YSND04BF00000000000 /* windows_notification.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND04FR00000000000 /* windows_notification.caf */; };
+		INST1YSND05BF00000000000 /* telegram_notification.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND05FR00000000000 /* telegram_notification.caf */; };
+		INST1YSND06BF00000000000 /* discord_notification.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND06FR00000000000 /* discord_notification.caf */; };
+		INST1YSND07BF00000000000 /* pixel_notification.caf in Resources */ = {isa = PBXBuildFile; fileRef = INST1YSND07FR00000000000 /* pixel_notification.caf */; };
 		97C1470C1CF9000F007C117D /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C1470D1CF9000F007C117D /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -60,6 +68,14 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		97C147091CF9000F007C117D /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = GoogleService-Info.plist; sourceTree = "<group>"; };
+		INST1YSND00FR00000000000 /* notification_alert.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = notification_alert.caf; sourceTree = "<group>"; };
+		INST1YSND01FR00000000000 /* new_message.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = new_message.caf; sourceTree = "<group>"; };
+		INST1YSND02FR00000000000 /* in_chat_message.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = in_chat_message.caf; sourceTree = "<group>"; };
+		INST1YSND03FR00000000000 /* slack_message.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = slack_message.caf; sourceTree = "<group>"; };
+		INST1YSND04FR00000000000 /* windows_notification.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = windows_notification.caf; sourceTree = "<group>"; };
+		INST1YSND05FR00000000000 /* telegram_notification.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = telegram_notification.caf; sourceTree = "<group>"; };
+		INST1YSND06FR00000000000 /* discord_notification.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = discord_notification.caf; sourceTree = "<group>"; };
+		INST1YSND07FR00000000000 /* pixel_notification.caf */ = {isa = PBXFileReference; lastKnownFileType = audio.caf; path = pixel_notification.caf; sourceTree = "<group>"; };
 		97C1470D1CF9000F007C117D /* SceneDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -122,6 +138,14 @@
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
 				97C147021CF9000F007C117D /* Info.plist */,
 				97C147091CF9000F007C117D /* GoogleService-Info.plist */,
+				INST1YSND00FR00000000000 /* notification_alert.caf */,
+				INST1YSND01FR00000000000 /* new_message.caf */,
+				INST1YSND02FR00000000000 /* in_chat_message.caf */,
+				INST1YSND03FR00000000000 /* slack_message.caf */,
+				INST1YSND04FR00000000000 /* windows_notification.caf */,
+				INST1YSND05FR00000000000 /* telegram_notification.caf */,
+				INST1YSND06FR00000000000 /* discord_notification.caf */,
+				INST1YSND07FR00000000000 /* pixel_notification.caf */,
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
@@ -233,6 +257,14 @@
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				97C147081CF9000F007C117D /* GoogleService-Info.plist in Resources */,
+				INST1YSND00BF00000000000 /* notification_alert.caf in Resources */,
+				INST1YSND01BF00000000000 /* new_message.caf in Resources */,
+				INST1YSND02BF00000000000 /* in_chat_message.caf in Resources */,
+				INST1YSND03BF00000000000 /* slack_message.caf in Resources */,
+				INST1YSND04BF00000000000 /* windows_notification.caf in Resources */,
+				INST1YSND05BF00000000000 /* telegram_notification.caf in Resources */,
+				INST1YSND06BF00000000000 /* discord_notification.caf in Resources */,
+				INST1YSND07BF00000000000 /* pixel_notification.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

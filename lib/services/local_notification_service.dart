@@ -5,7 +5,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'sound_service.dart';
 import 'supabase_service.dart';
 import 'system_call_ui_service.dart';
 import 'package:flutter/foundation.dart';
@@ -57,6 +56,27 @@ class LocalNotificationService {
   static const _channelName = 'Instiy Notifications';
   static const _channelDesc = 'Notifications from Instiy app';
 
+  /// Sentinel matching SoundProvider.deviceDefaultId: the OS default sound.
+  static const deviceDefaultSoundId = 'device_default';
+
+  /// Sounds bundled with the app as Android raw resources and iOS caf
+  /// files, one per sound id. Each id gets a dedicated Android channel (`instiy_sound_<id>`) whose
+  /// configured raw sound the OS plays — foreground and background alike.
+  /// Kept in sync with SoundProvider.availableSounds and the push worker's
+  /// allow-list.
+  static const Map<String, String> notificationSoundNames = {
+    'notification_alert': 'Instiy Alert',
+    'new_message': 'Instiy New Message',
+    'in_chat_message': 'Instiy Chat Message',
+    'slack_message': 'Instiy Soft Alert',
+    'windows_notification': 'Instiy Note',
+    'telegram_notification': 'Instiy Telegram',
+    'discord_notification': 'Instiy Discord',
+    'pixel_notification': 'Instiy Pixel',
+  };
+
+  static String _soundChannelId(String soundId) => 'instiy_sound_$soundId';
+
   static const _silentChannelId = 'instiy_channel_silent';
   static const _silentChannelName = 'Instiy Notifications (Silent)';
   static const _silentChannelDesc =
@@ -74,6 +94,7 @@ class LocalNotificationService {
       'Incoming calls rung by the app — no notification sound';
 
   static const _soundEnabledKey = 'notification_sound_enabled';
+  static const _selectedSoundKey = 'selected_notification_sound';
 
   static void Function(String action, Map<String, dynamic> data)? onCallActionReceived;
 
@@ -116,6 +137,22 @@ class LocalNotificationService {
           playSound: true,
         ),
       );
+
+      // One channel per bundled sound. Android locks a channel's sound at
+      // creation, so each sound needs its own channel id (which is also
+      // what the push worker sends as android_channel_id).
+      for (final entry in notificationSoundNames.entries) {
+        await androidImpl.createNotificationChannel(
+          AndroidNotificationChannel(
+            _soundChannelId(entry.key),
+            'Instiy Notifications (${entry.value})',
+            description: 'Instiy notifications with the ${entry.value} sound',
+            importance: Importance.high,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound(entry.key),
+          ),
+        );
+      }
 
       // Silent channel — no OS sound; in-app AudioPlayer plays instead
       await androidImpl.createNotificationChannel(
@@ -191,11 +228,38 @@ class LocalNotificationService {
     return prefs.getBool(_soundEnabledKey) ?? true;
   }
 
+  /// The user's chosen notification sound id, validated against the
+  /// bundled set ('device_default' passes through). Public so the push
+  /// worker sync can read the same value.
+  static Future<String> getSelectedSoundId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id =
+        prefs.getString(_selectedSoundKey) ?? 'notification_alert';
+    if (id == deviceDefaultSoundId) return id;
+    return notificationSoundNames.containsKey(id) ? id : 'notification_alert';
+  }
+
+  /// Maps a notification type to its sound: fixed sounds for messages, the
+  /// user's pick for everything else.
+  static String _soundIdForType(String? type, String selected) {
+    switch (type) {
+      case 'message':
+      case 'new_message':
+        return 'new_message';
+      case 'in_chat_message':
+        return 'in_chat_message';
+      default:
+        return selected;
+    }
+  }
+
   /// Show a local device notification.
   ///
-  /// [inAppSoundEnabled] controls which channel is used:
-  ///   • true  → silent channel (AudioPlayer will play the in-app sound)
-  ///   • false → normal channel (OS plays its own notification sound)
+  /// The sound is strictly OS-level so the user's pick plays identically in
+  /// the foreground and the background:
+  ///   • sound off     → silent channel, no sound on either platform
+  ///   • device default → the OS default sound on both platforms
+  ///   • bundled sound  → its Android channel (raw resource) / iOS caf file
   ///
   /// If [inAppSoundEnabled] is not supplied it is read from SharedPreferences.
   static Future<void> showNotification({
@@ -206,7 +270,10 @@ class LocalNotificationService {
     bool? inAppSoundEnabled,
     String? type,
   }) async {
-    final useInAppSound = inAppSoundEnabled ?? await _isInAppSoundEnabled();
+    final soundEnabled = inAppSoundEnabled ?? await _isInAppSoundEnabled();
+    // Resolve once so the channel, the iOS sound, and the push sync agree.
+    final soundId =
+        soundEnabled ? _soundIdForType(type, await getSelectedSoundId()) : null;
     final formattedTitle = _formatCurrencySymbol(title);
     final formattedBody = _formatCurrencySymbol(body);
 
@@ -233,13 +300,34 @@ class LocalNotificationService {
         debugPrint('Error copying notification icon: $e');
       }
 
+      final String channelId;
+      final String channelName;
+      final String channelDesc;
+      if (soundId == null) {
+        channelId = _silentChannelId;
+        channelName = _silentChannelName;
+        channelDesc = _silentChannelDesc;
+      } else if (soundId == deviceDefaultSoundId) {
+        channelId = _channelId;
+        channelName = _channelName;
+        channelDesc = _channelDesc;
+      } else {
+        channelId = _soundChannelId(soundId);
+        channelName =
+            'Instiy Notifications (${notificationSoundNames[soundId]})';
+        channelDesc = 'Instiy notifications with a custom sound';
+      }
+
       final androidDetails = AndroidNotificationDetails(
-        useInAppSound ? _silentChannelId : _channelId,
-        useInAppSound ? _silentChannelName : _channelName,
-        channelDescription: useInAppSound ? _silentChannelDesc : _channelDesc,
+        channelId,
+        channelName,
+        channelDescription: channelDesc,
         importance: Importance.high,
         priority: Priority.high,
-        playSound: !useInAppSound, // OS sound only when in-app sound is off
+        playSound: soundId != null,
+        sound: soundId != null && soundId != deviceDefaultSoundId
+            ? RawResourceAndroidNotificationSound(soundId)
+            : null,
         icon: '@drawable/ic_notification',
         color: const Color(0xFF7C3AED),
         largeIcon: tempFilePath != null
@@ -252,8 +340,10 @@ class LocalNotificationService {
         iOS: DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
-          // Suppress iOS system sound when in-app sound is on
-          presentSound: !useInAppSound,
+          presentSound: soundId != null,
+          sound: soundId != null && soundId != deviceDefaultSoundId
+              ? '$soundId.caf'
+              : null,
           attachments: (Platform.isIOS && tempFilePath != null)
               ? [DarwinNotificationAttachment(tempFilePath)]
               : null,
@@ -267,14 +357,6 @@ class LocalNotificationService {
         notificationDetails: details,
         payload: payload,
       );
-    }
-
-    if (useInAppSound) {
-      if (type != null) {
-        await SoundService.playSoundForType(type);
-      } else {
-        await SoundService.playNotificationSound();
-      }
     }
   }
 
@@ -690,17 +772,47 @@ class LocalNotificationService {
   static Future<void> saveTokenToDatabase(String token) async {
     final userId = SupabaseService.auth.currentUser?.id;
     if (userId == null) return;
-    
+
     try {
       // Upsert the token to associate it with the current user, updating it if it already exists
       await SupabaseService.client.from('user_push_tokens').upsert({
         'user_id': userId,
         'token': token,
+        'sound': await getSelectedSoundId(),
         'updated_at': DateTime.now().toIso8601String(),
       });
       debugPrint('Push token saved to database successfully');
     } catch (e) {
+      // The sound column may not exist yet if its migration hasn't been
+      // applied — retry without it so token registration never breaks.
+      if ('$e'.contains("'sound'")) {
+        try {
+          await SupabaseService.client.from('user_push_tokens').upsert({
+            'user_id': userId,
+            'token': token,
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+          debugPrint('Push token saved to database successfully');
+          return;
+        } catch (_) {}
+      }
       debugPrint('Error saving push token to database: $e');
+    }
+  }
+
+  /// Push the user's chosen notification sound to their token rows so
+  /// background pushes address the same OS sound. Best-effort: the local
+  /// choice applies immediately regardless of the outcome.
+  static Future<void> updatePushSound(String soundId) async {
+    final userId = SupabaseService.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      await SupabaseService.client
+          .from('user_push_tokens')
+          .update({'sound': soundId})
+          .eq('user_id', userId);
+    } catch (e) {
+      debugPrint('Error syncing push sound: $e');
     }
   }
 

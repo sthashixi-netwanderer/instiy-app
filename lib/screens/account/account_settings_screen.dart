@@ -334,6 +334,71 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
           ),
         ),
         SizedBox(height: context.rh(16)),
+        // Device default — the OS notification sound instead of a bundled one.
+        Builder(
+          builder: (context) {
+            final isSelected =
+                soundProvider.selectedSoundId ==
+                SoundProvider.deviceDefaultId;
+            return Container(
+              margin: EdgeInsets.only(bottom: context.rh(8)),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(context.rr(12)),
+                border: Border.all(
+                  color: isSelected
+                      ? AppTheme.accent
+                      : AppTheme.whisperBorder,
+                  width: isSelected ? 1.5 : 1,
+                ),
+              ),
+              child: Material(
+                color: isSelected
+                    ? AppTheme.accent.withValues(alpha: 0.08)
+                    : AppTheme.pureSurface,
+                borderRadius: BorderRadius.circular(context.rr(12)),
+                child: ListTile(
+                  leading: Icon(
+                    Icons.smartphone,
+                    color: isSelected
+                        ? AppTheme.accent
+                        : AppTheme.mutedSteel,
+                  ),
+                  title: Text(
+                    'Device default',
+                    style: TextStyle(
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: isSelected
+                          ? AppTheme.accent
+                          : AppTheme.charcoalInk,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? Container(
+                          padding: context.rAll(4),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            LucideIcons.check,
+                            size: context.ri(14),
+                            color: Colors.white,
+                          ),
+                        )
+                      : null,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(context.rr(12)),
+                  ),
+                  onTap: () => soundProvider.setSelectedSound(
+                    SoundProvider.deviceDefaultId,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
         ...SoundProvider.availableSounds.map((sound) {
           final isSelected = soundProvider.selectedSoundId == sound.id;
           return Container(

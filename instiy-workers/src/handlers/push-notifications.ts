@@ -76,9 +76,9 @@ export async function handlePushNotifications(request: Request, env: Env, corsHe
     const body = (record.body as string) || '';
     const type = (record.type as string) || 'notification';
 
-    // Fetch user push tokens via Supabase REST API
+    // Fetch user push tokens + per-device notification sounds via Supabase REST API
     const tokenRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/user_push_tokens?user_id=eq.${record.user_id}&select=token`,
+      `${env.SUPABASE_URL}/rest/v1/user_push_tokens?user_id=eq.${record.user_id}&select=token,sound`,
       {
         headers: {
           apikey: env.SUPABASE_ANON_KEY,
@@ -87,7 +87,7 @@ export async function handlePushNotifications(request: Request, env: Env, corsHe
       }
     );
 
-    const tokenRecords = (await tokenRes.json()) as Array<{ token: string }>;
+    const tokenRecords = (await tokenRes.json()) as Array<{ token: string; sound?: string }>;
     if (!tokenRecords || tokenRecords.length === 0) {
       return new Response(JSON.stringify({ message: 'No active FCM tokens found for this user.' }), {
         status: 200,
@@ -134,8 +134,30 @@ export async function handlePushNotifications(request: Request, env: Env, corsHe
     stringData['click_action'] = 'FLUTTER_NOTIFICATION_CLICK';
 
     const results: Array<{ token: string; success: boolean; messageId?: string; error?: unknown }> = [];
-    for (const { token } of tokenRecords) {
+
+    // Sounds bundled in the app (android res/raw/<id>.mp3, ios Runner/<id>.caf).
+    // Anything else falls back to the device default. The app creates one
+    // Android channel per id (instiy_sound_<id>), so the OS plays the exact
+    // sound the user picked — even with the app in the background.
+    const knownSounds = new Set([
+      'notification_alert',
+      'new_message',
+      'in_chat_message',
+      'slack_message',
+      'windows_notification',
+      'telegram_notification',
+      'discord_notification',
+      'pixel_notification',
+    ]);
+    const soundFor = (raw: unknown): string | null => {
+      if (typeof raw !== 'string') return null;
+      if (raw === 'device_default') return null;
+      return knownSounds.has(raw) ? raw : null;
+    };
+
+    for (const { token, sound } of tokenRecords) {
       const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+      const chosenSound = soundFor(sound);
 
       const fcmPayload = {
         message: {
@@ -145,7 +167,9 @@ export async function handlePushNotifications(request: Request, env: Env, corsHe
           android: {
             priority: 'high',
             notification: {
-              sound: 'default',
+              // With a channel_id set, FCM ignores `sound` and the channel's
+              // configured raw sound plays instead.
+              channel_id: chosenSound ? `instiy_sound_${chosenSound}` : 'instiy_channel',
               click_action: 'FLUTTER_NOTIFICATION_CLICK',
               // Branded tray icon: white logo silhouette shipped in the
               // Android res/drawable-* buckets (falls back to the manifest
@@ -155,7 +179,12 @@ export async function handlePushNotifications(request: Request, env: Env, corsHe
             },
           },
           apns: {
-            payload: { aps: { sound: 'default', 'content-available': 1 } },
+            payload: {
+              aps: {
+                sound: chosenSound ? `${chosenSound}.caf` : 'default',
+                'content-available': 1,
+              },
+            },
           },
         },
       };

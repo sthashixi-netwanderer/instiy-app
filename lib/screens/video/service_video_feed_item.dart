@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +57,13 @@ class _ServiceVideoFeedItemState extends ConsumerState<ServiceVideoFeedItem> {
   String? _speedText;
   bool _showSpeedIndicator = false;
 
+  /// TikTok-style long-press zones: holding the left/right edge rewinds /
+  /// fast-forwards while held, holding the center keeps the video paused
+  /// until release. Only one hold is active at a time.
+  Timer? _holdSeekTimer;
+  bool _holdingPause = false;
+  bool _wasPlayingBeforeHold = false;
+
   bool get _isOwnService {
     final userId = ref.read(authProvider).user?.id;
     return userId != null && userId == widget.service.providerId;
@@ -88,14 +96,33 @@ class _ServiceVideoFeedItemState extends ConsumerState<ServiceVideoFeedItem> {
 
   void _onCanPlayChanged() {
     if (!widget.canPlay.value) {
-      _pauseVideo();
+      _forcePause();
     } else if (widget.isActive) {
       _resumeVideo();
     }
   }
 
+  /// Forceful pause for leaving the screen: drops any press-and-hold
+  /// (seek timer, 2x speed, pause-hold), restores normal speed, hides the
+  /// scrub indicator, and pauses — so no clip keeps running in the
+  /// background no matter what state it was in.
+  void _forcePause() {
+    _cancelHold();
+    if (_controller != null && _isInitialized) {
+      _controller!.setPlaybackSpeed(1.0); // ignore: unawaited_futures
+    }
+    if (mounted) {
+      setState(() {
+        _speedText = null;
+        _showSpeedIndicator = false;
+      });
+    }
+    _pauseVideo();
+  }
+
   @override
   void dispose() {
+    _cancelHold();
     widget.canPlay.removeListener(_onCanPlayChanged);
     _controller?.dispose();
     super.dispose();
@@ -167,6 +194,7 @@ class _ServiceVideoFeedItemState extends ConsumerState<ServiceVideoFeedItem> {
   }
 
   void _disposeVideo() {
+    _cancelHold();
     if (_controller != null) {
       _controller!.dispose();
       _controller = null;
@@ -213,6 +241,67 @@ class _ServiceVideoFeedItemState extends ConsumerState<ServiceVideoFeedItem> {
         _isPlaying = true;
       }
     });
+  }
+
+  /// Starts a press-and-hold gesture, zoned by horizontal position:
+  /// outer thirds scrub (left rewinds, right fast-forwards) while the
+  /// middle third holds the video paused until release.
+  void _startHold(double dx, double width) {
+    if (!_isInitialized || _controller == null) return;
+    _wasPlayingBeforeHold = _controller!.value.isPlaying;
+    if (dx < width / 3) {
+      _holdSeekTimer =
+          Timer.periodic(const Duration(milliseconds: 250), (_) {
+        final c = _controller;
+        if (c == null || !_isInitialized || !mounted) return;
+        final back = c.value.position - const Duration(seconds: 3);
+        c.seekTo(back > Duration.zero ? back : Duration.zero); // ignore: unawaited_futures
+      });
+      setState(() {
+        _speedText = '↩';
+        _showSpeedIndicator = true;
+      });
+    } else if (dx > width * 2 / 3) {
+      _controller!.setPlaybackSpeed(2.0); // ignore: unawaited_futures
+      setState(() {
+        _speedText = '2x';
+        _showSpeedIndicator = true;
+      });
+    } else {
+      _holdingPause = true;
+      if (_controller!.value.isPlaying) {
+        _controller!.pause(); // ignore: unawaited_futures
+        if (mounted) setState(() => _isPlaying = false);
+      }
+    }
+  }
+
+  /// Releases a press-and-hold: stops scrubbing, restores speed, and
+  /// resumes only when the hold itself paused a playing video.
+  void _endHold() {
+    _holdSeekTimer?.cancel();
+    _holdSeekTimer = null;
+    if (_controller != null && _isInitialized) {
+      _controller!.setPlaybackSpeed(1.0); // ignore: unawaited_futures
+    }
+    final resume = _holdingPause && _wasPlayingBeforeHold;
+    _holdingPause = false;
+    _wasPlayingBeforeHold = false;
+    if (mounted) {
+      setState(() {
+        _speedText = null;
+        _showSpeedIndicator = false;
+      });
+    }
+    if (resume) _resumeVideo();
+  }
+
+  /// Drops hold state without resuming (page swiped away, video disposed).
+  void _cancelHold() {
+    _holdSeekTimer?.cancel();
+    _holdSeekTimer = null;
+    _holdingPause = false;
+    _wasPlayingBeforeHold = false;
   }
 
   void _toggleMute() {
@@ -313,24 +402,13 @@ class _ServiceVideoFeedItemState extends ConsumerState<ServiceVideoFeedItem> {
             child: GestureDetector(
               onTap: _togglePlayPause,
               onLongPressStart: (details) {
-                if (!_isInitialized || _controller == null) return;
-                final screenWidth = MediaQuery.of(context).size.width;
-                if (details.localPosition.dx > screenWidth / 2) {
-                  _controller!.setPlaybackSpeed(2.0);
-                  setState(() { _speedText = '2x'; _showSpeedIndicator = true; });
-                } else {
-                  final current = _controller!.value.position;
-                  final newPos = current - const Duration(seconds: 10);
-                  _controller!.seekTo(newPos > Duration.zero ? newPos : Duration.zero);
-                  setState(() { _speedText = '\u21A9 10s'; _showSpeedIndicator = true; });
-                }
+                _startHold(
+                  details.localPosition.dx,
+                  MediaQuery.of(context).size.width,
+                );
               },
-              onLongPressEnd: (_) {
-                if (_controller != null && _isInitialized) {
-                  _controller!.setPlaybackSpeed(1.0);
-                }
-                setState(() { _speedText = null; _showSpeedIndicator = false; });
-              },
+              onLongPressEnd: (_) => _endHold(),
+              onLongPressCancel: _cancelHold,
               child: Container(
                 color: Colors.black,
                 child: _isInitialized && _controller != null

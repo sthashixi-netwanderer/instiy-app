@@ -70,6 +70,7 @@ class MessageProvider extends ChangeNotifier {
   int _archivedPage = 0;
   int _messagePage = 0;
   int _unreadCount = 0;
+  int _missedCallCount = 0;
   int _unreadNotificationsCount = 0;
   int _unreadServiceNotificationsCount = 0;
   int _unreadExploreNotificationsCount = 0;
@@ -107,6 +108,7 @@ class MessageProvider extends ChangeNotifier {
   bool get hasMoreArchived => _hasMoreArchived;
   bool get hasMoreMessages => _hasMoreMessages;
   int get unreadCount => _unreadCount;
+  int get missedCallCount => _missedCallCount;
   int get unreadNotificationsCount => _unreadNotificationsCount;
   int get unreadServiceNotificationsCount => _unreadServiceNotificationsCount;
   int get unreadExploreNotificationsCount => _unreadExploreNotificationsCount;
@@ -155,6 +157,7 @@ class MessageProvider extends ChangeNotifier {
         _pendingProductReference = null;
         _hiddenAtMap.clear();
         _unreadCount = 0;
+        _missedCallCount = 0;
         _unreadNotificationsCount = 0;
         _unreadServiceNotificationsCount = 0;
         _unreadExploreNotificationsCount = 0;
@@ -1461,7 +1464,12 @@ class MessageProvider extends ChangeNotifier {
 
   Future<void> loadUnreadCount() async {
     try {
-      _unreadCount = await MessageService.getUnreadCount();
+      final results = await Future.wait([
+        MessageService.getUnreadCount(),
+        MessageService.getMissedCallCount(),
+      ]);
+      _unreadCount = results[0];
+      _missedCallCount = results[1];
       notifyListeners();
     } catch (_) {}
   }
