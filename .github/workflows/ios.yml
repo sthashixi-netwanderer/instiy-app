@@ -259,7 +259,10 @@ jobs:
         with:
           name: ios-release-ipa
           path: build/ios/ipa/*.ipa
-          retention-days: 30
+          # Short retention: TestFlight keeps the distributable build, so a
+          # week of backup is plenty. Long retention filled the Actions
+          # storage quota and broke the pipeline at this step.
+          retention-days: 7
 
       - name: Clean up keychain
         if: always()
