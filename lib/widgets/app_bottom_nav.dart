@@ -107,10 +107,9 @@ class AppBottomNav extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final msgState = ref.watch(messageProvider);
-    final unreadCount = msgState.unreadCount;
+    final unreadCount = msgState.unreadCountExcludingMissed;
     final missedCallCount = msgState.missedCallCount;
     final unreadExploreCount = msgState.unreadExploreNotificationsCount;
-    final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
     // Dashboard hosts both the Selling and Services dashboards — visible
@@ -178,7 +177,6 @@ class AppBottomNav extends ConsumerWidget {
                             2,
                             LucideIcons.briefcaseBusiness,
                             'Services',
-                            badgeCount: unreadServiceCount,
                           ),
                           if (!isServicesTab)
                             _navButton(
@@ -434,6 +432,10 @@ class _ChatsNavButtonState extends State<_ChatsNavButton> {
     super.didUpdateWidget(oldWidget);
     if (widget.missedCount == 0 && _showCaller) {
       setState(() => _showCaller = false);
+    } else if (oldWidget.missedCount == 0 && widget.missedCount > 0) {
+      // Fresh missed call — jump straight to the phone phase with the
+      // counter instead of waiting up to 5s for the next loop tick.
+      setState(() => _showCaller = true);
     }
   }
 

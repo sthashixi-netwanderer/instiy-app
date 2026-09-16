@@ -131,6 +131,14 @@ Future<void> _initializeApp() async {
     }),
   );
 
+  // Missed incoming calls flip the bottom-nav Chats button instantly: the
+  // call controller notifies here and the message provider bumps its
+  // missed-call count through Riverpod (realtime reconciles it right after
+  // when the caller's shared log row lands).
+  _container.read(callProvider.notifier).onIncomingMissedCall = () {
+    _container.read(messageProvider).registerIncomingMissedCall();
+  };
+
   // User-controlled background mode: keeps the app connected while
   // backgrounded (Android foreground service) so calls still come in.
   unawaited(

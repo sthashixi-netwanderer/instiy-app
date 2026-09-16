@@ -109,6 +109,14 @@ class MessageProvider extends ChangeNotifier {
   bool get hasMoreMessages => _hasMoreMessages;
   int get unreadCount => _unreadCount;
   int get missedCallCount => _missedCallCount;
+
+  /// Unread messages excluding unseen missed calls. Missed calls badge the
+  /// bottom-nav phone phase instead, so the chat icon must never carry
+  /// their count — otherwise one missed call shows a counter on both icons.
+  int get unreadCountExcludingMissed {
+    final rest = _unreadCount - _missedCallCount;
+    return rest < 0 ? 0 : rest;
+  }
   int get unreadNotificationsCount => _unreadNotificationsCount;
   int get unreadServiceNotificationsCount => _unreadServiceNotificationsCount;
   int get unreadExploreNotificationsCount => _unreadExploreNotificationsCount;
@@ -1472,6 +1480,15 @@ class MessageProvider extends ChangeNotifier {
       _missedCallCount = results[1];
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// Reflects a freshly missed incoming call in the bottom-nav badge
+  /// immediately, without waiting for the caller's shared log row to land
+  /// through realtime. The realtime insert handler calls [loadUnreadCount]
+  /// right after, which reconciles this optimistic bump with the server.
+  void registerIncomingMissedCall() {
+    _missedCallCount++;
+    notifyListeners();
   }
 
   Future<void> updateThemeColor(String conversationId, String? colorHex) async {

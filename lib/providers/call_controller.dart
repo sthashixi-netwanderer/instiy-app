@@ -50,6 +50,12 @@ class CallController extends ChangeNotifier {
 
   void Function()? onCallUiChanged;
 
+  /// Fired when this device misses an incoming call (caller hung up before
+  /// pick-up or the 30s no-answer timer expired). Wired in main.dart to
+  /// MessageProvider so the bottom-nav missed-call badge updates instantly
+  /// through Riverpod instead of waiting for the realtime round-trip.
+  void Function()? onIncomingMissedCall;
+
   CallSession? get session => _session;
   DateTime? get connectedAt => _connectedAt;
   bool get hasActiveCall => _session?.isActiveOrRinging ?? false;
@@ -564,10 +570,12 @@ class CallController extends ChangeNotifier {
     _cancelNotification(callId);
     if (_session?.status == CallStatus.ringingIncoming) {
       // Caller gave up (manual hangup or 30s no-answer): their side writes
-      // the shared missed log, so clear locally without a second write.
+      // the shared missed log, so clear locally without a second write —
+      // but flip the bottom-nav badge immediately via Riverpod.
       unawaited(_stopSound());
       _cancelTimeout();
       unawaited(_leaveAndDispose());
+      _notifyIncomingMissedCall();
       _goIdle();
     }
   }
@@ -710,6 +718,7 @@ class CallController extends ChangeNotifier {
     // the missed-call badge on the bottom nav.
     if (session.status != CallStatus.active) {
       unawaited(_leaveAndDispose());
+      _notifyIncomingMissedCall();
       _goIdle();
       return;
     }
@@ -844,8 +853,13 @@ class CallController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _cancelNotification([String? callId]) {
-    final id = callId ?? _session?.id;
+  void _notifyIncomingMissedCall() {
+    try {
+      onIncomingMissedCall?.call();
+    } catch (_) {}
+  }
+
+  void _cancelNotification([String? callId]) {    final id = callId ?? _session?.id;
     if (id != null) {
       unawaited(LocalNotificationService.cancelCallNotification(id));
       // Single choke point for dropping the system UI too — accept,
@@ -872,6 +886,7 @@ class CallController extends ChangeNotifier {
       } else if (session.isIncoming) {
         unawaited(_stopSound());
         unawaited(_leaveAndDispose());
+        _notifyIncomingMissedCall();
         _goIdle();
       }
     });
