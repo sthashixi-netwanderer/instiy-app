@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -7,7 +6,6 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -21,14 +19,12 @@ import '../services/system_call_ui_service.dart';
 import '../services/webrtc_call_service.dart';
 
 class CallController extends ChangeNotifier {
-  static const Duration _ringTimeout = Duration(seconds: 45);
+  static const Duration _ringTimeout = Duration(seconds: 30);
   static const Duration _endedFlashDuration = Duration(seconds: 2);
 
   final CallSignalingService _signaling = CallSignalingService.instance;
   final AudioPlayer _ringPlayer = AudioPlayer();
-  final FlutterRingtonePlayer _deviceRinger = FlutterRingtonePlayer();
   final Uuid _uuid = const Uuid();
-  bool _deviceRingerActive = false;
 
   /// Last missed incoming call, so the system missed-call "Call back"
   /// action (which carries only the call id) can redial the caller.
@@ -544,29 +540,12 @@ class CallController extends ChangeNotifier {
     _armTimeout(CallEndReason.noAnswer);
   }
 
-  /// WhatsApp-style incoming display: the OS call UI ringing the phone's
-  /// own ringtone. Falls back to the full-screen local notification plus
-  /// device-ringer/in-app sound when the system UI can't be shown.
+  /// Silent incoming display: the receiver's phone never rings audibly —
+  /// only the caller hears ringback (via [_playSound] outgoing) so they
+  /// know the call is going through. The receiver gets a silent full-screen
+  /// notification plus the in-app incoming screen (vibration only).
   Future<void> _presentIncoming(CallSession session) async {
     final video = session.type == CallType.video;
-    final shown = await SystemCallUiService.showIncomingCall(
-      callId: session.id,
-      callerName: session.peerName ?? 'Instiy User',
-      callerAvatar: session.peerAvatar,
-      video: video,
-      extra: {
-        'call_id': session.id,
-        'caller_id': session.peerId,
-        'caller_name': session.peerName,
-        'caller_avatar': session.peerAvatar,
-        'call_type': video ? 'video' : 'voice',
-      },
-    );
-    if (shown) {
-      return;
-    }
-    // Fallback — previous behavior: silent local notification on Android
-    // (the device ringer started below is the sound source).
     unawaited(
       LocalNotificationService.showIncomingCallNotification(
         callId: session.id,
@@ -574,10 +553,9 @@ class CallController extends ChangeNotifier {
         callType: video ? 'video' : 'voice',
         callerAvatar: session.peerAvatar,
         callerId: session.peerId,
-        silent: !kIsWeb && Platform.isAndroid,
+        silent: true,
       ),
     );
-    await _playSound(outgoing: false);
   }
 
   void _handleIncomingCancelled(Map<String, dynamic> payload) {
@@ -585,8 +563,11 @@ class CallController extends ChangeNotifier {
     if (_session?.id != callId) return;
     _cancelNotification(callId);
     if (_session?.status == CallStatus.ringingIncoming) {
-      _stopSound();
+      // Caller gave up (manual hangup or 30s no-answer): their side writes
+      // the shared missed log, so clear locally without a second write.
+      unawaited(_stopSound());
       _cancelTimeout();
+      unawaited(_leaveAndDispose());
       _goIdle();
     }
   }
@@ -723,12 +704,17 @@ class CallController extends ChangeNotifier {
     if (session == null || session.id != callId) return;
     _stopSound();
     _cancelTimeout();
-    _leaveAndDispose();
-    if (session.status == CallStatus.active) {
-      _showEnded(CallEndReason.completed);
-    } else {
-      _showEnded(CallEndReason.cancelled);
+    // Pre-answer hangup (caller gave up before pick-up): the caller writes
+    // the single shared missed/no-answer log, so just clear locally here.
+    // Writing a second 'cancelled' row would duplicate the bubble and break
+    // the missed-call badge on the bottom nav.
+    if (session.status != CallStatus.active) {
+      unawaited(_leaveAndDispose());
+      _goIdle();
+      return;
     }
+    _leaveAndDispose();
+    _showEnded(CallEndReason.completed);
   }
 
   Future<void> _onOffer(String callId, Map<String, dynamic> payload) async {
@@ -870,17 +856,22 @@ class CallController extends ChangeNotifier {
 
   void _armTimeout(CallEndReason reasonOnExpire) {
     _cancelTimeout();
+    // 30s no-answer: caller hangs up, sends cancel, and writes the single
+    // shared missed log (status 'no_answer'). That insert flows through the
+    // messages realtime channel into MessageProvider.loadUnreadCount, which
+    // raises missedCallCount and flips the bottom-nav Chats button to its
+    // phone phase. Callee just clears locally — no second write.
     _timeoutTimer = Timer(_ringTimeout, () {
       final session = _session;
       if (session == null || !session.isActiveOrRinging) return;
       _cancelNotification(session.id);
       if (!session.isIncoming && reasonOnExpire == CallEndReason.noAnswer) {
         unawaited(_signaling.sendCancel(calleeId: session.peerId, callId: session.id));
-        _leaveAndDispose();
+        unawaited(_leaveAndDispose());
         _showEnded(CallEndReason.noAnswer);
       } else if (session.isIncoming) {
-        _stopSound();
-        _leaveAndDispose();
+        unawaited(_stopSound());
+        unawaited(_leaveAndDispose());
         _goIdle();
       }
     });
@@ -891,26 +882,14 @@ class CallController extends ChangeNotifier {
     _timeoutTimer = null;
   }
 
+  /// Ringback for the caller only. The receiver's side stays silent by
+  /// design (visual notification + vibration), so incoming calls never
+  /// play an audible ring on the receiving phone.
   Future<void> _playSound({required bool outgoing}) async {
-    // Incoming calls ring through the device's own call ringer (the user's
-    // ringtone, volume and silent-mode handling) instead of an in-app sound.
-    if (!outgoing && !kIsWeb && Platform.isAndroid) {
-      try {
-        _deviceRingerActive = true;
-        await _deviceRinger.play(
-          android: AndroidSounds.ringtone,
-          looping: true,
-          asAlarm: false,
-        );
-        return;
-      } catch (e) {
-        _deviceRingerActive = false;
-        debugPrint('CallController: device ringer failed, falling back: $e');
-      }
-    }
+    if (!outgoing) return;
 
     try {
-      await _ringPlayer.setVolume(outgoing ? 0.35 : 0.9);
+      await _ringPlayer.setVolume(0.35);
       await _ringPlayer.play(AssetSource('sounds/notification_alert.mp3'));
     } catch (e) {
       debugPrint('CallController: ringtone failed: $e');
@@ -918,12 +897,6 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _stopSound() async {
-    if (_deviceRingerActive) {
-      _deviceRingerActive = false;
-      try {
-        await _deviceRinger.stop();
-      } catch (_) {}
-    }
     try {
       await _ringPlayer.stop();
     } catch (_) {}

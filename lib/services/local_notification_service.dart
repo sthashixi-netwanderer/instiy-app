@@ -1,12 +1,11 @@
 import 'dart:convert';
 import 'dart:io' show Platform, File;
-import 'dart:ui' show Color, DartPluginRegistrant;
+import 'dart:ui' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'supabase_service.dart';
-import 'system_call_ui_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
@@ -18,18 +17,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final notification = message.notification;
   final type = data['type'] as String? ?? '';
   if (type == 'call' || data.containsKey('call_id')) {
-    // Background isolate: make sure plugin registrants (call UI) are
-    // available before touching them.
-    try {
-      DartPluginRegistrant.ensureInitialized();
-    } catch (_) {}
-    // WhatsApp-style system UI with the phone ringtone first; the local
-    // notification below is the fallback (bad id, plugin error, web).
-    final shown = await SystemCallUiService.showFromPush(
-      Map<String, dynamic>.from(data),
-      fallbackTitle: notification?.title,
-    );
-    if (shown) return;
+    // Background isolate: the receiver stays silent by design — visual
+    // notification only, no audible ring. The caller hears ringback.
     final callId = data['call_id'] as String? ?? 'incoming_call';
     final callerName = data['caller_name'] as String? ?? notification?.title ?? 'Instiy User';
     final callType = data['call_type'] as String? ?? 'voice';
@@ -39,6 +28,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       callType: callType,
       callerAvatar: data['caller_avatar'] as String?,
       callerId: data['caller_id'] as String?,
+      silent: true,
     );
   }
 }
@@ -542,9 +532,10 @@ class LocalNotificationService {
 
   /// Show a full-screen WhatsApp-style incoming call notification.
   ///
-  /// [silent] suppresses the OS notification sound — use it when the app is
-  /// alive and already ringing the device ringer itself, so the two don't
-  /// play on top of each other.
+  /// Always silent for incoming calls: the receiver's phone never rings
+  /// audibly (vibration only) while the caller hears ringback. The [silent]
+  /// flag picks the silent Android channel; pass false only to allow the OS
+  /// notification sound.
   static Future<void> showIncomingCallNotification({
     required String callId,
     required String callerName,
@@ -588,23 +579,25 @@ class LocalNotificationService {
       fullScreenIntent: true,
       ongoing: true,
       autoCancel: false,
-      timeoutAfter: 45000,
+      timeoutAfter: 30000,
       playSound: !silent,
       icon: '@drawable/ic_notification',
       color: const Color(0xFF7C3AED),
       largeIcon: tempFilePath != null
           ? FilePathAndroidBitmap(tempFilePath)
           : const DrawableResourceAndroidBitmap('ic_notification'),
-      actions: <AndroidNotificationAction>[
-        const AndroidNotificationAction(
+      actions: const <AndroidNotificationAction>[
+        AndroidNotificationAction(
           'action_accept_call',
           'Accept',
+          titleColor: Color(0xFF22C55E),
           showsUserInterface: true,
           cancelNotification: true,
         ),
-        const AndroidNotificationAction(
+        AndroidNotificationAction(
           'action_decline_call',
           'Decline',
+          titleColor: Color(0xFFEF4444),
           cancelNotification: true,
         ),
       ],
@@ -615,7 +608,7 @@ class LocalNotificationService {
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
-        presentSound: true,
+        presentSound: false,
         presentBanner: true,
         interruptionLevel: InterruptionLevel.timeSensitive,
       ),
@@ -657,13 +650,9 @@ class LocalNotificationService {
       final type = data['type'] as String? ?? '';
 
       if (type == 'call' || data.containsKey('call_id')) {
-        // Prefer the system call UI (phone ringtone + native screen);
-        // it no-ops when already showing this call (Realtime path won).
-        final shown = await SystemCallUiService.showFromPush(
-          Map<String, dynamic>.from(data),
-          fallbackTitle: notification?.title,
-        );
-        if (shown) return;
+        // Silent visual notification only — the receiver never rings
+        // audibly; the caller hears ringback. Realtime invites drive the
+        // in-app incoming screen when the app is alive.
         final callId = data['call_id'] as String? ?? 'incoming_call';
         final callerName = data['caller_name'] as String? ?? notification?.title ?? 'Instiy User';
         final callType = data['call_type'] as String? ?? 'voice';
@@ -673,6 +662,7 @@ class LocalNotificationService {
           callType: callType,
           callerAvatar: data['caller_avatar'] as String?,
           callerId: data['caller_id'] as String?,
+          silent: true,
         );
         return;
       }

@@ -31,9 +31,9 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 class SystemCallUiService {
   static const _appName = 'Instiy';
 
-  /// Ring timeout in ms — matches the signaling layer's 45s no-answer
+  /// Ring timeout in ms — matches the signaling layer's 30s no-answer
   /// timer so the system UI and the session expire together.
-  static const int ringTimeoutMs = 45000;
+  static const int ringTimeoutMs = 30000;
 
   /// Value passed as `ringtonePath` on both platforms: the phone's
   /// default ringtone, not a bundled sound.
