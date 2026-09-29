@@ -196,7 +196,7 @@ class MessageProvider extends ChangeNotifier {
           schema: 'public',
           table: 'conversations',
           callback: (payload) {
-            loadConversations(silent: true);
+            _applyConversationRowChange(payload);
             loadUnreadCount();
           },
         );
@@ -217,10 +217,10 @@ class MessageProvider extends ChangeNotifier {
             final mediaType = data['media_type'] as String?;
 
             // Always update conversations list and unread count silently in realtime for any new message!
-            // getConversations already handles resurfacing hidden chats when
+            // getConversations handles resurfacing hidden chats when
             // lastMessageAt > hiddenAt, so no extra logic needed here.
             if (conversationId != null) {
-              loadConversations(silent: true); // ignore: unawaited_futures
+              _bumpConversationUnread(conversationId, senderId, userId);
               loadUnreadCount(); // ignore: unawaited_futures
             }
 
@@ -314,6 +314,75 @@ class MessageProvider extends ChangeNotifier {
       _usersChannel = null;
     }
     _stopPresenceAndStatusTimers();
+  }
+
+  /// Applies a conversations-table realtime event in place: the DB trigger
+  /// keeps last_message / last_message_at current, so the payload row
+  /// carries everything needed to patch the matching conversation and move
+  /// it to the top — no list refetch, no UI reload. Falls back to a silent
+  /// reload only when the affected conversation isn't loaded (brand-new
+  /// chat or a row living on a not-yet-fetched page).
+  void _applyConversationRowChange(PostgresChangePayload payload) {
+    final eventType = payload.eventType;
+    if (eventType == PostgresChangeEvent.delete) {
+      final oldId = payload.oldRecord['id'] as String?;
+      if (oldId != null) {
+        _conversations.removeWhere((c) => c.id == oldId);
+        notifyListeners();
+      }
+      return;
+    }
+
+    final row = payload.newRecord;
+    final convId = row['id'] as String?;
+    if (convId == null) return;
+
+    final idx = _conversations.indexWhere((c) => c.id == convId);
+    if (idx == -1) {
+      loadConversations(silent: true); // ignore: unawaited_futures
+      return;
+    }
+
+    final old = _conversations[idx];
+    final lastMessageAtRaw = row['last_message_at'] as String?;
+    final newLastMessageAt = lastMessageAtRaw != null
+        ? DateTime.tryParse(lastMessageAtRaw)
+        : null;
+    final updated = old.copyWith(
+      lastMessage: row['last_message'] as String? ?? old.lastMessage,
+      lastMessageAt: newLastMessageAt ?? old.lastMessageAt,
+      themeColor: row['theme_color'] as String? ?? old.themeColor,
+    );
+
+    final hasNewMessage =
+        newLastMessageAt != null && newLastMessageAt != old.lastMessageAt;
+    if (hasNewMessage) {
+      // List is ordered by last_message_at desc — resurface to the top.
+      _conversations
+        ..removeAt(idx)
+        ..insert(0, updated);
+    } else {
+      _conversations[idx] = updated;
+    }
+    notifyListeners();
+  }
+
+  /// Bumps one conversation's unread badge in place when a message arrives
+  /// from someone else while that chat isn't open (an open chat marks its
+  /// messages read immediately). The last-message preview itself arrives
+  /// via [_applyConversationRowChange].
+  void _bumpConversationUnread(
+    String conversationId,
+    String? senderId,
+    String myId,
+  ) {
+    if (senderId == myId) return;
+    if (_activeConversation?.id == conversationId) return;
+    final idx = _conversations.indexWhere((c) => c.id == conversationId);
+    if (idx == -1) return;
+    final old = _conversations[idx];
+    _conversations[idx] = old.copyWith(unreadCount: old.unreadCount + 1);
+    notifyListeners();
   }
 
   void _startPresenceAndStatusTimers() {

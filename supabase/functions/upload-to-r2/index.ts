@@ -14,8 +14,8 @@ const corsHeaders = {
 };
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "pdf", "m4a"];
-const ALLOWED_FOLDERS = ["uploads", "verifications", "reviews", "avatars", "products", "services", "banners", "chat-media", "reports"];
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "pdf", "m4a", "wav"];
+const ALLOWED_FOLDERS = ["uploads", "verifications", "reviews", "avatars", "products", "services", "banners", "chat-media", "reports", "recordings"];
 
 function getContentType(extension: string): string {
   const types: Record<string, string> = {
@@ -29,6 +29,7 @@ function getContentType(extension: string): string {
     webm: "video/webm",
     pdf: "application/pdf",
     m4a: "audio/mp4",
+    wav: "audio/wav",
   };
   return types[extension.toLowerCase()] || "application/octet-stream";
 }

@@ -446,6 +446,7 @@ class _ActiveCallViewState extends State<_ActiveCallView> {
   @override
   Widget build(BuildContext context) {
     final isVideo = widget.session.type == CallType.video;
+    final c = widget.controller;
     return Stack(
       children: [
         if (isVideo)
@@ -481,37 +482,46 @@ class _ActiveCallViewState extends State<_ActiveCallView> {
                         fontSize: 12.5,
                       ),
                     ),
+                    if (c.activeRecordingNotice != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        c.activeRecordingNotice!,
+                        style: const TextStyle(
+                          color: Color(0xFFF59E0B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  color: Colors.white.withValues(alpha: 0.10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF22C55E),
-                      ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (c.showRecordingIndicator) ...[
+                    _StatusPill(
+                      label: 'Recording',
+                      dotColor: const Color(0xFFEF4444),
                     ),
                     const SizedBox(width: 6),
-                    const Text(
-                      'Connected',
-                      style: TextStyle(color: Colors.white70, fontSize: 11.5),
-                    ),
                   ],
-                ),
+                  const _StatusPill(
+                    label: 'Connected',
+                    dotColor: Color(0xFF22C55E),
+                  ),
+                ],
               ),
             ],
           ),
         ),
+        if (c.pendingRecordingRequest != null)
+          Positioned(
+            top: 84,
+            left: 24,
+            right: 24,
+            child: _RecordingConsentCard(controller: c),
+          ),
         if (isVideo)
           _DraggableLocalPip(
             initialOffset: _pipOffset,
@@ -556,8 +566,137 @@ class _ActiveCallViewState extends State<_ActiveCallView> {
           active: c.speakerOn,
           onTap: () => c.toggleSpeaker(),
         ),
+        // Call recording: tap to request consent → pending → tap again to
+        // stop. Lights up white while a request is pending or recording.
+        _ControlButton(
+          icon: c.isRecording ? LucideIcons.square : LucideIcons.disc,
+          active: c.isRecording || c.myRecordingRequested,
+          onTap: () => c.onRecordButtonPressed(),
+        ),
         _EndCallButton(onTap: () => c.endCall()),
       ],
+    );
+  }
+}
+
+/// Rounded status pill used for "Connected" and the red "Recording"
+/// indicator in the active-call top strip.
+class _StatusPill extends StatelessWidget {
+  final String label;
+  final Color dotColor;
+
+  const _StatusPill({required this.label, required this.dotColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withValues(alpha: 0.10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: dotColor),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 11.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// In-call consent prompt shown to the called party when the peer asks to
+/// record. Silence auto-declines after 15s (timer lives in the controller).
+class _RecordingConsentCard extends StatelessWidget {
+  final CallController controller;
+
+  const _RecordingConsentCard({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final requester = controller.session?.peerName ?? 'The other person';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xF0101828),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(LucideIcons.disc, size: 16, color: Color(0xFFEF4444)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Recording request',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$requester wants to record this call. Allow?',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              GestureDetector(
+                onTap: () => controller.respondToRecordingRequest(false),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                  child: const Text(
+                    'Deny',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: () => controller.respondToRecordingRequest(true),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: const Color(0xFF22C55E),
+                  ),
+                  child: const Text(
+                    'Allow',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

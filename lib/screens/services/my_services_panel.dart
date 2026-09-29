@@ -12,6 +12,7 @@ import '../../models/service_model.dart';
 import '../../models/service_draft_model.dart';
 import '../../services/ai_service.dart';
 import '../../services/service_draft_service.dart';
+import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../providers/service_provider.dart';
 
@@ -29,6 +30,9 @@ class MyServicesPanel extends ConsumerStatefulWidget {
 class _MyServicesPanelState extends ConsumerState<MyServicesPanel> {
   final _appealCtrl = TextEditingController();
 
+  /// Unique views per service id (same source as the service detail page).
+  final Map<String, int> _viewCounts = {};
+
   @override
   void initState() {
     super.initState();
@@ -36,9 +40,24 @@ class _MyServicesPanelState extends ConsumerState<MyServicesPanel> {
       if (!ref.read(authProvider).isAuthenticated) return;
       final prov = ref.read(serviceProvider);
       prov.checkServiceProviderStatus();
-      prov.loadMyServices();
+      prov.loadMyServices().then((_) => _loadViewCounts());
       prov.loadPublishingServiceDraft();
     });
+  }
+
+  /// Fetches total views for the provider's services (same source as the
+  /// service detail page).
+  Future<void> _loadViewCounts() async {
+    if (!mounted) return;
+    final ids = ref
+        .read(serviceProvider)
+        .myServices
+        .map((s) => s.id)
+        .toList();
+    if (ids.isEmpty) return;
+    final counts = await ServiceService.getViewCounts(ids);
+    if (!mounted || counts.isEmpty) return;
+    setState(() => _viewCounts.addAll(counts));
   }
 
   @override
@@ -115,8 +134,10 @@ class _MyServicesPanelState extends ConsumerState<MyServicesPanel> {
                 ],
               )
             : RefreshIndicator(
-                onRefresh: () =>
-                    ref.read(serviceProvider).loadMyServices(),
+                onRefresh: () async {
+                  await ref.read(serviceProvider).loadMyServices();
+                  await _loadViewCounts();
+                },
                 child: ListView.separated(
                   padding: EdgeInsets.fromLTRB(
                     context.rw(16),
@@ -148,6 +169,7 @@ class _MyServicesPanelState extends ConsumerState<MyServicesPanel> {
                     final service = myServices[index - 1];
                     return _MyServiceCard(
                       service: service,
+                      viewCount: _viewCounts[service.id] ?? 0,
                       onTap: () => _openService(service),
                       onEdit: () => Navigator.of(context).pushNamed(
                         '/create-service',
@@ -1376,6 +1398,7 @@ class _MyServicesPanelState extends ConsumerState<MyServicesPanel> {
 /// Row card for the creator's dashboard list.
 class _MyServiceCard extends StatelessWidget {
   final Service service;
+  final int viewCount;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onToggleStatus;
@@ -1383,6 +1406,7 @@ class _MyServiceCard extends StatelessWidget {
 
   const _MyServiceCard({
     required this.service,
+    required this.viewCount,
     required this.onTap,
     required this.onEdit,
     required this.onToggleStatus,
@@ -1515,6 +1539,22 @@ class _MyServiceCard extends StatelessWidget {
                         Text(
                           '•  ${service.packages.length} package'
                           '${service.packages.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: context.rsp(11),
+                            color: AppTheme.mutedSteel,
+                          ),
+                        ),
+                      ],
+                      if (viewCount > 0) ...[
+                        SizedBox(width: context.rw(8)),
+                        Icon(
+                          LucideIcons.eye,
+                          size: context.ri(12),
+                          color: AppTheme.mutedSteel,
+                        ),
+                        SizedBox(width: context.rw(2)),
+                        Text(
+                          '$viewCount',
                           style: TextStyle(
                             fontSize: context.rsp(11),
                             color: AppTheme.mutedSteel,

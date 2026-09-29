@@ -145,6 +145,63 @@ class MessageService {
     return result;
   }
 
+  /// WhatsApp-style message search: the most recent messages across the
+  /// user's conversations whose content matches [query] (case-insensitive).
+  /// Messages inside chats the user deleted are excluded — same hidden_at
+  /// rule the chat list applies.
+  static Future<List<Map<String, dynamic>>> searchMessages(
+    String query, {
+    int limit = 30,
+  }) async {
+    final supabase = SupabaseService.instance;
+    final uid = supabase.currentUser?.id;
+    final q = query.trim();
+    if (uid == null || q.isEmpty) return [];
+
+    try {
+      final response = await supabase
+          .from('messages')
+          .select(
+            'id, conversation_id, sender_id, receiver_id, content, media_type, created_at, is_read',
+          )
+          .or('sender_id.eq.$uid,receiver_id.eq.$uid')
+          .ilike('content', '%$q%')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      final rows = (response as List)
+          .map((row) => row as Map<String, dynamic>)
+          .toList();
+
+      Map<String, DateTime> hiddenMap = {};
+      try {
+        final hiddenResponse = await supabase
+            .from('conversation_hidden')
+            .select('conversation_id, hidden_at')
+            .eq('user_id', uid);
+        for (final r in hiddenResponse as List) {
+          final convId = r['conversation_id'] as String?;
+          final raw = r['hidden_at'] as String?;
+          if (convId != null && raw != null) {
+            hiddenMap[convId] = DateTime.parse(raw);
+          }
+        }
+      } catch (_) {
+        // Table may not exist yet — treat as no hidden conversations.
+      }
+      if (hiddenMap.isEmpty) return rows;
+
+      return rows.where((row) {
+        final hiddenAt = hiddenMap[row['conversation_id'] as String?];
+        if (hiddenAt == null) return true;
+        final createdAtRaw = row['created_at'] as String?;
+        if (createdAtRaw == null) return false;
+        return DateTime.parse(createdAtRaw).isAfter(hiddenAt);
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   static Future<Conversation?> getConversationById(String conversationId) async {
     final supabase = SupabaseService.instance;
     final uid = supabase.currentUser?.id;

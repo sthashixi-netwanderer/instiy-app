@@ -33,6 +33,11 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   Service? _service;
   bool _isLoading = true;
   String? _error;
+  int? _viewCount;
+
+  /// Records the visit once per screen lifetime — silent reloads after
+  /// edits or review changes must not re-run the (deduped) view RPC.
+  bool _recordedView = false;
 
   /// Index into the sorted packages list driving the plan tabs — the
   /// active tab is the plan quoted when contacting the provider.
@@ -71,6 +76,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         _service = service;
         _isLoading = false;
       });
+      if (service != null && !_recordedView) {
+        _recordedView = true;
+        unawaited(_recordView());
+      }
     } catch (e) {
       if (!mounted) return;
       if (!silent) {
@@ -79,6 +88,14 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  /// Counts this visit (deduped server-side per user / per anonymous IP).
+  Future<void> _recordView() async {
+    final count = await ServiceService.recordServiceView(_service!.id);
+    if (mounted && count > 0) {
+      setState(() => _viewCount = count);
     }
   }
 
@@ -293,6 +310,26 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
             ),
           ],
         ),
+        if (_viewCount != null) ...[
+          SizedBox(height: context.rh(6)),
+          Row(
+            children: [
+              Icon(
+                LucideIcons.eye,
+                size: context.ri(14),
+                color: AppTheme.mutedSteel,
+              ),
+              SizedBox(width: context.rw(4)),
+              Text(
+                '$_viewCount ${_viewCount == 1 ? 'view' : 'views'}',
+                style: TextStyle(
+                  fontSize: context.rsp(12),
+                  color: AppTheme.mutedSteel,
+                ),
+              ),
+            ],
+          ),
+        ],
         SizedBox(height: context.rh(8)),
         _buildMetaRow(service),
         SizedBox(height: context.rh(16)),

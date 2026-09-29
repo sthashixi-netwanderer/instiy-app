@@ -16,7 +16,11 @@ import '../../widgets/required_label.dart';
 import '../../widgets/skeleton.dart';
 
 class SellerOrdersScreen extends ConsumerStatefulWidget {
-  const SellerOrdersScreen({super.key});
+  const SellerOrdersScreen({super.key, this.initialFilter = 'all'});
+
+  /// Filter chip preselected on open (e.g. 'pending' when entering from
+  /// the verify-deliveries screen).
+  final String initialFilter;
 
   @override
   ConsumerState<SellerOrdersScreen> createState() => _SellerOrdersScreenState();
@@ -30,6 +34,7 @@ class _SellerOrdersScreenState extends ConsumerState<SellerOrdersScreen> {
   @override
   void initState() {
     super.initState();
+    _filter = widget.initialFilter;
     _checkLock();
   }
 

@@ -102,7 +102,6 @@ class AppTopNav extends ConsumerWidget {
     final msgState = ref.watch(messageProvider);
     final unreadCount = msgState.unreadCount;
     final unreadExploreCount = msgState.unreadExploreNotificationsCount;
-    final unreadServiceCount = msgState.unreadServiceNotificationsCount;
     final isAuth = authState.isAuthenticated;
     final isSeller = authState.user?.isSeller == true;
     // Dashboard hosts both the Selling and Services dashboards — visible
@@ -176,7 +175,6 @@ class AppTopNav extends ConsumerWidget {
                   icon: LucideIcons.briefcaseBusiness,
                   label: 'Services',
                   active: currentIndex == 2,
-                  badgeCount: unreadServiceCount,
                   onTap: _tabTap(
                     2,
                     () => Navigator.of(context).pushNamed('/services'),

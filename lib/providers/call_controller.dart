@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -6,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,6 +15,7 @@ import '../models/call_model.dart';
 import '../services/call_signaling_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/message_service.dart';
+import '../services/call_recording_service.dart';
 import '../services/secrets_service.dart';
 import '../services/supabase_service.dart';
 import '../services/system_call_ui_service.dart';
@@ -24,7 +27,9 @@ class CallController extends ChangeNotifier {
 
   final CallSignalingService _signaling = CallSignalingService.instance;
   final AudioPlayer _ringPlayer = AudioPlayer();
+  final FlutterRingtonePlayer _deviceRinger = FlutterRingtonePlayer();
   final Uuid _uuid = const Uuid();
+  bool _deviceRingerActive = false;
 
   /// Last missed incoming call, so the system missed-call "Call back"
   /// action (which carries only the call id) can redial the caller.
@@ -48,6 +53,20 @@ class CallController extends ChangeNotifier {
   final List<Map<String, dynamic>> _pendingCandidates = [];
   Map<String, dynamic>? _pendingOffer;
 
+  // ── Call recording state ────────────────────────────────────────────────
+  /// Caller asked to record at launch — converted into a consent request
+  /// the moment the call connects.
+  bool _recordWhenConnected = false;
+  bool myRecordingRequested = false;
+  bool peerRecording = false;
+
+  /// Non-null while the peer's recording request awaits this user's
+  /// consent: {call_id, by}. The overlay renders the Allow/Deny prompt.
+  Map<String, dynamic>? pendingRecordingRequest;
+  Timer? _recordingConsentTimer;
+  String? _recordingNotice;
+  DateTime? _recordingNoticeAt;
+
   void Function()? onCallUiChanged;
 
   /// Fired when this device misses an incoming call (caller hung up before
@@ -60,6 +79,21 @@ class CallController extends ChangeNotifier {
   DateTime? get connectedAt => _connectedAt;
   bool get hasActiveCall => _session?.isActiveOrRinging ?? false;
   String? get currentUserId => SupabaseService.client.auth.currentUser?.id;
+
+  bool get isRecording => CallRecordingService.instance.isRecording;
+
+  /// Red "Recording" pill — shown while either side's device is capturing.
+  bool get showRecordingIndicator => isRecording || peerRecording;
+
+  /// Transient one-line status ('Recording declined') that self-clears
+  /// after a few seconds; the overlay's 1s ticker drives the expiry.
+  String? get activeRecordingNotice {
+    final at = _recordingNoticeAt;
+    if (_recordingNotice == null || at == null) return null;
+    return DateTime.now().difference(at).inSeconds < 4
+        ? _recordingNotice
+        : null;
+  }
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -238,6 +272,7 @@ class CallController extends ChangeNotifier {
     required String? peerName,
     required String? peerAvatar,
     required bool video,
+    bool record = false,
   }) async {
     final me = currentUserId;
     if (me == null) {
@@ -254,6 +289,7 @@ class CallController extends ChangeNotifier {
     }
 
     _resetControlState();
+    _recordWhenConnected = record;
 
     // Resolve the caller identity shown on the receiver's screen: sellers
     // ring as their business name (same convention as chat), and the profile
@@ -546,12 +582,32 @@ class CallController extends ChangeNotifier {
     _armTimeout(CallEndReason.noAnswer);
   }
 
-  /// Silent incoming display: the receiver's phone never rings audibly —
-  /// only the caller hears ringback (via [_playSound] outgoing) so they
-  /// know the call is going through. The receiver gets a silent full-screen
-  /// notification plus the in-app incoming screen (vibration only).
+  /// WhatsApp-style incoming display: the OS call UI ringing the phone's
+  /// own ringtone. Falls back to the full-screen local notification plus
+  /// device-ringer/in-app sound when the system UI can't be shown.
   Future<void> _presentIncoming(CallSession session) async {
     final video = session.type == CallType.video;
+    // The FCM push path may have won the race for this call id — never
+    // present (or ring) twice.
+    final shown = await SystemCallUiService.isShowing(session.id) ||
+        await SystemCallUiService.showIncomingCall(
+      callId: session.id,
+      callerName: session.peerName ?? 'Instiy User',
+      callerAvatar: session.peerAvatar,
+      video: video,
+      extra: {
+        'call_id': session.id,
+        'caller_id': session.peerId,
+        'caller_name': session.peerName,
+        'caller_avatar': session.peerAvatar,
+        'call_type': video ? 'video' : 'voice',
+      },
+    );
+    if (shown) {
+      return;
+    }
+    // Fallback — silent local notification on Android (the device ringer
+    // started below is the sound source); iOS lets the notification sound.
     unawaited(
       LocalNotificationService.showIncomingCallNotification(
         callId: session.id,
@@ -559,9 +615,10 @@ class CallController extends ChangeNotifier {
         callType: video ? 'video' : 'voice',
         callerAvatar: session.peerAvatar,
         callerId: session.peerId,
-        silent: true,
+        silent: !kIsWeb && Platform.isAndroid,
       ),
     );
+    await _playSound(outgoing: false);
   }
 
   void _handleIncomingCancelled(Map<String, dynamic> payload) {
@@ -641,6 +698,9 @@ class CallController extends ChangeNotifier {
       'offer': (p) => _onOffer(session.id, p),
       'answer': (p) => _onAnswer(session.id, p),
       'ice': (p) => _onIceCandidate(session.id, p),
+      'recording_request': (p) => _onRecordingRequest(p),
+      'recording_response': (p) => _onRecordingResponse(p),
+      'recording_stopped': (_) => _onPeerRecordingStopped(),
     });
   }
 
@@ -829,6 +889,12 @@ class CallController extends ChangeNotifier {
         _connectedAt = DateTime.now();
         _applyDefaultAudioRoute(session.type);
         _updateStatus(CallStatus.active);
+        // Record-at-launch: fire the consent request now that the call is
+        // live — capture only starts once the peer accepts.
+        if (_recordWhenConnected) {
+          _recordWhenConnected = false;
+          unawaited(requestRecording());
+        }
       }
       return;
     }
@@ -851,6 +917,114 @@ class CallController extends ChangeNotifier {
     speakerOn = type == CallType.video;
     await WebRtcCallEngine.instance.setSpeakerphone(speakerOn);
     notifyListeners();
+  }
+
+  // ── Call recording orchestration ────────────────────────────────────────
+
+  /// Asks the peer for consent to record. Only valid on a connected call;
+  /// capture starts when their 'recording_response' arrives accepted.
+  Future<void> requestRecording() async {
+    final session = _session;
+    final me = currentUserId;
+    if (session == null || session.status != CallStatus.active || me == null) {
+      return;
+    }
+    if (isRecording || myRecordingRequested || peerRecording) return;
+    myRecordingRequested = true;
+    notifyListeners();
+    await _send('recording_request', {'call_id': session.id, 'by': me});
+  }
+
+  /// Recorder's side: stop capturing and finalize the upload.
+  Future<void> stopRecording() async {
+    if (!isRecording) return;
+    unawaited(CallRecordingService.instance.stop());
+    await _send('recording_stopped', {'call_id': _session?.id});
+    notifyListeners();
+  }
+
+  /// Record button tap: request → (pending) → stop.
+  Future<void> onRecordButtonPressed() async {
+    if (isRecording) {
+      await stopRecording();
+    } else if (!myRecordingRequested) {
+      await requestRecording();
+    }
+  }
+
+  void _onRecordingRequest(Map<String, dynamic> payload) {
+    final from = payload['by'] as String?;
+    final me = currentUserId;
+    final session = _session;
+    if (from == null || me == null || session == null) return;
+    if (from == me) return;
+    if (session.status != CallStatus.active) return;
+    if (isRecording || peerRecording || pendingRecordingRequest != null) {
+      // One recording at a time — decline implicitly.
+      unawaited(_send('recording_response', {
+        'call_id': session.id,
+        'accepted': false,
+        'by': me,
+      }));
+      return;
+    }
+    _recordingConsentTimer?.cancel();
+    pendingRecordingRequest = {'call_id': session.id, 'by': from};
+    // Silence means no: an unanswered prompt declines itself after 15s.
+    _recordingConsentTimer = Timer(const Duration(seconds: 15), () {
+      if (pendingRecordingRequest != null) {
+        respondToRecordingRequest(false);
+      }
+    });
+    notifyListeners();
+  }
+
+  /// Consent prompt answered on the peer's device.
+  void respondToRecordingRequest(bool accept) {
+    final request = pendingRecordingRequest;
+    _recordingConsentTimer?.cancel();
+    _recordingConsentTimer = null;
+    pendingRecordingRequest = null;
+    final session = _session;
+    if (request != null && session != null) {
+      unawaited(_send('recording_response', {
+        'call_id': session.id,
+        'accepted': accept,
+        'by': currentUserId,
+      }));
+      peerRecording = accept;
+    }
+    notifyListeners();
+  }
+
+  void _onRecordingResponse(Map<String, dynamic> payload) {
+    final accepted = payload['accepted'] == true;
+    myRecordingRequested = false;
+    final session = _session;
+    if (!accepted) {
+      _setRecordingNotice('Recording declined');
+      notifyListeners();
+      return;
+    }
+    if (session == null) return;
+    unawaited(() async {
+      final ok = await CallRecordingService.instance.startCapture(session);
+      if (!ok) _setRecordingNotice('Recording failed to start');
+      notifyListeners();
+    }());
+    notifyListeners();
+  }
+
+  void _onPeerRecordingStopped() {
+    if (peerRecording) {
+      peerRecording = false;
+      notifyListeners();
+    }
+  }
+
+  void _setRecordingNotice(String message) {
+    _recordingNotice = message;
+    _recordingNoticeAt = DateTime.now();
   }
 
   void _notifyIncomingMissedCall() {
@@ -897,14 +1071,29 @@ class CallController extends ChangeNotifier {
     _timeoutTimer = null;
   }
 
-  /// Ringback for the caller only. The receiver's side stays silent by
-  /// design (visual notification + vibration), so incoming calls never
-  /// play an audible ring on the receiving phone.
+  /// Outgoing: soft ringback while waiting for the peer. Incoming: the
+  /// device's own call ringer (the user's ringtone, volume and silent-mode
+  /// handling) on Android, with the in-app alert as the fallback.
   Future<void> _playSound({required bool outgoing}) async {
-    if (!outgoing) return;
+    // Incoming calls ring through the device's own call ringer instead of
+    // an in-app sound.
+    if (!outgoing && !kIsWeb && Platform.isAndroid) {
+      try {
+        _deviceRingerActive = true;
+        await _deviceRinger.play(
+          android: AndroidSounds.ringtone,
+          looping: true,
+          asAlarm: false,
+        );
+        return;
+      } catch (e) {
+        _deviceRingerActive = false;
+        debugPrint('CallController: device ringer failed, falling back: $e');
+      }
+    }
 
     try {
-      await _ringPlayer.setVolume(0.35);
+      await _ringPlayer.setVolume(outgoing ? 0.35 : 0.9);
       await _ringPlayer.play(AssetSource('sounds/notification_alert.mp3'));
     } catch (e) {
       debugPrint('CallController: ringtone failed: $e');
@@ -912,6 +1101,12 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _stopSound() async {
+    if (_deviceRingerActive) {
+      _deviceRingerActive = false;
+      try {
+        await _deviceRinger.stop();
+      } catch (_) {}
+    }
     try {
       await _ringPlayer.stop();
     } catch (_) {}
@@ -974,6 +1169,14 @@ class CallController extends ChangeNotifier {
     _pendingCandidates.clear();
     _pendingOffer = null;
     _connectedAt = null;
+    _recordWhenConnected = false;
+    myRecordingRequested = false;
+    peerRecording = false;
+    pendingRecordingRequest = null;
+    _recordingConsentTimer?.cancel();
+    _recordingConsentTimer = null;
+    _recordingNotice = null;
+    _recordingNoticeAt = null;
   }
 
   /// Ends without notifying the peer (they are gone / never reached).
@@ -1016,6 +1219,10 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _teardownMedia() async {
+    // Stop + finalize any active recording BEFORE the engine disposes the
+    // tracks the recorders read from. stop() only stops the recorders and
+    // hands uploads to the background — it never blocks teardown.
+    await CallRecordingService.instance.stop();
     await WebRtcCallEngine.instance.dispose();
   }
 
@@ -1031,6 +1238,7 @@ class CallController extends ChangeNotifier {
     _authSub?.cancel();
     unawaited(_systemUiSub?.cancel() ?? Future.value());
     _cancelTimeout();
+    _recordingConsentTimer?.cancel();
     _endedFlashTimer.cancel();
     _ringPlayer.dispose();
     _signaling.disposeAll();

@@ -50,6 +50,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   // Search & Filter state
   bool _isSearching = false;
   String _searchQuery = '';
+  Timer? _searchDebounce;
   final TextEditingController _searchController = TextEditingController();
   NotificationFilter _selectedFilter = NotificationFilter.all;
 
@@ -77,10 +78,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             value: userId,
           ),
           callback: (_) {
-            // Reset and reload on any change
+            // Reset and reload on any change — silently, keeping the list.
             _page = 0;
             _hasMore = true;
-            _loadNotifications();
+            _loadNotifications(silent: true);
           },
         );
     _notificationsChannel!.subscribe();
@@ -90,6 +91,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _searchDebounce?.cancel();
     _filterPopoverController.dispose();
     if (_notificationsChannel != null) {
       SupabaseService.client.removeChannel(_notificationsChannel!);
@@ -107,8 +109,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
   }
 
-  Future<void> _loadNotifications() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadNotifications({bool silent = false}) async {
+    // Search, filter and realtime refreshes keep the current list on screen
+    // instead of flashing the skeleton — only the first load blocks.
+    final showSkeleton = !silent || _notifications.isEmpty;
+    if (showSkeleton) setState(() => _isLoading = true);
     try {
       final typeFilter = _typeForFilter(_selectedFilter);
       final notifications = await NotificationService.getNotifications(
@@ -207,7 +212,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         });
         _page = 0;
         _hasMore = true;
-        _loadNotifications();
+        _loadNotifications(silent: true);
       },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
@@ -269,9 +274,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               setState(() {
                 _searchQuery = val.trim();
               });
-              _page = 0;
-              _hasMore = true;
-              _loadNotifications();
+              // Debounced silent reload — the list stays visible instead of
+              // flashing a skeleton on every keystroke.
+              if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+                if (!mounted) return;
+                _page = 0;
+                _hasMore = true;
+                _loadNotifications(silent: true);
+              });
             },
           )
         : Text(defaultTitle);
@@ -302,7 +313,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               if (!_isSearching) {
                 _page = 0;
                 _hasMore = true;
-                _loadNotifications();
+                _loadNotifications(silent: true);
               }
             },
           ),
@@ -442,7 +453,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               ? _buildEmptyState()
               : RefreshIndicator(
                   edgeOffset: MediaQuery.of(context).padding.top + kToolbarHeight,
-                  onRefresh: _loadNotifications,
+                  onRefresh: () => _loadNotifications(silent: true),
                   child: ListView.separated(
                     controller: _scrollController,
                     padding: EdgeInsets.fromLTRB(

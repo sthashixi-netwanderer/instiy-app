@@ -113,7 +113,18 @@ class _ChatUserInfoScreenState extends ConsumerState<ChatUserInfoScreen> {
         );
         if (batch.isEmpty) break;
         all.addAll(
-          batch.where((m) => m.mediaUrl != null && m.mediaUrl!.isNotEmpty),
+          batch.where(
+            (m) =>
+                m.mediaUrl != null &&
+                m.mediaUrl!.isNotEmpty &&
+                // Shared media is visual only: call logs carry a JSON
+                // payload (not a URL) and voice notes are audio — both
+                // render as broken tiles in the grid/viewer. Mirrors the
+                // chat gallery filter in messages_screen.dart.
+                !m.isCall &&
+                m.mediaType != 'voice' &&
+                m.mediaType != 'audio',
+          ),
         );
         if (batch.length < pageSize || offset >= 950) break;
         offset += pageSize;

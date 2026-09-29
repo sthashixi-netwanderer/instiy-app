@@ -34,7 +34,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -47,7 +46,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
-    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -59,12 +57,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
   void _onSearchChanged(String query) {
     setState(() {}); // Show/hide clear button immediately
-    if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        ref.read(walletProvider).setSearchQuery(query);
-      }
-    });
+    // Filtering is client-side over the loaded transactions — instant, no
+    // reload of the wallet data.
+    ref.read(walletProvider).setSearchQuery(query);
   }
 
   @override
@@ -280,10 +275,12 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       padding: EdgeInsets.symmetric(vertical: 32),
                       child: Center(child: CircularProgressIndicator()),
                     )
-                  else if (walletProv.transactions.isEmpty)
+                  else if (walletProv.filteredTransactions.isEmpty)
                     _buildEmptyTransactionsState(walletProv)
                   else ...[
-                    ...walletProv.transactions.map((tx) => _TransactionTile(tx)),
+                    ...walletProv.filteredTransactions.map(
+                      (tx) => _TransactionTile(tx),
+                    ),
                     if (walletProv.isLoadingMore)
                       Padding(
                         padding: context.rAll(16),

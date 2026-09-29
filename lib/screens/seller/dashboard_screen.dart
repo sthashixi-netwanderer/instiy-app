@@ -293,7 +293,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                       kToolbarHeight +
                       16,
                 ),
-                _buildTabSwitcher(),
+                _buildTabSwitcher(stats),
                 const SizedBox(height: 12),
                 Expanded(
                   child: _selectedTab == 0
@@ -393,8 +393,16 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     );
   }
 
-  /// Segmented Selling / Services switcher above the dashboard body.
-  Widget _buildTabSwitcher() {
+  /// Segmented Selling / Services switcher above the dashboard body. Each
+  /// pill carries the total of the quick-action counters shown on that
+  /// tab, so pending items stay visible from the other tab.
+  Widget _buildTabSwitcher(DashboardStats? stats) {
+    final sellingCount = stats == null
+        ? 0
+        : stats.pendingOrders + stats.newReviews + stats.pendingPermissions;
+    // The Services panel has no quick-action counters yet — the pill shows
+    // one automatically once its tab content provides any.
+    const servicesCount = 0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
@@ -405,12 +413,16 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
         ),
         child: Row(
           children: [
-            Expanded(child: _tabPill(0, 'Selling', LucideIcons.store)),
+            Expanded(
+              child: _tabPill(0, 'Selling', LucideIcons.store,
+                  count: sellingCount),
+            ),
             Expanded(
               child: _tabPill(
                 1,
                 'Services',
                 LucideIcons.briefcaseBusiness,
+                count: servicesCount,
               ),
             ),
           ],
@@ -419,7 +431,7 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
     );
   }
 
-  Widget _tabPill(int index, String label, IconData icon) {
+  Widget _tabPill(int index, String label, IconData icon, {int count = 0}) {
     final selected = _selectedTab == index;
     return GestureDetector(
       onTap: () => setState(() => _selectedTab = index),
@@ -461,6 +473,28 @@ class _SellerDashboardScreenState extends ConsumerState<SellerDashboardScreen> {
                     : AppTheme.mutedSteel,
               ),
             ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                constraints:
+                    const BoxConstraints(minWidth: 18, minHeight: 16),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.destructive.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.destructive,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

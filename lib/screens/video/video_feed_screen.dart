@@ -43,6 +43,10 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
   ProviderSubscription<int>? _focusedIndexSub;
   ProviderSubscription<int>? _shellTabSub;
 
+  /// False while the app itself is backgrounded — one of the three
+  /// conditions [_updateCanPlay] requires before any clip may play.
+  bool _appResumed = true;
+
   @override
   void initState() {
     super.initState();
@@ -63,9 +67,9 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
       (previous, next) => _prefetchUpcomingClips(),
     );
     // Inside the navigation shell, tab switches don't fire route events —
-    // pause playback directly when the Clips tab is left.
+    // re-evaluate playback whenever the Clips tab is left or returned to.
     _shellTabSub = ref.listenManual(shellTabProvider, (previous, next) {
-      _canPlay.value = next == 3 && (ModalRoute.of(context)?.isCurrent ?? true);
+      _updateCanPlay();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoProvider).ensureInitialized();
@@ -73,6 +77,17 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
       // products listener above.
       _prefetchUpcomingClips();
     });
+  }
+
+  /// Single source of truth for whether clips may play: the Clips tab must
+  /// be the active shell tab, its route must be on top (no screen pushed
+  /// over it), and the app must be resumed. Every navigation/lifecycle
+  /// signal recomputes this instead of setting absolute values, so no
+  /// combination of events can leave a clip running off-screen.
+  void _updateCanPlay() {
+    final route = ModalRoute.of(context);
+    _canPlay.value =
+        ref.read(shellTabProvider) == 3 && (route?.isCurrent ?? true) && _appResumed;
   }
 
   /// Downloads the video files of the next two clips after the focused one.
@@ -107,37 +122,38 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> with WidgetsB
     final route = ModalRoute.of(context);
     if (route != null) {
       NavigationService.routeObserver.subscribe(this, route);
-      _canPlay.value = route.isCurrent;
     }
+    _updateCanPlay();
   }
 
   @override
   void didPush() {
-    _canPlay.value = true;
+    _updateCanPlay();
   }
 
   @override
   void didPopNext() {
-    _canPlay.value = true;
+    _updateCanPlay();
   }
 
   @override
   void didPushNext() {
-    _canPlay.value = false;
+    _updateCanPlay();
   }
 
   @override
   void didPop() {
-    _canPlay.value = false;
+    _updateCanPlay();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _canPlay.value = false;
+      _appResumed = false;
+      _updateCanPlay();
     } else if (state == AppLifecycleState.resumed) {
-      final route = ModalRoute.of(context);
-      _canPlay.value = route?.isCurrent ?? false;
+      _appResumed = true;
+      _updateCanPlay();
     }
   }
 

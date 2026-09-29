@@ -138,7 +138,7 @@ class WalletProvider extends ChangeNotifier {
   Future<void> _silentReload() async {
     try {
       _wallet = await WalletService.getWallet();
-      _transactions = await WalletService.getTransactions(type: _filterType, search: _searchQuery);
+      _transactions = await WalletService.getTransactions();
       _pendingBalance = await WalletService.getPendingBalance();
       _pendingEarnings = await WalletService.getPendingOrderEarnings();
       _withdrawalRequests = await WalletService.getWithdrawalRequests();
@@ -160,6 +160,33 @@ class WalletProvider extends ChangeNotifier {
 
   Wallet? get wallet => _wallet;
   List<WalletTransaction> get transactions => _transactions;
+
+  /// Loaded transactions after the client-side search + type filter. Both
+  /// filters apply in memory — changing them never hits the network.
+  List<WalletTransaction> get filteredTransactions {
+    Iterable<WalletTransaction> rows = _transactions;
+    switch (_filterType) {
+      case 'credit':
+        rows = rows.where((t) => t.type == 'deposit' || t.type == 'transfer_in');
+        break;
+      case 'debit':
+        rows = rows.where((t) => t.type != 'deposit' && t.type != 'transfer_in');
+        break;
+      case 'all':
+        break;
+      default:
+        rows = rows.where((t) => t.type == _filterType);
+    }
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      rows = rows.where((t) =>
+          (t.description ?? '').toLowerCase().contains(q) ||
+          (t.reference ?? '').toLowerCase().contains(q) ||
+          (t.source ?? '').toLowerCase().contains(q) ||
+          t.type.toLowerCase().contains(q));
+    }
+    return rows.toList();
+  }
   List<WithdrawalRequest> get withdrawalRequests => _withdrawalRequests;
   List<WithdrawalRequest> get pendingWithdrawals => _withdrawalRequests
       .where((w) => w.status == 'pending' || w.status == 'processing')
@@ -186,16 +213,40 @@ class WalletProvider extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   String get filterType => _filterType;
 
+  /// UI-only state changes — filtering happens client-side in
+  /// [filteredTransactions], so no reload and no skeleton flash.
   void setSearchQuery(String query) {
     if (_searchQuery == query) return;
     _searchQuery = query;
-    loadWallet();
+    notifyListeners();
+    unawaited(_fillFilteredView());
   }
 
   void setFilterType(String type) {
     if (_filterType == type) return;
     _filterType = type;
-    loadWallet();
+    notifyListeners();
+    unawaited(_fillFilteredView());
+  }
+
+  bool _fillingFilteredView = false;
+
+  /// Keeps fetching raw pages until the filtered view holds a screenful of
+  /// rows (or the history is exhausted). The old server-side filtering
+  /// guaranteed ~20 matching rows per page; without this a narrow filter
+  /// over the first raw page could dead-end the scroll-triggered loading.
+  Future<void> _fillFilteredView() async {
+    if (_fillingFilteredView) return;
+    _fillingFilteredView = true;
+    try {
+      while (filteredTransactions.length < 20 && _hasMore) {
+        final before = _transactions.length;
+        await loadMoreTransactions();
+        if (_transactions.length == before) break;
+      }
+    } finally {
+      _fillingFilteredView = false;
+    }
   }
 
   Future<void> loadWallet() async {
@@ -206,7 +257,7 @@ class WalletProvider extends ChangeNotifier {
 
     try {
       _wallet = await WalletService.getWallet();
-      _transactions = await WalletService.getTransactions(offset: 0, type: _filterType, search: _searchQuery);
+      _transactions = await WalletService.getTransactions(offset: 0);
       _hasMore = _transactions.length >= 20;
       _pendingBalance = await WalletService.getPendingBalance();
       _pendingEarnings = await WalletService.getPendingOrderEarnings();
@@ -224,7 +275,7 @@ class WalletProvider extends ChangeNotifier {
   Future<void> silentRefresh() async {
     try {
       _wallet = await WalletService.getWallet();
-      _transactions = await WalletService.getTransactions(offset: 0, type: _filterType, search: _searchQuery);
+      _transactions = await WalletService.getTransactions(offset: 0);
       _hasMore = _transactions.length >= 20;
       _pendingBalance = await WalletService.getPendingBalance();
       _pendingEarnings = await WalletService.getPendingOrderEarnings();
@@ -242,7 +293,7 @@ class WalletProvider extends ChangeNotifier {
 
     try {
       _transactionPage++;
-      final more = await WalletService.getTransactions(offset: _transactionPage * 20, type: _filterType, search: _searchQuery);
+      final more = await WalletService.getTransactions(offset: _transactionPage * 20);
       _transactions.addAll(more);
       _hasMore = more.length >= 20;
     } catch (e) {

@@ -58,6 +58,39 @@ class Conversation {
 
   String get displayName => otherBusinessName ?? otherUserName ?? 'Unknown';
 
+  /// In-place field updates for realtime conversation changes — lets the
+  /// provider patch one conversation without refetching the whole list.
+  Conversation copyWith({
+    String? otherUserName,
+    String? otherUserAvatar,
+    bool? otherUserVerified,
+    String? otherBusinessName,
+    String? lastMessage,
+    DateTime? lastMessageAt,
+    int? unreadCount,
+    bool? isArchived,
+    DateTime? hiddenAt,
+    DateTime? otherUserLastSeen,
+    String? themeColor,
+  }) {
+    return Conversation(
+      id: id,
+      otherUserId: otherUserId,
+      otherUserName: otherUserName ?? this.otherUserName,
+      otherUserAvatar: otherUserAvatar ?? this.otherUserAvatar,
+      otherUserVerified: otherUserVerified ?? this.otherUserVerified,
+      otherBusinessName: otherBusinessName ?? this.otherBusinessName,
+      lastMessage: lastMessage ?? this.lastMessage,
+      lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+      unreadCount: unreadCount ?? this.unreadCount,
+      isOnline: _isOnlineField,
+      isArchived: isArchived ?? this.isArchived,
+      hiddenAt: hiddenAt ?? this.hiddenAt,
+      otherUserLastSeen: otherUserLastSeen ?? this.otherUserLastSeen,
+      themeColor: themeColor ?? this.themeColor,
+    );
+  }
+
   factory Conversation.fromJson(Map<String, dynamic> json) {
     return Conversation(
       id: json['id'] as String,

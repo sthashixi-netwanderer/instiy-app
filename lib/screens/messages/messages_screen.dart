@@ -40,6 +40,8 @@ import '../../widgets/skeleton.dart';
 import 'report_screen.dart';
 import 'archived_chats_screen.dart';
 import 'blocked_chats_screen.dart';
+import 'message_search_screen.dart';
+import 'recordings_screen.dart';
 import 'chat_user_info_screen.dart';
 import 'chat_background_settings_screen.dart';
 
@@ -187,12 +189,23 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
         title: const Text('Messages'),
         automaticallyImplyLeading: false,
         actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.search),
+            tooltip: 'Search chats and messages',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MessageSearchScreen()),
+            ),
+          ),
           PopupMenuButton<String>(
             position: PopupMenuPosition.under,
             offset: const Offset(0, 8),
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
-              if (value == 'archived') {
+              if (value == 'recordings') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const RecordingsScreen()),
+                );
+              } else if (value == 'archived') {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ArchivedChatsScreen()),
                 );
@@ -203,6 +216,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
               }
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'recordings', child: Text('Recordings')),
               PopupMenuItem(value: 'archived', child: Text('Archived')),
               PopupMenuItem(value: 'blocked', child: Text('Blocked')),
             ],
@@ -457,11 +471,20 @@ class _ConversationTile extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (conversation.lastMessageAt != null)
+                if (conversation.lastMessageAt != null) ...[
                   Text(
                     DateFormat('MMM d').format(conversation.lastMessageAt),
                     style: const TextStyle(fontSize: 11, color: AppTheme.mutedSteel),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatLastMessageTime(
+                      conversation.lastMessageAt!,
+                      MediaQuery.of(context).alwaysUse24HourFormat,
+                    ),
+                    style: const TextStyle(fontSize: 10, color: AppTheme.mutedSteel),
+                  ),
+                ],
                 if (conversation.unreadCount > 0) ...[
                   const SizedBox(height: 4),
                   ShadBadge(
@@ -482,6 +505,14 @@ class _ConversationTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Last-message clock following the phone's time-format setting — 24-hr
+  /// when the system uses it, otherwise the locale's 12-hr AM/PM style.
+  String _formatLastMessageTime(DateTime time, bool use24HourFormat) {
+    return use24HourFormat
+        ? DateFormat('HH:mm').format(time)
+        : DateFormat('h:mm a').format(time);
   }
 
   void _showContextMenu(BuildContext context) {
@@ -2051,12 +2082,16 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                   icon: const Icon(LucideIcons.phone, size: 20),
                   enabled: !isBlocked,
                   onSelected: (value) {
-                    final isVideo = value == 'video';
+                    final isVideo = value.startsWith('video');
+                    // Recording is consent-gated: the peer gets an
+                    // Allow/Deny prompt once the call connects.
+                    final record = value.endsWith('_rec');
                     ref.read(callProvider.notifier).startCall(
                           peerId: otherUserId,
                           peerName: liveConv.displayName,
                           peerAvatar: liveConv.otherUserAvatar,
                           video: isVideo,
+                          record: record,
                         );
                   },
                   itemBuilder: (context) => const [
@@ -2071,12 +2106,34 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                       ),
                     ),
                     PopupMenuItem(
+                      value: 'voice_rec',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.phone, size: 18, color: AppTheme.accent),
+                          Icon(LucideIcons.disc, size: 13, color: AppTheme.destructive),
+                          SizedBox(width: 8),
+                          Text('Voice call · record'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
                       value: 'video',
                       child: Row(
                         children: [
                           Icon(LucideIcons.video, size: 18, color: AppTheme.accent),
                           SizedBox(width: 10),
                           Text('Video call'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'video_rec',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.video, size: 18, color: AppTheme.accent),
+                          Icon(LucideIcons.disc, size: 13, color: AppTheme.destructive),
+                          SizedBox(width: 8),
+                          Text('Video call · record'),
                         ],
                       ),
                     ),
@@ -2221,6 +2278,13 @@ class ConversationScreenState extends ConsumerState<ConversationScreen> {
                                         final mediaThumbs = <String?>[];
                                         final mediaIndexById = <String, int>{};
                                         for (final m in msgProv.messages) {
+                                          // Gallery is visual media only: call logs
+                                          // carry a JSON payload (not a URL) and voice
+                                          // notes are audio — both render as broken
+                                          // tiles in the viewer, so keep them out.
+                                          // Bubbles read indices from this same list,
+                                          // so they stay aligned.
+                                          if (m.isCall || m.mediaType == 'voice') continue;
                                           final url = m.mediaUrl;
                                           if (url == null || url.isEmpty) continue;
                                           mediaIndexById[m.id] = mediaUrls.length;
@@ -2870,7 +2934,10 @@ class _ReplyPreviewCard extends StatelessWidget {
         : _truncateName(otherBusinessName.isNotEmpty
             ? otherBusinessName
             : (otherUserName.isNotEmpty ? otherUserName : (message.replyToSenderName ?? 'User')));
-    final hasMedia = message.mediaUrl != null && message.mediaUrl!.isNotEmpty;
+    final hasMedia = message.mediaUrl != null &&
+        message.mediaUrl!.isNotEmpty &&
+        !message.isCall &&
+        message.mediaType != 'voice';
     final isVideo = message.mediaType == 'video';
 
     return Container(
@@ -2924,7 +2991,9 @@ class _ReplyPreviewCard extends StatelessWidget {
                 Text(
                   hasMedia
                       ? (isVideo ? '\u{1F4F9} Video' : '\u{1F4F7} Photo')
-                      : message.content,
+                      : (message.mediaType == 'voice' && message.content.isEmpty
+                          ? '\u{1F399}\uFE0F Voice note'
+                          : message.content),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: AppTheme.mutedSteel),
@@ -3227,8 +3296,16 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
 
     final replyContent = msg.replyToContent ?? '';
     final replySender = msg.replyToSenderName ?? '';
-    final hasReplyMedia = msg.replyToMediaUrl != null && msg.replyToMediaUrl!.isNotEmpty;
-    final isReplyMediaVideo = msg.replyToMediaType == 'video';
+    // Only visual media gets a quote thumbnail: call logs carry a JSON
+    // payload (not a URL) and voice notes are audio — both would load as
+    // broken images. Calls fall back to their snippet text, voice notes
+    // to a label (keeping any caption).
+    final replyType = (msg.replyToMediaType ?? '').toLowerCase();
+    final isReplyMediaVideo = replyType == 'video';
+    final isReplyMediaImage = replyType == 'image' || replyType == 'gif';
+    final hasReplyMedia = msg.replyToMediaUrl != null &&
+        msg.replyToMediaUrl!.isNotEmpty &&
+        (isReplyMediaVideo || isReplyMediaImage);
 
     return GestureDetector(
       onTap: widget.onReplyTap,
@@ -3266,7 +3343,9 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                   Text(
                     hasReplyMedia
                         ? (isReplyMediaVideo ? '\u{1F4F9} Video' : '\u{1F4F7} Photo')
-                        : replyContent,
+                        : (replyType == 'voice' && replyContent.isEmpty
+                            ? '\u{1F399}\uFE0F Voice note'
+                            : replyContent),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

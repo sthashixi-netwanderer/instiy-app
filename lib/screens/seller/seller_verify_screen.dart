@@ -425,7 +425,9 @@ class _SellerVerifyScreenState extends ConsumerState<SellerVerifyScreen> {
                           ShadButton(
                             onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => const SellerOrdersScreen(),
+                                builder: (_) => const SellerOrdersScreen(
+                                  initialFilter: 'pending',
+                                ),
                               ),
                             ),
                             child: const Text('Orders'),

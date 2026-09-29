@@ -1,3 +1,4 @@
+import 'package:http/http.dart' as http;
 import 'supabase_service.dart';
 import 'storage_service.dart';
 import 'video_service.dart';
@@ -200,6 +201,57 @@ class ServiceService {
       providerBio: bio ?? service.providerBio,
       providerPublicEmail: email ?? service.providerPublicEmail,
     );
+  }
+
+  static String? _cachedPublicIp;
+
+  static Future<String?> _getPublicIp() async {
+    if (_cachedPublicIp != null) return _cachedPublicIp;
+    try {
+      final response = await http
+          .get(Uri.parse('https://api.ipify.org'))
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200 && response.body.trim().isNotEmpty) {
+        _cachedPublicIp = response.body.trim();
+      }
+    } catch (_) {}
+    return _cachedPublicIp;
+  }
+
+  /// Records a view for [serviceId] (deduped per user, or per IP when not
+  /// signed in) and returns the service's total view count.
+  static Future<int> recordServiceView(String serviceId) async {
+    try {
+      final isAuthed = SupabaseService.client.auth.currentUser != null;
+      final viewerIp = isAuthed ? null : await _getPublicIp();
+      final response = await SupabaseService.client.rpc(
+        'record_service_view',
+        params: {'p_service_id': serviceId, 'p_viewer_ip': viewerIp},
+      );
+      return (response as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Fetches view counts for a batch of service ids (provider dashboard).
+  static Future<Map<String, int>> getViewCounts(List<String> serviceIds) async {
+    if (serviceIds.isEmpty) return {};
+    try {
+      final response = await SupabaseService.client.rpc(
+        'get_service_view_counts',
+        params: {'p_service_ids': serviceIds},
+      );
+      final counts = <String, int>{};
+      for (final row in (response as List)) {
+        final map = row as Map<String, dynamic>;
+        counts[map['service_id'] as String] =
+            (map['view_count'] as num?)?.toInt() ?? 0;
+      }
+      return counts;
+    } catch (_) {
+      return {};
+    }
   }
 
   /// All listings of the current user (any status) — the "My Services"

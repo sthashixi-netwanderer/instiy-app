@@ -46,6 +46,7 @@ function getContentType(extension: string): string {
     webm: "video/webm",
     pdf: "application/pdf",
     m4a: "audio/mp4",
+    wav: "audio/wav",
   };
   return types[extension.toLowerCase()] || "application/octet-stream";
 }
@@ -101,6 +102,7 @@ serve(async (req) => {
       "banners",
       "chat-media",
       "carousel",
+      "recordings",
     ];
     const folderPrefix = folder.split("/")[0];
     if (!allowedFolderPrefixes.includes(folderPrefix)) {
@@ -110,7 +112,7 @@ serve(async (req) => {
       });
     }
 
-    const allowedExtensions = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "pdf", "m4a"];
+    const allowedExtensions = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "pdf", "m4a", "wav"];
     if (!allowedExtensions.includes(extension.toLowerCase())) {
       return new Response(JSON.stringify({ error: "Invalid file extension" }), {
         status: 400,
@@ -120,7 +122,13 @@ serve(async (req) => {
 
     const contentType = providedContentType || getContentType(extension);
 
-    const fileName = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    // Optional caller-supplied file name (e.g. ordered call-recording
+    // segments like "remote0.wav") — sanitized; random name when absent.
+    let fileName = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    if (typeof body.fileName === "string" && body.fileName.trim() !== "") {
+      const safe = body.fileName.trim().replace(/[^A-Za-z0-9._-]/g, "_");
+      if (safe !== "") fileName = safe;
+    }
     const key = `${folder}/${fileName}.${extension}`;
 
     const endpointUrl = new URL(R2_ENDPOINT);
