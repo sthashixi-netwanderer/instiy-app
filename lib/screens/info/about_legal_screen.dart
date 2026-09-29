@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../config/app_theme.dart';
+import '../../widgets/instiy_logo_placeholder.dart';
 
 class AboutLegalScreen extends StatelessWidget {
   const AboutLegalScreen({super.key});
@@ -10,7 +11,14 @@ class AboutLegalScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.cleanBackground,
       extendBodyBehindAppBar: true,
-      appBar: AppTheme.glassAppBar(context: context, title: const Text('About & Legal')),
+      appBar: AppTheme.glassAppBar(
+        context: context,
+        title: const Text('About & Legal'),
+        leading: ShadIconButton.ghost(
+          icon: const Icon(LucideIcons.arrowLeft, size: 24),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + kToolbarHeight + 16, 16, 16),
         children: [
@@ -24,18 +32,10 @@ class AboutLegalScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Container(
+                InstiyLogoPlaceholder(
                   width: 72,
                   height: 72,
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Icon(
-                    LucideIcons.shoppingBag,
-                    size: 36,
-                    color: AppTheme.accent,
-                  ),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 const SizedBox(height: 16),
                 const Text(

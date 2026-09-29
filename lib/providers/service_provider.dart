@@ -31,6 +31,11 @@ class ServiceProvider extends ChangeNotifier {
   static const _localEmailKey = 'service_provider_email_local';
 
   List<Service> _services = [];
+
+  /// Total views per listed service (service id → count) shown on the
+  /// browse cards. Fetched after a page lands so counts never delay the
+  /// grid; entries persist across reloads so revisits render instantly.
+  final Map<String, int> _viewCounts = {};
   List<Service> _myServices = [];
   List<Category> _categories = [];
   List<Institution> _institutions = [];
@@ -294,6 +299,9 @@ class ServiceProvider extends ChangeNotifier {
   }
 
   List<Service> get services => _services;
+
+  /// View totals for the known services — see [_viewCounts].
+  Map<String, int> get viewCounts => _viewCounts;
   List<Service> get myServices => _myServices;
   List<Category> get categories => _categories;
   List<Institution> get institutions => _institutions;
@@ -372,6 +380,7 @@ class ServiceProvider extends ChangeNotifier {
       _servicesPage = 0;
       _hasMoreServices = page.hasMore;
       _loadedOnce = true;
+      unawaited(_loadViewCounts());
     } catch (e) {
       if (generation != _browseGeneration) return;
       _error = e.toString();
@@ -410,6 +419,7 @@ class ServiceProvider extends ChangeNotifier {
       _services = [..._services, ...fresh];
       _servicesPage++;
       _hasMoreServices = page.hasMore;
+      unawaited(_loadViewCounts());
     } catch (_) {
       // Keep the current page loaded; the scroll listener retries on the
       // next scroll gesture.
@@ -418,6 +428,20 @@ class ServiceProvider extends ChangeNotifier {
         _loadingMoreServices = false;
         notifyListeners();
       }
+    }
+  }
+
+  /// Fetches total views for the listed services and merges them into
+  /// [_viewCounts]. Failures are silent — the card just hides the stat.
+  Future<void> _loadViewCounts() async {
+    final ids = _services.map((s) => s.id).toList();
+    if (ids.isEmpty) return;
+    try {
+      final counts = await ServiceService.getViewCounts(ids);
+      _viewCounts.addAll(counts);
+      notifyListeners();
+    } catch (_) {
+      // Views are decorative on the card — skip silently.
     }
   }
 

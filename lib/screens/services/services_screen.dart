@@ -241,13 +241,17 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                         // can still be loaded.
                         itemCount: services.length +
                             (serviceProv.hasMoreServices ? 1 : 0),
-                        itemBuilder: (context, index) =>
-                            index == services.length
-                                ? const ProductCardSkeleton()
-                                : _ServiceCard(
-                                    service: services[index],
-                                    onTap: () => _openService(services[index]),
-                                  ),
+                        itemBuilder: (context, index) {
+                          final service = services[index];
+                          return index == services.length
+                              ? const ProductCardSkeleton()
+                              : _ServiceCard(
+                                  service: service,
+                                  viewCount:
+                                      serviceProv.viewCounts[service.id] ?? 0,
+                                  onTap: () => _openService(service),
+                                );
+                        },
                       ),
                     ),
         ),
@@ -471,7 +475,14 @@ class _ServiceCard extends StatelessWidget {
   final Service service;
   final VoidCallback onTap;
 
-  const _ServiceCard({required this.service, required this.onTap});
+  /// Total views shown with the eye icon — 0 hides the stat.
+  final int viewCount;
+
+  const _ServiceCard({
+    required this.service,
+    required this.onTap,
+    this.viewCount = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -598,6 +609,22 @@ class _ServiceCard extends StatelessWidget {
                         SizedBox(width: context.rw(2)),
                         Text(
                           '(${service.reviewCount})',
+                          style: TextStyle(
+                            fontSize: context.rsp(10),
+                            color: AppTheme.mutedSteel,
+                          ),
+                        ),
+                      ],
+                      if (viewCount > 0) ...[
+                        SizedBox(width: context.rw(8)),
+                        Icon(
+                          LucideIcons.eye,
+                          size: context.ri(11),
+                          color: AppTheme.mutedSteel,
+                        ),
+                        SizedBox(width: context.rw(2)),
+                        Text(
+                          '$viewCount',
                           style: TextStyle(
                             fontSize: context.rsp(10),
                             color: AppTheme.mutedSteel,

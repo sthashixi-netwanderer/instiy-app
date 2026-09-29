@@ -422,6 +422,10 @@ class _MediaViewerState extends State<MediaViewer>
       );
     }
 
+    // Bottom system inset (back gesture / home indicator) — the scrub
+    // bar must sit above it so dragging never exits the app.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return InteractiveViewer(
       minScale: 1.0,
       maxScale: 4.0,
@@ -506,9 +510,10 @@ class _MediaViewerState extends State<MediaViewer>
                   ),
                 ),
               ),
-            // Timer + Progress bar at bottom
+            // Timer + progress bar, lifted above the system gesture area
+            // so scrubbing never collides with the back/home gesture.
             Positioned(
-              bottom: 0,
+              bottom: bottomInset + 8,
               left: 0,
               right: 0,
               child: Column(
@@ -566,7 +571,7 @@ class _MediaViewerState extends State<MediaViewer>
             // Mute/unmute button overlay (only shown when video has audio)
             if (_hasAudioMap[index] ?? true)
               Positioned(
-                bottom: context.rh(24),
+                bottom: bottomInset + context.rh(32),
                 right: context.rw(16),
                 child: Material(
                   color: Colors.transparent,

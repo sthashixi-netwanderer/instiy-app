@@ -118,7 +118,6 @@ class AppBottomNav extends ConsumerWidget {
     final isServiceProvider =
         ref.watch(serviceProvider).isServiceProvider == true;
     final showDash = isSeller || isServiceProvider;
-    final isServicesTab = currentIndex == 2;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -178,14 +177,13 @@ class AppBottomNav extends ConsumerWidget {
                             LucideIcons.briefcaseBusiness,
                             'Services',
                           ),
-                          if (!isServicesTab)
-                            _navButton(
-                              context,
-                              isAuth,
-                              3,
-                              LucideIcons.video,
-                              'Clips',
-                            ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            3,
+                            LucideIcons.video,
+                            'Clips',
+                          ),
                           _ChatsNavButton(
                             selected: currentIndex == 4,
                             unreadCount: unreadCount,
@@ -225,14 +223,13 @@ class AppBottomNav extends ConsumerWidget {
                             LucideIcons.briefcaseBusiness,
                             'Services',
                           ),
-                          if (!isServicesTab)
-                            _navButton(
-                              context,
-                              isAuth,
-                              3,
-                              LucideIcons.video,
-                              'Clips',
-                            ),
+                          _navButton(
+                            context,
+                            isAuth,
+                            3,
+                            LucideIcons.video,
+                            'Clips',
+                          ),
                           _navButton(
                             context,
                             isAuth,

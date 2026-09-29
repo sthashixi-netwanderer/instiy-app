@@ -7,7 +7,9 @@ import 'package:video_player/video_player.dart';
 import '../../config/app_theme.dart';
 import '../../utils/responsive.dart';
 import '../../utils/formatters.dart';
+import '../../models/institution_model.dart';
 import '../../models/service_model.dart';
+import '../../services/institution_service.dart';
 import '../../services/service_service.dart';
 import '../../providers/providers.dart';
 import '../../widgets/service_review_section.dart';
@@ -43,13 +45,13 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   /// active tab is the plan quoted when contacting the provider.
   int _activePlanIndex = 0;
 
-  /// Slide direction of the plan panel transition: 1 when moving to a
-  /// later plan (slides in from the right), -1 when moving back.
-  int _planSlideDirection = 1;
-
   /// Keys for the plan tabs so a panel swipe can scroll the newly
   /// active tab back into view when tabs overflow the screen.
   final Map<int, GlobalKey> _planTabKeys = {};
+
+  /// Institutions for the availability card's logos — loaded once; the
+  /// card keeps its fallback icon until (and unless) they arrive.
+  List<Institution> _institutions = [];
   int _galleryPage = 0;
   final ScrollController _scrollCtrl = ScrollController();
 
@@ -57,6 +59,19 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   void initState() {
     super.initState();
     _loadService();
+    unawaited(_loadInstitutions());
+  }
+
+  /// Fetches the institution list so the availability card can show
+  /// each listed institution's logo.
+  Future<void> _loadInstitutions() async {
+    try {
+      final institutions = await InstitutionService.getInstitutions();
+      if (!mounted) return;
+      setState(() => _institutions = institutions);
+    } catch (_) {
+      // Logos are decorative — the card keeps its fallback icon.
+    }
   }
 
   Future<void> _loadService({bool silent = false}) async {
@@ -382,38 +397,10 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           SizedBox(height: context.rh(12)),
           _buildPlanTabs(packages, activeIndex),
           SizedBox(height: context.rh(12)),
-          GestureDetector(
-            // Swiping the panel switches plans exactly like tapping a tab.
-            onHorizontalDragEnd: (details) =>
-                _onPlanPanelSwiped(details, packages, activeIndex),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) {
-                final slide = Tween<Offset>(
-                  begin: Offset(0.35 * _planSlideDirection, 0),
-                  end: Offset.zero,
-                ).animate(animation);
-                return ClipRect(
-                  child: SlideTransition(
-                    position: slide,
-                    child: FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    ),
-                  ),
-                );
-              },
-              child: _PlanDetailPanel(
-                key: ValueKey(
-                  packages[activeIndex].id ??
-                      '${packages[activeIndex].tier.name}:'
-                          '${packages[activeIndex].name}',
-                ),
-                package: packages[activeIndex],
-              ),
-            ),
+          _PlanSwipeDeck(
+            packages: packages,
+            activeIndex: activeIndex,
+            onPlanChanged: (index) => _goToPlan(index, revealTab: true),
           ),
         ],
         SizedBox(height: context.rh(24)),
@@ -447,11 +434,14 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
       ),
       child: Row(
         children: [
-          Icon(
-            LucideIcons.building,
-            size: context.ri(18),
-            color: AppTheme.mutedSteel,
-          ),
+          if (service.institutionCodes.isNotEmpty)
+            _buildInstitutionLogos(service.institutionCodes)
+          else
+            Icon(
+              LucideIcons.building,
+              size: context.ri(18),
+              color: AppTheme.mutedSteel,
+            ),
           SizedBox(width: context.rw(10)),
           Expanded(
             child: Column(
@@ -485,6 +475,103 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         ],
       ),
     );
+  }
+
+  /// Overlapping circular logos for the listed institutions — up to
+  /// three with a "+N" badge past that, and a graduation-cap stand-in
+  /// for any institution without a logo.
+  Widget _buildInstitutionLogos(List<String> codes) {
+    const double logoSize = 32;
+    const double step = 12;
+    final shown = codes.take(3).toList();
+    final extra = codes.length - shown.length;
+    return SizedBox(
+      width: logoSize + step * (shown.length - 1) + (extra > 0 ? step : 0),
+      height: logoSize,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown.length; i++)
+            Positioned(left: i * step, child: _institutionLogo(shown[i])),
+          if (extra > 0)
+            Positioned(
+              left: shown.length * step,
+              child: _logoCircle(
+                child: Text(
+                  '+$extra',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.mutedSteel,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// One circular slot — the institution's logo when it has one,
+  /// otherwise a graduation-cap placeholder.
+  Widget _institutionLogo(String code) {
+    final logoUrl = _institutionFor(code)?.logoUrl;
+    return _logoCircle(
+      child: ClipOval(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: logoUrl != null && logoUrl.isNotEmpty
+              ? CachedNetworkImage(
+                  imageUrl: logoUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 56,
+                  placeholder: (_, _) => Container(color: AppTheme.warmMist),
+                  errorWidget: (_, _, _) => _logoFallback(),
+                )
+              : _logoFallback(),
+        ),
+      ),
+    );
+  }
+
+  Widget _logoFallback() {
+    return Container(
+      color: AppTheme.warmMist,
+      alignment: Alignment.center,
+      child: const Icon(
+        LucideIcons.graduationCap,
+        size: 14,
+        color: AppTheme.mutedSteel,
+      ),
+    );
+  }
+
+  /// Circular badge with a surface ring so overlapping logos stay
+  /// readable on the mist background.
+  Widget _logoCircle({required Widget child}) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.pureSurface,
+        border: Border.all(color: AppTheme.pureSurface, width: 2),
+      ),
+      child: child,
+    );
+  }
+
+  /// Resolves an institution by its availability code (name accepted as
+  /// a fallback, matching the product detail behaviour).
+  Institution? _institutionFor(String code) {
+    final needle = code.toLowerCase();
+    for (final institution in _institutions) {
+      if (institution.code.toLowerCase() == needle ||
+          institution.name.toLowerCase() == needle) {
+        return institution;
+      }
+    }
+    return null;
   }
 
   Widget _buildGallery(Service service) {
@@ -711,7 +798,6 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   /// Switches the active plan tab, optionally scrolling the tab row so
   /// the newly active tab is visible after a panel swipe.
   void _goToPlan(int index, {bool revealTab = false}) {
-    _planSlideDirection = index >= _activePlanIndex ? 1 : -1;
     setState(() => _activePlanIndex = index);
     if (!revealTab) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -726,22 +812,6 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         );
       }
     });
-  }
-
-  /// Swipe left for the next plan, right for the previous one. The tab
-  /// highlight, panel and contact reference all follow the active tab.
-  void _onPlanPanelSwiped(
-    DragEndDetails details,
-    List<ServicePackage> packages,
-    int activeIndex,
-  ) {
-    const minFlingVelocity = 300;
-    final velocity = details.primaryVelocity ?? 0;
-    if (velocity <= -minFlingVelocity && activeIndex < packages.length - 1) {
-      _goToPlan(activeIndex + 1, revealTab: true);
-    } else if (velocity >= minFlingVelocity && activeIndex > 0) {
-      _goToPlan(activeIndex - 1, revealTab: true);
-    }
   }
 
   Widget _buildProviderCard(Service service) {
@@ -1243,6 +1313,186 @@ class _PlanTab extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Swipeable plan deck: the active panel follows the finger while
+/// dragging, with the neighbouring plan sliding in alongside it. On
+/// release a fling always advances, a slow drag commits only past
+/// halfway, and anything less springs back. Tab taps ride the same
+/// slide, so the tabs, the panel and the contact quote always agree on
+/// the active plan.
+class _PlanSwipeDeck extends StatefulWidget {
+  final List<ServicePackage> packages;
+  final int activeIndex;
+  final ValueChanged<int> onPlanChanged;
+
+  const _PlanSwipeDeck({
+    required this.packages,
+    required this.activeIndex,
+    required this.onPlanChanged,
+  });
+
+  @override
+  State<_PlanSwipeDeck> createState() => _PlanSwipeDeckState();
+}
+
+class _PlanSwipeDeckState extends State<_PlanSwipeDeck>
+    with SingleTickerProviderStateMixin {
+  /// Continuous plan position: whole numbers are settled plans,
+  /// fractions are mid-swipe. Dragging writes it directly so the panels
+  /// track the finger; [_settleTo] animates it to a whole number on
+  /// release and after tab taps.
+  double _page = 0;
+  double _animFrom = 0;
+  double _animTo = 0;
+  late final AnimationController _settle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+  );
+
+  /// Release velocity (px/s) above which a swipe always advances.
+  static const double _flingVelocity = 350;
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.activeIndex.clamp(0, widget.packages.length - 1).toDouble();
+    _settle.addListener(() {
+      setState(() {
+        if (_settle.isCompleted) {
+          _page = _animTo;
+        } else {
+          final t = Curves.easeOutCubic.transform(_settle.value);
+          _page = _animFrom + (_animTo - _animFrom) * t;
+        }
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(_PlanSwipeDeck oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.packages.length != oldWidget.packages.length) {
+      // The plan list changed underneath us — land on the active plan.
+      _settle.stop();
+      _page = widget.activeIndex
+          .clamp(0, widget.packages.length - 1)
+          .toDouble();
+    } else if (widget.activeIndex != oldWidget.activeIndex &&
+        _page != widget.activeIndex.toDouble()) {
+      // Tab tap (or an external change): slide to the newly active plan.
+      _settleTo(widget.activeIndex.toDouble());
+    }
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    super.dispose();
+  }
+
+  /// Animates [_page] to [target]. The duration scales with distance so
+  /// short spring-backs stay snappy while full plan changes keep the
+  /// familiar ~300ms slide.
+  void _settleTo(double target) {
+    final distance = (target - _page).abs().clamp(0.0, 1.0);
+    _settle.duration = Duration(milliseconds: (180 + 220 * distance).round());
+    _animFrom = _page;
+    _animTo = target;
+    _settle.forward(from: 0);
+  }
+
+  void _onDragUpdate(DragUpdateDetails details, double width) {
+    if (width <= 0) return;
+    _settle.stop();
+    final raw = _page - (details.primaryDelta ?? 0) / width;
+    final max = widget.packages.length - 1;
+    setState(() {
+      // Past the first/last plan the panel keeps moving with a third of
+      // the finger travel instead of stopping dead (iOS-style resistance).
+      if (raw < 0) {
+        _page = raw / 3;
+      } else if (raw > max) {
+        _page = max + (raw - max) / 3;
+      } else {
+        _page = raw;
+      }
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    var target = _page.round();
+    if (velocity <= -_flingVelocity) {
+      target = _page.floor() + 1; // flung left — next plan
+    } else if (velocity >= _flingVelocity) {
+      target = _page.ceil() - 1; // flung right — previous plan
+    }
+    target = target.clamp(0, widget.packages.length - 1);
+    if (target == widget.activeIndex) {
+      _settleTo(target.toDouble());
+    } else {
+      // The parent updates the active plan and reports back through
+      // didUpdateWidget, which rides the same slide to the new plan.
+      widget.onPlanChanged(target);
+    }
+  }
+
+  /// The gesture arena handed the drag to the vertical page scroll —
+  /// return to the nearest settled plan.
+  void _onDragCancel() {
+    _settleTo(
+      _page.roundToDouble().clamp(0.0, (widget.packages.length - 1).toDouble()),
+    );
+  }
+
+  /// Stable identity for a plan's panel so its element survives
+  /// reorders and reloads of the packages list.
+  Object _planKey(int i) =>
+      widget.packages[i].id ??
+      '${widget.packages[i].tier.name}:${widget.packages[i].name}';
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            // The stack is as tall as the tallest visible plan;
+            // AnimatedSize eases the height between plans of different
+            // lengths while ClipRect hides the off-screen neighbours.
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (details) =>
+                  _onDragUpdate(details, width),
+              onHorizontalDragEnd: _onDragEnd,
+              onHorizontalDragCancel: _onDragCancel,
+              child: Stack(
+                children: [
+                  for (var i = 0; i < widget.packages.length; i++)
+                    (i - _page).abs() < 1
+                        ? Transform.translate(
+                            offset: Offset((i - _page) * width, 0),
+                            child: SizedBox(
+                              width: width,
+                              child: _PlanDetailPanel(
+                                key: ValueKey(_planKey(i)),
+                                package: widget.packages[i],
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

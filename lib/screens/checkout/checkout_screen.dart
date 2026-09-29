@@ -218,7 +218,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // form selections are kept intact.
         onRefresh: _loadData,
         child: ListView(
-        padding: EdgeInsets.fromLTRB(context.rw(16), MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16), context.rw(16), context.rh(16)),
+        // The scaffold extends the body behind the Place Order bar, and
+        // the injected bottom inset (the bar's height) only applies when
+        // the ListView has no explicit padding — so add it back here or
+        // the summary's tail hides behind the button.
+        padding: EdgeInsets.fromLTRB(
+          context.rw(16),
+          MediaQuery.paddingOf(context).top + kToolbarHeight + context.rh(16),
+          context.rw(16),
+          MediaQuery.paddingOf(context).bottom + context.rh(16),
+        ),
         children: [
           Container(
             padding: context.rAll(16),
